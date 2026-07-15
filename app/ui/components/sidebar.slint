@@ -1,0 +1,132 @@
+import { Theme, IconData } from "../theme.slint";
+
+component SidebarButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon-source;
+    in property <image> active-icon-source;
+    in property <bool> active: false;
+    in property <length> unit: 16px;
+    callback clicked;
+
+    width: 4.8 * root.unit;
+    height: 4.8 * root.unit;
+    border-radius: 0.75 * root.unit;
+    background: area.has-hover ? Theme.overlay : transparent;
+
+    animate background { duration: 100ms; }
+
+    area := TouchArea { clicked => { root.clicked(); } }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 0.5 * root.unit;
+
+        Rectangle {
+            horizontal-stretch: 1;
+            height: 2.2 * root.unit;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                width: 2.2 * root.unit;
+                height: 2.2 * root.unit;
+                source: root.active ? root.active-icon-source : root.icon-source;
+                colorize: root.active ? Theme.accent : Theme.text-primary;
+                opacity: root.active ? 1 : (area.has-hover ? 0.55 : 0.35);
+                image-fit: contain;
+                animate colorize, opacity { duration: 100ms; }
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: root.active ? Theme.accent : Theme.text-primary;
+            opacity: root.active ? 1 : (area.has-hover ? 0.6 : 0);
+            font-size: 0.8 * root.unit;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            animate color, opacity { duration: 100ms; }
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    in property <int> active-tab;
+    in property <length> unit: 16px;
+    in property <string> server-status: "Offline";
+    in property <string> username: "";
+    in property <string> avatar-letter: "U";
+
+    in property <IconData> board-icon;
+    in property <IconData> discover-icon;
+    in property <IconData> library-icon;
+    in property <IconData> calendar-icon;
+    in property <IconData> addons-icon;
+    in property <IconData> settings-icon;
+    in property <IconData> logout-icon;
+
+    callback change-tab(int);
+    callback logout;
+
+    width: 6 * root.unit;
+    background: transparent;
+
+    VerticalLayout {
+        padding-top: root.unit;
+        padding-bottom: root.unit;
+        padding-left: 0.6 * root.unit;
+        padding-right: 0.6 * root.unit;
+        spacing: root.unit;
+        alignment: start;
+
+        SidebarButton {
+            unit: root.unit;
+            label: "Board";
+            icon-source: @image-url("../assets/images/icons/home.svg");
+            active-icon-source: @image-url("../assets/images/icons/home.svg");
+            active: root.active-tab == 0;
+            clicked => { root.change-tab(0); }
+        }
+        SidebarButton {
+            unit: root.unit;
+            label: "Discover";
+            icon-source: @image-url("../assets/images/icons/discover.svg");
+            active-icon-source: @image-url("../assets/images/icons/discover.svg");
+            active: root.active-tab == 1;
+            clicked => { root.change-tab(1); }
+        }
+        SidebarButton {
+            unit: root.unit;
+            label: "Library";
+            icon-source: @image-url("../assets/images/icons/library.svg");
+            active-icon-source: @image-url("../assets/images/icons/library.svg");
+            active: root.active-tab == 2;
+            clicked => { root.change-tab(2); }
+        }
+        SidebarButton {
+            unit: root.unit;
+            label: "Calendar";
+            icon-source: @image-url("../assets/images/icons/calendar.svg");
+            active-icon-source: @image-url("../assets/images/icons/calendar.svg");
+            active: root.active-tab == 5;
+            clicked => { root.change-tab(5); }
+        }
+        SidebarButton {
+            unit: root.unit;
+            label: "Addons";
+            icon-source: @image-url("../assets/images/icons/addons.svg");
+            active-icon-source: @image-url("../assets/images/icons/addons.svg");
+            active: root.active-tab == 3;
+            clicked => { root.change-tab(3); }
+        }
+        SidebarButton {
+            unit: root.unit;
+            label: "Settings";
+            icon-source: @image-url("../assets/images/icons/settings.svg");
+            active-icon-source: @image-url("../assets/images/icons/settings.svg");
+            active: root.active-tab == 4;
+            clicked => { root.change-tab(4); }
+        }
+    }
+}

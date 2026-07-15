@@ -1,0 +1,35 @@
+import { Theme } from "../theme.slint";
+
+export component Toggle inherits Rectangle {
+    in-out property <bool> checked: false;
+    in property <length> unit: 16px;
+    callback toggled;
+
+    width: 3.25 * root.unit;
+    height: 1.8 * root.unit;
+    border-radius: root.height / 2;
+    background: root.checked ? Theme.accent : Theme.overlay;
+    border-width: 1px;
+    border-color: root.checked ? Theme.accent-hover.with-alpha(0.3) : Theme.overlay;
+
+    animate background { duration: 120ms; }
+
+    Rectangle {
+        width: 1.35 * root.unit;
+        height: self.width;
+        x: root.checked ? parent.width - self.width - 0.225 * root.unit : 0.225 * root.unit;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: Theme.text-primary;
+        
+        animate x { duration: 120ms; easing: ease-in-out; }
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}

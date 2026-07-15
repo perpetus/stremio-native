@@ -1,0 +1,656 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { SelectField, PillButton, NativeTextField } from "../components/form_controls.slint";
+
+export struct AddonItem {
+    id: string,
+    name: string,
+    version: string,
+    description: string,
+    logo: image,
+    is_installed: bool,
+    transport-url: string,
+    types-label: string,
+    configurable: bool,
+    configuration-required: bool,
+    supports-movie: bool,
+    supports-series: bool,
+    supports-anime: bool,
+    supports-tv: bool,
+}
+
+component AddonAction inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+    in property <image> icon-source;
+    in property <bool> primary: false;
+    in property <bool> outlined: false;
+    in property <bool> subdued: false;
+    in property <bool> show-icon: true;
+    callback clicked;
+
+    height: 3.5 * root.unit;
+    border-radius: root.height / 2;
+    border-width: root.primary || root.outlined || action.has-hover ? Theme.focus-outline-size : 0px;
+    border-color: root.primary ? Theme.success : Theme.text-primary;
+    background: root.primary && !action.has-hover ? Theme.success :
+        (action.has-hover ? Theme.overlay : transparent);
+    opacity: root.subdued && !action.has-hover ? 0.35 : 1;
+
+    action := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        alignment: center;
+        spacing: root.unit;
+        padding-left: root.unit;
+        padding-right: root.unit;
+
+        if (root.show-icon) : Rectangle {
+            width: 1.5 * root.unit;
+            height: parent.height;
+            background: transparent;
+
+            Image {
+                y: (parent.height - self.height) / 2;
+                width: 1.5 * root.unit;
+                height: 1.5 * root.unit;
+                source: root.icon-source;
+                colorize: Theme.text-primary;
+                image-fit: contain;
+            }
+        }
+        Text {
+            height: parent.height;
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: 1.05 * root.unit;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+component AddonCard inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <AddonItem> addon;
+    callback install;
+    callback uninstall;
+    callback details;
+    callback configure;
+    callback share;
+
+    property <length> card-padding: 1.5 * root.unit;
+    property <length> logo-size: 8 * root.unit;
+    property <length> actions-width: 17 * root.unit;
+
+    height: 11 * root.unit;
+    border-radius: 0.75 * root.unit;
+    border-width: 0.15 * root.unit;
+    border-color: card-area.has-hover ? Theme.overlay : transparent;
+    background: Theme.overlay;
+
+    card-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.details(); }
+    }
+
+    Rectangle {
+        x: root.card-padding;
+        y: root.card-padding;
+        width: root.logo-size;
+        height: root.logo-size;
+        background: transparent;
+
+        if (root.addon.logo.width > 0) : Image {
+            x: 0.5 * root.unit;
+            y: 0.5 * root.unit;
+            width: parent.width - root.unit;
+            height: parent.height - root.unit;
+            source: root.addon.logo;
+            image-fit: contain;
+        }
+
+        if (root.addon.logo.width == 0) : Image {
+            x: root.unit;
+            y: root.unit;
+            width: parent.width - 2 * root.unit;
+            height: parent.height - 2 * root.unit;
+            source: @image-url("../assets/images/icons/addons.svg");
+            colorize: Theme.text-primary;
+            opacity: 0.35;
+            image-fit: contain;
+        }
+    }
+
+    // The official card reserves a fixed 17rem action column at the far
+    // right. Explicit anchors avoid the content-sized Slint layout that used
+    // to leave the buttons stranded near the middle of wide windows.
+    VerticalLayout {
+        x: root.card-padding + root.logo-size + 1.5 * root.unit;
+        y: root.card-padding;
+        width: max(0px, root.width - self.x - root.actions-width - 3 * root.unit);
+        height: root.height - 2 * root.card-padding;
+        spacing: 0.5 * root.unit;
+        alignment: center;
+
+        HorizontalLayout {
+            height: 2.25 * root.unit;
+            spacing: 0.5 * root.unit;
+            alignment: start;
+            Text {
+                text: root.addon.name;
+                color: Theme.text-primary;
+                font-size: 1.6 * root.unit;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: root.addon.version;
+                color: Theme.text-primary;
+                opacity: 0.6;
+                font-size: root.unit;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: root.addon.types-label;
+            color: Theme.text-primary;
+            opacity: 0.4;
+            font-size: root.unit;
+        }
+
+        Text {
+            text: root.addon.description;
+            color: Theme.text-primary;
+            opacity: 0.7;
+            font-size: root.unit;
+            wrap: word-wrap;
+            overflow: elide;
+        }
+    }
+
+    VerticalLayout {
+        x: root.width - root.card-padding - root.actions-width;
+        y: root.card-padding;
+        width: root.actions-width;
+        height: root.height - 2 * root.card-padding;
+        spacing: root.unit;
+        alignment: start;
+
+        HorizontalLayout {
+            width: root.actions-width;
+            height: 3.5 * root.unit;
+            spacing: root.unit;
+            alignment: start;
+
+            if (root.addon.configurable && !root.addon.configuration-required) : Rectangle {
+                width: 3.5 * root.unit;
+                height: 3.5 * root.unit;
+                border-radius: self.height / 2;
+                background: configure-area.has-hover ? transparent : Theme.success;
+                border-width: configure-area.has-hover ? Theme.focus-outline-size : 0px;
+                border-color: Theme.success;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 1.7 * root.unit;
+                    height: 1.7 * root.unit;
+                    source: @image-url("../assets/images/icons/settings.svg");
+                    colorize: Theme.text-primary;
+                    image-fit: contain;
+                }
+                configure-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.configure(); }
+                }
+            }
+
+            AddonAction {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: root.addon.is-installed ? "Uninstall" :
+                    (root.addon.configuration-required ? "Configure" : "Install");
+                show-icon: false;
+                outlined: root.addon.is-installed;
+                primary: !root.addon.is-installed;
+                subdued: root.addon.is-installed;
+                clicked => {
+                    if (root.addon.is-installed) { root.uninstall(); }
+                    else if (root.addon.configuration-required) { root.configure(); }
+                    else { root.install(); }
+                }
+            }
+        }
+
+        AddonAction {
+            width: root.actions-width;
+            unit: root.unit;
+            label: "Share addon";
+            icon-source: @image-url("../assets/images/icons/share.svg");
+            subdued: true;
+            clicked => { root.share(); }
+        }
+    }
+}
+
+export component AddonsPage inherits Rectangle {
+    in property <[AddonItem]> addons: [];
+    in property <bool> loading: false;
+    callback install-addon(string);
+    callback uninstall-addon(string);
+    callback open-addon-details(string);
+    callback close-addon-details;
+    callback configure-addon(string);
+    callback share-addon(string);
+    callback search-changed(string);
+
+    in-out property <bool> details-open: false;
+    in property <AddonItem> details-addon;
+    in property <bool> details-loading: false;
+    in property <string> details-error: "";
+    in property <bool> details-configurable: false;
+    in property <bool> details-configuration-required: false;
+
+    property <length> unit: root.width > 2700px ? 18px :
+        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
+    property <string> active-filter: "Installed";
+    property <string> active-type: "All";
+    property <bool> filter-open: false;
+    property <bool> type-open: false;
+    property <bool> add-modal-open: false;
+    property <string> manifest-url: "";
+    in-out property <string> search-query: "";
+
+    background: transparent;
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Rectangle {
+            height: 6 * root.unit;
+            z: 50;
+
+            HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 1.5 * root.unit;
+                spacing: 1.5 * root.unit;
+
+                SelectField {
+                    unit: root.unit;
+                    field-width: 15 * root.unit;
+                    value: root.active-filter;
+                    options: ["Installed", "Community"];
+                    open: root.filter-open;
+                    toggle => {
+                        root.filter-open = !root.filter-open;
+                        root.type-open = false;
+                    }
+                    selected(value) => {
+                        root.active-filter = value;
+                        root.filter-open = false;
+                    }
+                }
+
+                SelectField {
+                    unit: root.unit;
+                    field-width: 15 * root.unit;
+                    value: root.active-type;
+                    options: ["All", "Movie", "Series", "Anime", "TV Channel"];
+                    open: root.type-open;
+                    toggle => {
+                        root.type-open = !root.type-open;
+                        root.filter-open = false;
+                    }
+                    selected(value) => {
+                        root.active-type = value;
+                        root.type-open = false;
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Rectangle {
+                    width: 10.5 * root.unit;
+                    height: 3 * root.unit;
+                    border-radius: self.height / 2;
+                    background: add-area.has-hover ? transparent : Theme.success;
+                    border-width: add-area.has-hover ? Theme.focus-outline-size : 0px;
+                    border-color: Theme.success;
+
+                    add-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.add-modal-open = true; }
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 0.5 * root.unit;
+                        Image {
+                            width: 1.2 * root.unit;
+                            height: 1.2 * root.unit;
+                            source: @image-url("../assets/images/icons/add.svg");
+                            colorize: Theme.text-primary;
+                            image-fit: contain;
+                        }
+                        Text {
+                            text: "Add addon";
+                            color: Theme.text-primary;
+                            font-size: root.unit;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 18 * root.unit;
+                    height: 3 * root.unit;
+                    background: transparent;
+
+                    NativeTextField {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.unit;
+                        text <=> root.search-query;
+                        placeholder-text: "Search addons";
+                        edited => { root.search-changed(root.search-query); }
+                    }
+
+                    Image {
+                        x: parent.width - 2.4 * root.unit;
+                        y: 0.75 * root.unit;
+                        width: 1.5 * root.unit;
+                        height: 1.5 * root.unit;
+                        source: @image-url("../assets/images/icons/search.svg");
+                        colorize: Theme.text-primary;
+                        opacity: 0.55;
+                        image-fit: contain;
+                    }
+                }
+            }
+        }
+
+        if (root.loading) : Rectangle {
+            vertical-stretch: 1;
+            Text {
+                text: "Loading addons…";
+                color: Theme.text-primary;
+                opacity: 0.6;
+                font-size: 1.2 * root.unit;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        if (!root.loading) : ScrollView {
+            vertical-stretch: 1;
+            viewport-width: root.width;
+            mouse-drag-pan-enabled: true;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            VerticalLayout {
+                width: root.width;
+                padding-left: 1.5 * root.unit;
+                padding-right: 1.5 * root.unit;
+                spacing: 1.5 * root.unit;
+
+                for item in root.addons : AddonCard {
+                    visible: ((root.active-filter == "Installed") == item.is-installed)
+                        && (root.active-type == "All"
+                            || (root.active-type == "Movie" && item.supports-movie)
+                            || (root.active-type == "Series" && item.supports-series)
+                            || (root.active-type == "Anime" && item.supports-anime)
+                            || (root.active-type == "TV Channel" && item.supports-tv));
+                    height: self.visible ? 11 * root.unit : 0px;
+                    unit: root.unit;
+                    addon: item;
+                    install => { root.install-addon(item.transport-url); }
+                    uninstall => { root.uninstall-addon(item.transport-url); }
+                    details => { root.open-addon-details(item.transport-url); }
+                    configure => { root.configure-addon(item.transport-url); }
+                    share => { root.share-addon(item.transport-url); }
+                }
+            }
+        }
+    }
+
+    if (root.add-modal-open) : Rectangle {
+        background: #00000066;
+        z: 200;
+        TouchArea { clicked => { } }
+
+        Rectangle {
+            width: root.width < 600px ? 0.9 * root.width : 34 * root.unit;
+            height: 17 * root.unit;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 0.75 * root.unit;
+            background: Theme.modal-background;
+
+            VerticalLayout {
+                padding: 2 * root.unit;
+                spacing: root.unit;
+                Text {
+                    text: "Add addon";
+                    color: Theme.text-primary;
+                    font-size: 1.6 * root.unit;
+                    font-weight: 500;
+                }
+                Text {
+                    text: "Paste the HTTPS URL of an addon manifest.";
+                    color: Theme.text-primary;
+                    opacity: 0.6;
+                    font-size: root.unit;
+                }
+                NativeTextField {
+                    unit: root.unit;
+                    text <=> root.manifest-url;
+                    placeholder-text: "https://…/manifest.json";
+                    accepted => {
+                        if (root.manifest-url != "") {
+                            root.install-addon(root.manifest-url);
+                            root.add-modal-open = false;
+                        }
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    height: 3.5 * root.unit;
+                    spacing: root.unit;
+                    PillButton {
+                        horizontal-stretch: 1;
+                        unit: root.unit;
+                        label: "Cancel";
+                        outlined: true;
+                        clicked => { root.add-modal-open = false; }
+                    }
+                    PillButton {
+                        horizontal-stretch: 1;
+                        unit: root.unit;
+                        label: "Install";
+                        primary: true;
+                        accent-color: Theme.success;
+                        enabled: root.manifest-url != "";
+                        clicked => {
+                            root.install-addon(root.manifest-url);
+                            root.add-modal-open = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (root.details-open) : Rectangle {
+        background: #00000099;
+        z: 220;
+
+        TouchArea { clicked => { root.close-addon-details(); } }
+
+        Rectangle {
+            width: root.width < 700px ? 0.92 * root.width : 42 * root.unit;
+            height: min(38 * root.unit, root.height - 4 * root.unit);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: root.unit;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            background: Theme.modal-background;
+            clip: true;
+
+            TouchArea { clicked => { } }
+
+            VerticalLayout {
+                padding: 2 * root.unit;
+                spacing: 1.25 * root.unit;
+
+                Text {
+                    text: "Community addon";
+                    color: Theme.text-primary;
+                    opacity: 0.55;
+                    font-size: root.unit;
+                    font-weight: 600;
+                }
+
+                if (root.details-loading) : Rectangle {
+                    vertical-stretch: 1;
+                    Text {
+                        text: "Loading manifest…";
+                        color: Theme.text-secondary;
+                        font-size: root.unit;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if (!root.details-loading && root.details-error != "") : Rectangle {
+                    vertical-stretch: 1;
+                    Text {
+                        text: root.details-error;
+                        color: Theme.text-secondary;
+                        font-size: root.unit;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if (!root.details-loading && root.details-error == "") : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 1.25 * root.unit;
+
+                    HorizontalLayout {
+                        height: 9 * root.unit;
+                        spacing: 1.5 * root.unit;
+
+                        Rectangle {
+                            width: 9 * root.unit;
+                            height: 9 * root.unit;
+                            border-radius: 0.75 * root.unit;
+                            background: Theme.overlay;
+                            Image {
+                                x: root.unit;
+                                y: root.unit;
+                                width: parent.width - 2 * root.unit;
+                                height: parent.height - 2 * root.unit;
+                                source: root.details-addon.logo;
+                                image-fit: contain;
+                            }
+                        }
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 0.5 * root.unit;
+                            Text {
+                                text: root.details-addon.name;
+                                color: Theme.text-primary;
+                                font-size: 1.8 * root.unit;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.details-addon.version;
+                                color: Theme.text-secondary;
+                                font-size: root.unit;
+                            }
+                            Text {
+                                text: root.details-addon.transport-url;
+                                color: Theme.text-secondary;
+                                font-size: 0.85 * root.unit;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    ScrollView {
+                        vertical-stretch: 1;
+                        mouse-drag-pan-enabled: true;
+                        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                        Text {
+                            width: parent.width;
+                            text: root.details-addon.description;
+                            color: Theme.text-primary;
+                            opacity: 0.75;
+                            font-size: root.unit;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 3.5 * root.unit;
+                    spacing: root.unit;
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    PillButton {
+                        width: 9 * root.unit;
+                        unit: root.unit;
+                        label: "Cancel";
+                        outlined: true;
+                        clicked => { root.close-addon-details(); }
+                    }
+
+                    if (root.details-configurable) : AddonAction {
+                        width: 12 * root.unit;
+                        unit: root.unit;
+                        label: "Configure";
+                        icon-source: @image-url("../assets/images/icons/settings.svg");
+                        subdued: true;
+                        clicked => { root.configure-addon(root.details-addon.transport-url); }
+                    }
+
+                    if (!root.details-loading && root.details-error == "" &&
+                        (root.details-addon.is-installed || !root.details-configuration-required)) : AddonAction {
+                        width: 12 * root.unit;
+                        unit: root.unit;
+                        label: root.details-addon.is-installed ? "Uninstall" : "Install";
+                        icon-source: root.details-addon.is-installed
+                            ? @image-url("../assets/images/icons/delete.svg")
+                            : @image-url("../assets/images/icons/add.svg");
+                        primary: !root.details-addon.is-installed;
+                        subdued: root.details-addon.is-installed;
+                        clicked => {
+                            if (root.details-addon.is-installed) {
+                                root.uninstall-addon(root.details-addon.transport-url);
+                            } else {
+                                root.install-addon(root.details-addon.transport-url);
+                            }
+                            root.close-addon-details();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

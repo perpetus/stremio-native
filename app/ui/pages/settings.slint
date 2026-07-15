@@ -1,0 +1,553 @@
+import { Slider, ScrollView } from "std-widgets.slint";
+import { Theme, IconData } from "../theme.slint";
+import { NativeTextField, PillButton, ToggleSwitch } from "../components/form_controls.slint";
+
+component SettingsMenuButton inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked;
+
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    background: root.selected || area.has-hover ? Theme.overlay : transparent;
+    opacity: root.selected ? 1 : 0.4;
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        x: 2 * root.unit;
+        width: parent.width - 4 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.text-primary;
+        font-size: 1.1 * root.unit;
+        font-weight: root.selected ? 600 : 500;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component SettingsSection inherits VerticalLayout {
+    in property <length> unit: 16px;
+    in property <string> title;
+
+    width: 35 * root.unit;
+    padding-top: 3 * root.unit;
+    padding-bottom: 3 * root.unit;
+    spacing: 0px;
+    alignment: start;
+
+    Text {
+        height: 5.4 * root.unit;
+        text: root.title;
+        color: Theme.text-primary;
+        font-size: 1.8 * root.unit;
+        font-weight: 400;
+        vertical-alignment: top;
+    }
+
+    @children
+
+    Rectangle {
+        height: 1px;
+        background: Theme.overlay;
+    }
+}
+
+component SettingsOption inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+    in property <string> description: "";
+
+    height: root.description == "" ? 5 * root.unit : 6 * root.unit;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 2 * root.unit;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 0.35 * root.unit;
+            Text {
+                text: root.label;
+                color: Theme.text-primary;
+                font-size: root.unit;
+                font-weight: 500;
+                wrap: word-wrap;
+            }
+            if (root.description != "") : Text {
+                text: root.description;
+                color: Theme.text-primary;
+                opacity: 0.45;
+                font-size: 0.85 * root.unit;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+        }
+
+        HorizontalLayout {
+            width: 16 * root.unit;
+            alignment: center;
+            @children
+        }
+    }
+}
+
+component IconPill inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+    in property <image> icon-source;
+    callback clicked;
+
+    height: 3.5 * root.unit;
+    border-radius: root.height / 2;
+    background: area.has-hover ? Theme.overlay : #ffffff12;
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 0.75 * root.unit;
+        padding-left: root.unit;
+        padding-right: root.unit;
+        Image {
+            width: 1.3 * root.unit;
+            height: 1.3 * root.unit;
+            source: root.icon-source;
+            colorize: Theme.text-primary;
+            image-fit: contain;
+        }
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: root.unit;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    in-out property <string> torrent-cache-size: "2.0 GB";
+    in property <string> server-url: "";
+    in-out property <string> interface-language: "English";
+    in-out property <string> subtitles-language: "English";
+    in-out property <string> torrent-profile: "Default";
+    in-out property <bool> hardware-acceleration: true;
+    in-out property <bool> binge-watching: true;
+    in-out property <bool> hide-spoilers: false;
+    in-out property <bool> gamepad-support: false;
+    in-out property <bool> play-in-background: true;
+    in-out property <bool> subtitles-auto-select: true;
+    in-out property <string> subtitles-font: "Roboto";
+    in-out property <string> subtitles-size: "100";
+    in-out property <bool> subtitles-bold: false;
+    in-out property <string> subtitles-offset: "5";
+    in-out property <string> seek-duration: "10";
+    in-out property <bool> pause-on-minimize: false;
+    in-out property <bool> quit-on-close: true;
+    in property <bool> export-loading: false;
+    in property <string> export-status: "";
+    in-out property <bool> streaming-seeding: false;
+    in-out property <bool> streaming-dht: true;
+    in-out property <bool> streaming-pex: true;
+    in-out property <bool> streaming-lsd: true;
+    in-out property <string> streaming-remote-url: "";
+    in-out property <string> streaming-logs-text: "No logs loaded. Click Refresh.";
+    in property <IconData> refresh-icon;
+    in property <IconData> folder-icon;
+
+    callback apply-cache-settings(float);
+    callback change-interface-language(string);
+    callback change-subtitles-language(string);
+    callback change-torrent-profile(string);
+    callback change-hardware-acceleration(bool);
+    callback clear-search-history;
+    callback shutdown-server;
+    callback change-seeding-enabled(bool);
+    callback change-dht-enabled(bool);
+    callback change-pex-enabled(bool);
+    callback change-lsd-enabled(bool);
+    callback refresh-logs;
+    callback open-logs-folder;
+    callback export-data;
+    callback change-binge-watching(bool);
+    callback change-hide-spoilers(bool);
+    callback change-gamepad-support(bool);
+    callback change-play-in-background(bool);
+    callback change-subtitles-auto-select(bool);
+    callback change-subtitles-font(string);
+    callback change-subtitles-size(string);
+    callback change-subtitles-bold(bool);
+    callback change-subtitles-offset(string);
+    callback change-seek-duration(string);
+    callback change-pause-on-minimize(bool);
+    callback change-quit-on-close(bool);
+
+    property <length> unit: root.width > 2700px ? 18px :
+        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
+    property <int> active-category: 0;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        VerticalLayout {
+            width: 18 * root.unit;
+            padding-top: 3 * root.unit;
+            padding-bottom: 3 * root.unit;
+            padding-left: 1.5 * root.unit;
+            padding-right: 1.5 * root.unit;
+            spacing: 0.5 * root.unit;
+
+            SettingsMenuButton { unit: root.unit; label: "General"; selected: root.active-category == 0; clicked => { root.active-category = 0; } }
+            SettingsMenuButton { unit: root.unit; label: "Interface"; selected: root.active-category == 1; clicked => { root.active-category = 1; } }
+            SettingsMenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { root.active-category = 2; } }
+            SettingsMenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { root.active-category = 3; } }
+            SettingsMenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { root.active-category = 4; } }
+            SettingsMenuButton {
+                unit: root.unit;
+                label: "Diagnostics logs";
+                selected: root.active-category == 5;
+                clicked => { root.active-category = 5; root.refresh-logs(); }
+            }
+            Rectangle { vertical-stretch: 1; }
+            Text {
+                height: 2 * root.unit;
+                text: "Stremio Native";
+                color: Theme.text-primary;
+                opacity: 0.3;
+                font-size: 0.9 * root.unit;
+                vertical-alignment: center;
+            }
+        }
+
+        ScrollView {
+            horizontal-stretch: 1;
+
+            VerticalLayout {
+                padding-left: 3 * root.unit;
+                padding-right: 3 * root.unit;
+                spacing: 0px;
+                alignment: start;
+
+                if (root.active-category == 0) : SettingsSection {
+                    unit: root.unit;
+                    title: "General";
+
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Export user data";
+                        description: root.export-status == ""
+                            ? "Download a backup of your library and settings."
+                            : root.export-status;
+                        PillButton {
+                            width: 12 * root.unit;
+                            unit: root.unit;
+                            label: root.export-loading ? "Preparing…" : "Export";
+                            outlined: true;
+                            enabled: !root.export-loading;
+                            clicked => { root.export-data(); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Clear search history";
+                        description: "Delete all recent search queries stored locally.";
+                        PillButton {
+                            width: 12 * root.unit;
+                            unit: root.unit;
+                            label: "Clear history";
+                            outlined: true;
+                            clicked => { root.clear-search-history(); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Default subtitles language";
+                        NativeTextField {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            text: root.subtitles-language;
+                            placeholder-text: "English";
+                            accepted => { root.change-subtitles-language(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Automatically select subtitles";
+                        ToggleSwitch { unit: root.unit; checked: root.subtitles-auto-select; toggled => { root.change-subtitles-auto-select(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Subtitle font";
+                        NativeTextField {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            text: root.subtitles-font;
+                            placeholder-text: "Roboto";
+                            accepted => { root.change-subtitles-font(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Subtitle size";
+                        description: "Percentage from 50 to 200.";
+                        NativeTextField {
+                            width: 8 * root.unit;
+                            unit: root.unit;
+                            text: root.subtitles-size;
+                            placeholder-text: "100";
+                            accepted => { root.change-subtitles-size(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Bold subtitles";
+                        ToggleSwitch { unit: root.unit; checked: root.subtitles-bold; toggled => { root.change-subtitles-bold(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Subtitle vertical offset";
+                        description: "Percentage from the bottom edge.";
+                        NativeTextField {
+                            width: 8 * root.unit;
+                            unit: root.unit;
+                            text: root.subtitles-offset;
+                            placeholder-text: "5";
+                            accepted => { root.change-subtitles-offset(self.text); }
+                        }
+                    }
+                }
+
+                if (root.active-category == 1) : SettingsSection {
+                    unit: root.unit;
+                    title: "Interface";
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Interface language";
+                        NativeTextField {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            text: root.interface-language;
+                            placeholder-text: "English";
+                            accepted => { root.change-interface-language(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Hardware-accelerated decoding";
+                        description: "Use the GPU for video decoding. A restart may be required.";
+                        ToggleSwitch {
+                            unit: root.unit;
+                            checked: root.hardware-acceleration;
+                            toggled => { root.change-hardware-acceleration(self.checked); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Hide spoilers";
+                        ToggleSwitch { unit: root.unit; checked: root.hide-spoilers; toggled => { root.change-hide-spoilers(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Gamepad support";
+                        ToggleSwitch { unit: root.unit; checked: root.gamepad-support; toggled => { root.change-gamepad-support(self.checked); } }
+                    }
+                }
+
+                if (root.active-category == 2) : SettingsSection {
+                    unit: root.unit;
+                    title: "Player";
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Play next episode automatically";
+                        ToggleSwitch { unit: root.unit; checked: root.binge-watching; toggled => { root.change-binge-watching(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Continue playback in the background";
+                        ToggleSwitch { unit: root.unit; checked: root.play-in-background; toggled => { root.change-play-in-background(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Seek duration";
+                        description: "Seconds skipped by the forward and back shortcuts.";
+                        NativeTextField {
+                            width: 8 * root.unit;
+                            unit: root.unit;
+                            text <=> root.seek-duration;
+                            placeholder-text: "10";
+                            accepted => { root.change-seek-duration(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Pause when minimized";
+                        ToggleSwitch { unit: root.unit; checked: root.pause-on-minimize; toggled => { root.change-pause-on-minimize(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Quit when closing the window";
+                        ToggleSwitch { unit: root.unit; checked: root.quit-on-close; toggled => { root.change-quit-on-close(self.checked); } }
+                    }
+                }
+
+                if (root.active-category == 3) : SettingsSection {
+                    unit: root.unit;
+                    title: "Streaming";
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Streaming server endpoint";
+                        description: root.server-url == "" ? "The streaming server is offline." : root.server-url;
+                        Text {
+                            width: 16 * root.unit;
+                            text: root.server-url == "" ? "Offline" : "Online";
+                            color: root.server-url == "" ? Theme.text-secondary : Theme.success;
+                            font-size: root.unit;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    if (root.streaming-remote-url != "") : SettingsOption {
+                        unit: root.unit;
+                        label: "Remote access URL";
+                        description: root.streaming-remote-url;
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Torrent cache size";
+                        description: "Limit the disk space available for torrent buffering.";
+                        VerticalLayout {
+                            width: 16 * root.unit;
+                            spacing: 0.35 * root.unit;
+                            Text {
+                                text: root.torrent-cache-size;
+                                color: Theme.accent;
+                                font-size: 0.9 * root.unit;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+                            Slider {
+                                minimum: 0;
+                                maximum: 50;
+                                value: 2;
+                                changed(value) => { root.apply-cache-settings(value); }
+                            }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Torrent connection profile";
+                        HorizontalLayout {
+                            width: 16 * root.unit;
+                            spacing: 0.5 * root.unit;
+                            for profile in ["Default", "Fast", "Ultra Fast"] : Rectangle {
+                                horizontal-stretch: 1;
+                                height: 3.5 * root.unit;
+                                border-radius: self.height / 2;
+                                background: root.torrent-profile == profile ? Theme.accent : Theme.overlay;
+                                Text {
+                                    text: profile;
+                                    color: Theme.text-primary;
+                                    font-size: 0.8 * root.unit;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                TouchArea {
+                                    clicked => {
+                                        root.torrent-profile = profile;
+                                        root.change-torrent-profile(
+                                            profile == "Ultra Fast" ? "ultrafast" :
+                                            (profile == "Fast" ? "fast" : "default")
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    SettingsOption { unit: root.unit; label: "Enable DHT"; ToggleSwitch { unit: root.unit; checked: root.streaming-dht; toggled => { root.change-dht-enabled(self.checked); } } }
+                    SettingsOption { unit: root.unit; label: "Enable peer exchange"; ToggleSwitch { unit: root.unit; checked: root.streaming-pex; toggled => { root.change-pex-enabled(self.checked); } } }
+                    SettingsOption { unit: root.unit; label: "Enable local peer discovery"; ToggleSwitch { unit: root.unit; checked: root.streaming-lsd; toggled => { root.change-lsd-enabled(self.checked); } } }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Enable torrent seeding";
+                        description: "Upload downloaded pieces while streaming.";
+                        ToggleSwitch { unit: root.unit; checked: root.streaming-seeding; toggled => { root.change-seeding-enabled(self.checked); } }
+                    }
+                    PillButton {
+                        width: 18 * root.unit;
+                        unit: root.unit;
+                        label: "Shutdown streaming server";
+                        outlined: true;
+                        clicked => { root.shutdown-server(); }
+                    }
+                }
+
+                if (root.active-category == 4) : SettingsSection {
+                    unit: root.unit;
+                    title: "Shortcuts";
+                    SettingsOption { unit: root.unit; label: "Play / Pause"; Text { text: "Space"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: "Fullscreen"; Text { text: "F"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: "Volume"; Text { text: "Up / Down"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: "Seek"; Text { text: "Left / Right"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                }
+
+                if (root.active-category == 5) : SettingsSection {
+                    unit: root.unit;
+                    title: "Diagnostics logs";
+                    HorizontalLayout {
+                        height: 3.5 * root.unit;
+                        spacing: root.unit;
+                        IconPill {
+                            width: 10 * root.unit;
+                            unit: root.unit;
+                            label: "Refresh";
+                            icon-source: @image-url("../assets/images/icons/reset.svg");
+                            clicked => { root.refresh-logs(); }
+                        }
+                        IconPill {
+                            width: 13 * root.unit;
+                            unit: root.unit;
+                            label: "Open folder";
+                            icon-source: @image-url("../assets/images/icons/open-in-browser.svg");
+                            clicked => { root.open-logs-folder(); }
+                        }
+                    }
+                    Rectangle { height: root.unit; }
+                    Rectangle {
+                        width: 35 * root.unit;
+                        height: 28 * root.unit;
+                        border-radius: 0.75 * root.unit;
+                        background: #09080d;
+                        clip: true;
+                        ScrollView {
+                            Text {
+                                x: root.unit;
+                                y: root.unit;
+                                width: parent.width - 2 * root.unit;
+                                text: root.streaming-logs-text;
+                                color: #a9a9b3;
+                                font-family: "Consolas";
+                                font-size: 0.8 * root.unit;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

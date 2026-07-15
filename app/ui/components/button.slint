@@ -1,0 +1,76 @@
+import { Theme } from "../theme.slint";
+
+export component Button inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <string> variant: "secondary"; // "primary" | "secondary" | "subdued" | "outline" | "transparent"
+    in property <bool> disabled: false;
+    in property <bool> wide: false;
+    in property <length> unit: 16px;
+    in property <length> icon-size: 1.5 * root.unit;
+    callback clicked;
+
+    height: 3.5 * root.unit;
+    border-radius: self.height / 2;
+    background: root.disabled ? transparent : (
+        root.variant == "primary" ? Theme.accent : (
+            root.variant == "secondary" ? Theme.secondary-background : (
+                root.variant == "subdued" ? Theme.overlay : transparent
+            )
+        )
+    );
+    border-width: (root.variant == "outline" && !root.disabled) ? 1.5px : 0px;
+    border-color: Theme.text-primary.with-alpha(touch-area.has-hover ? 0.8 : 0.45);
+    opacity: root.disabled ? 0.35 : 1.0;
+
+    accessible-role: button;
+    accessible-label: root.label != "" ? root.label : "Button";
+    accessible-enabled: !root.disabled;
+    accessible-action-default => { if (!root.disabled) { root.clicked(); } }
+
+    states [
+        hover when touch-area.has-hover && !root.disabled: {
+            background: root.variant == "primary" ? Theme.accent-hover : (
+                root.variant == "secondary" ? Theme.secondary-background.with-alpha(0.85) : (
+                    root.variant == "subdued" ? Theme.text-primary.with-alpha(0.12) : Theme.text-primary.with-alpha(0.08)
+                )
+            );
+        }
+    ]
+
+    animate background { duration: 120ms; }
+    animate border-color { duration: 120ms; }
+
+    touch-area := TouchArea {
+        enabled: !root.disabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 0.75 * root.unit;
+        padding-left: root.wide ? 2.5 * root.unit : 1.5 * root.unit;
+        padding-right: root.wide ? 2.5 * root.unit : 1.5 * root.unit;
+
+        if (root.icon.width > 0) : Image {
+            width: root.icon-size;
+            height: root.icon-size;
+            source: root.icon;
+            colorize: Theme.text-primary;
+            opacity: root.variant == "subdued" ? 0.65 : 0.9;
+            image-fit: contain;
+            y: (parent.height - self.height) / 2;
+        }
+
+        if (root.label != "") : Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: 1.05 * root.unit;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

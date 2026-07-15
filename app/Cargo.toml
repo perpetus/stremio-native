@@ -1,0 +1,45 @@
+[package]
+name = "stremio-native"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+stremio-core = { path = "../../stremio-core", features = ["derive", "analytics"] }
+stream-server = { path = "../../stream-server/server", package = "server" }
+settings-gui = { path = "../../stream-server/settings-gui" }
+core-env = { path = "../core-env" }
+playback-mpv = { path = "../playback-mpv" }
+server-connector = { path = "../server-connector" }
+slint = { workspace = true, features = ["compat-1-2"] }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true, features = ["rt"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+futures.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+tracing-chrome.workspace = true
+iconflow = { workspace = true, features = ["pack-lucide", "pack-bootstrap"] }
+url.workspace = true
+http.workspace = true
+reqwest = { workspace = true, features = ["rustls", "charset", "http2"] }
+image = { workspace = true, default-features = false, features = ["webp", "png", "jpeg"] }
+moka = { workspace = true, features = ["sync", "future"] }
+turso = "0.6.1"
+chrono = { workspace = true }
+mimalloc = "0.1.52"
+arboard = "3.4.1"
+hex = "0.4.3"
+open = "5.4.0"
+uuid = { version = "1.23.5", features = ["v4"] }
+
+[build-dependencies]
+slint-build.workspace = true
+iconflow = { workspace = true, features = ["pack-lucide", "pack-bootstrap"] }
+
+[features]
+default = ["stremio-core/env-future-send", "core-env/default", "server-connector/default"]
+in-process = ["core-env/in-process", "server-connector/in-process"]

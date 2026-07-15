@@ -1,0 +1,57 @@
+import { Theme } from "../theme.slint";
+
+export component Slider inherits Rectangle {
+    in-out property <float> value: 0.0; // Range: 0.0 to 1.0
+    in property <length> unit: 16px;
+    callback changed(float);
+
+    property <float> drag-value: value;
+    property <float> shown-value: touch-area.pressed ? drag-value : value;
+
+    height: 2 * root.unit;
+    background: transparent;
+
+    // Track
+    Rectangle {
+        x: root.unit / 2;
+        y: (parent.height - 0.375 * root.unit) / 2;
+        width: parent.width - root.unit;
+        height: 0.375 * root.unit;
+        border-radius: self.height / 2;
+        background: Theme.text-primary.with-alpha(0.2);
+
+        // Active Track
+        Rectangle {
+            width: parent.width * max(0.0, min(1.0, root.shown-value));
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+
+    // Thumb
+    Rectangle {
+        x: (parent.width - root.unit) * max(0.0, min(1.0, root.shown-value));
+        y: (parent.height - root.unit) / 2;
+        width: root.unit;
+        height: root.unit;
+        border-radius: self.width / 2;
+        background: Theme.text-primary;
+        border-width: touch-area.has-hover ? 1px : 0px;
+        border-color: Theme.accent;
+        
+        animate width, height, x, y { duration: 75ms; }
+    }
+
+    touch-area := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down ||
+                (event.kind == PointerEventKind.move && touch-area.pressed)) {
+                root.drag-value = max(0.0, min(1.0,
+                    (touch-area.mouse-x - root.unit / 2) / max(1px, root.width - root.unit)));
+                root.changed(root.drag-value);
+            }
+        }
+    }
+}

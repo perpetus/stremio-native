@@ -1,0 +1,318 @@
+use crate::{
+    ACTIVE_TAB, MainWindow,
+    app_model::{AppModel, AppModelField},
+    config::AppConfig,
+    models,
+    mpv_integration::NativePlaybackBridge,
+    playback::PlaybackSelections,
+};
+use core_env::DesktopEnv;
+use slint::ComponentHandle;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
+use stremio_core::{
+    models::{
+        installed_addons_with_filters::InstalledAddonsRequest,
+        library_with_filters::LibraryRequest, library_with_filters::Sort,
+    },
+    runtime::{
+        Runtime, RuntimeAction,
+        msg::{Action, ActionLoad},
+    },
+};
+
+pub fn setup_ui_callbacks(
+    ui: &MainWindow,
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    playback_selections: &Arc<PlaybackSelections>,
+    native_playback_bridge: &Option<NativePlaybackBridge>,
+    ui_weak: slint::Weak<MainWindow>,
+    config: &AppConfig,
+) {
+    // Hook up submodel setup functions
+    models::auth::setup(ui, runtime);
+    models::board::setup(ui, runtime);
+    models::calendar::setup(ui, runtime);
+    models::discover::setup(ui, runtime);
+    models::library::setup(ui, runtime);
+    models::search::setup(ui, runtime);
+    models::addons::setup(ui, runtime);
+    models::details::setup(ui, runtime);
+    models::settings::setup(ui, runtime, config);
+
+    // Play stream action
+    ui.on_play_stream({
+        let ui_weak = ui_weak.clone();
+        let runtime = runtime.clone();
+        let playback_selections = playback_selections.clone();
+        let native_playback_bridge = native_playback_bridge.clone();
+        move |selection_id| {
+            tracing::info!(
+                selection_id = %selection_id,
+                native_playback_available = native_playback_bridge.is_some(),
+                "playback selection requested"
+            );
+            let Some((selected, stream_name)) = playback_selections.resolve(selection_id.as_str())
+            else {
+                tracing::warn!(selection_id = %selection_id, "playback selection expired");
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_error_message(
+                        "That stream is no longer available. Choose it again.".into(),
+                    );
+                }
+                return;
+            };
+
+            runtime.dispatch(RuntimeAction {
+                field: None,
+                action: Action::Load(ActionLoad::Player(Box::new(selected))),
+            });
+
+            if let Some(ui) = ui_weak.upgrade() {
+                let detail_title = ui.get_detail_title().to_string();
+                tracing::info!(title = %detail_title, "player page shown");
+
+                ui.set_player_title(detail_title.into());
+                ui.set_player_stream_name(stream_name.into());
+                ui.set_player_poster_image(ui.get_detail_poster());
+                ui.set_player_video_frame(slint::Image::default());
+                ui.set_player_has_video_frame(false);
+                ui.set_player_error("".into());
+                ui.set_player_loading(true);
+                ui.set_player_buffering(false);
+                ui.set_player_buffering_percent(0.0);
+
+                let is_series = ui.get_detail_is_series();
+                ui.set_player_is_series(is_series);
+                if is_series {
+                    ui.set_player_episode_names(ui.get_detail_episode_names());
+                    ui.set_player_active_episode_idx(ui.get_detail_active_episode_idx());
+                }
+
+                ui.set_show_player(true);
+            }
+        }
+    });
+
+    let clipboard = Arc::new(Mutex::new(arboard::Clipboard::new().ok()));
+
+    ui.on_details_copy_stream_link({
+        let runtime = runtime.clone();
+        let playback_selections = playback_selections.clone();
+        let clipboard = clipboard.clone();
+        move |selection_id| {
+            let rt = runtime.clone();
+            let playback_selections = playback_selections.clone();
+            let clipboard = clipboard.clone();
+            let selection_id = selection_id.to_string();
+            tokio::spawn(async move {
+                let model = rt.model().expect("model read failed");
+                let settings = model.ctx.profile.settings.clone();
+                let streaming_server_url =
+                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                drop(model);
+
+                if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
+                    let sdl = stremio_core::deep_links::StreamDeepLinks::from((
+                        &selected.stream,
+                        streaming_server_url.as_ref(),
+                        &settings,
+                    ));
+                    let link = sdl.external_player.streaming.clone().unwrap_or_else(|| {
+                        match &selected.stream.source {
+                            stremio_core::types::resource::StreamSource::Url { url } => {
+                                url.to_string()
+                            }
+                            stremio_core::types::resource::StreamSource::YouTube { yt_id } => {
+                                format!("https://youtube.com/watch?v={}", yt_id)
+                            }
+                            stremio_core::types::resource::StreamSource::Torrent {
+                                info_hash,
+                                ..
+                            } => format!("magnet:?xt=urn:btih:{}", hex::encode(info_hash)),
+                            _ => String::new(),
+                        }
+                    });
+                    if !link.is_empty() {
+                        if let Ok(mut cb) = clipboard.lock() {
+                            if let Some(cb) = cb.as_mut() {
+                                let _ = cb.set_text(link);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    ui.on_details_copy_magnet_link({
+        let runtime = runtime.clone();
+        let playback_selections = playback_selections.clone();
+        let clipboard = clipboard.clone();
+        let ui_weak = ui_weak.clone();
+        move |selection_id| {
+            let rt = runtime.clone();
+            let playback_selections = playback_selections.clone();
+            let clipboard = clipboard.clone();
+            let ui_weak = ui_weak.clone();
+            let selection_id = selection_id.to_string();
+            tokio::spawn(async move {
+                let model = rt.model().expect("model read failed");
+                let settings = model.ctx.profile.settings.clone();
+                let streaming_server_url =
+                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                drop(model);
+
+                if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
+                    let sdl = stremio_core::deep_links::StreamDeepLinks::from((
+                        &selected.stream,
+                        streaming_server_url.as_ref(),
+                        &settings,
+                    ));
+                    let link =
+                        sdl.external_player.magnet.clone().unwrap_or_else(|| {
+                            match &selected.stream.source {
+                                stremio_core::types::resource::StreamSource::Torrent {
+                                    info_hash,
+                                    ..
+                                } => format!("magnet:?xt=urn:btih:{}", hex::encode(info_hash)),
+                                _ => String::new(),
+                            }
+                        });
+                    if !link.is_empty() {
+                        if let Ok(mut cb) = clipboard.lock() {
+                            if let Some(cb) = cb.as_mut() {
+                                let _ = cb.set_text(link);
+                            }
+                        }
+                    } else {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.set_error_message(
+                                    "No magnet link available for this stream.".into(),
+                                );
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    ui.on_details_copy_download_link({
+        let runtime = runtime.clone();
+        let playback_selections = playback_selections.clone();
+        let clipboard = clipboard.clone();
+        let ui_weak = ui_weak.clone();
+        move |selection_id| {
+            let rt = runtime.clone();
+            let playback_selections = playback_selections.clone();
+            let clipboard = clipboard.clone();
+            let ui_weak = ui_weak.clone();
+            let selection_id = selection_id.to_string();
+            tokio::spawn(async move {
+                let model = rt.model().expect("model read failed");
+                let settings = model.ctx.profile.settings.clone();
+                let streaming_server_url =
+                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                drop(model);
+
+                if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
+                    let sdl = stremio_core::deep_links::StreamDeepLinks::from((
+                        &selected.stream,
+                        streaming_server_url.as_ref(),
+                        &settings,
+                    ));
+                    if let Some(link) = sdl.external_player.download {
+                        if let Ok(mut cb) = clipboard.lock() {
+                            if let Some(cb) = cb.as_mut() {
+                                let _ = cb.set_text(link);
+                            }
+                        }
+                    } else {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.set_error_message(
+                                    "No download link available for this stream.".into(),
+                                );
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    ui.on_open_external_url(|url| {
+        let url = url.to_string();
+        if let Err(error) = open::that(&url) {
+            tracing::error!(%error, %url, "failed to open external url");
+        }
+    });
+
+    ui.on_toggle_fullscreen({
+        let ui_weak = ui_weak.clone();
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                let fs = !ui.window().is_fullscreen();
+                ui.window().set_fullscreen(fs);
+                ui.set_is_fullscreen(fs);
+            }
+        }
+    });
+}
+
+pub fn trigger_initial_load(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
+    let rt = runtime.clone();
+    tokio::spawn(async move {
+        rt.dispatch(RuntimeAction {
+            field: None,
+            action: Action::Load(ActionLoad::CatalogWithFilters(None)),
+        });
+        rt.dispatch(RuntimeAction {
+            field: Some(AppModelField::Board),
+            action: Action::Load(ActionLoad::CatalogsWithExtra(
+                stremio_core::models::catalogs_with_extra::Selected {
+                    r#type: None,
+                    extra: vec![],
+                },
+            )),
+        });
+        rt.dispatch(RuntimeAction {
+            field: Some(AppModelField::Board),
+            action: Action::CatalogsWithExtra(
+                stremio_core::runtime::msg::ActionCatalogsWithExtra::LoadRange(0..20),
+            ),
+        });
+        rt.dispatch(RuntimeAction {
+            field: Some(AppModelField::LocalSearch),
+            action: Action::Load(ActionLoad::LocalSearch),
+        });
+        rt.dispatch(RuntimeAction {
+            field: None,
+            action: Action::Load(ActionLoad::LibraryWithFilters(
+                stremio_core::models::library_with_filters::Selected {
+                    request: LibraryRequest {
+                        r#type: None,
+                        sort: Sort::LastWatched,
+                        page: Default::default(),
+                    },
+                },
+            )),
+        });
+        rt.dispatch(RuntimeAction {
+            field: None,
+            action: Action::Load(ActionLoad::InstalledAddonsWithFilters(
+                stremio_core::models::installed_addons_with_filters::Selected {
+                    request: InstalledAddonsRequest { r#type: None },
+                },
+            )),
+        });
+        if ACTIVE_TAB.load(Ordering::Relaxed) == 5 {
+            rt.dispatch(RuntimeAction {
+                field: None,
+                action: Action::Load(ActionLoad::Calendar(None)),
+            });
+        }
+    });
+}

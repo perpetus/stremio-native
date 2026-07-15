@@ -1,0 +1,208 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { BoardSection, MediaCarousel } from "board.slint";
+
+export struct SearchSuggestion {
+    id: string,
+    media-type: string,
+    title: string,
+    release-info: string,
+    poster: image,
+}
+
+component SearchHint inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> icon-source;
+    in property <string> label;
+
+    width: 9 * root.unit;
+    height: 9 * root.unit;
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 1.5 * root.unit;
+
+        Image {
+            width: 4 * root.unit;
+            height: 4 * root.unit;
+            source: root.icon-source;
+            colorize: Theme.text-primary;
+            opacity: 0.4;
+            image-fit: contain;
+        }
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            opacity: 0.4;
+            font-size: 1.2 * root.unit;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component SearchPage inherits Rectangle {
+    in property <string> query: "";
+    in property <[BoardSection]> sections: [];
+    in property <bool> loading: false;
+    in property <int> catalog-count: 0;
+    callback item-selected(string, string, string);
+    callback poster-requested(string);
+
+    property <length> unit: root.width > 2100px ? 16px :
+        (root.width > 1500px ? 15px : 14px);
+    property <int> visible-count: root.width > 2100px ? 9 :
+        (root.width > 1500px ? 8 : (root.width > 1200px ? 7 :
+        (root.width > 900px ? 6 : 4)));
+    property <length> card-width: (root.width - 2 * root.unit) / root.visible-count;
+    property <length> card-height: (root.card-width - 2 * root.unit) * 1.464 + 6 * root.unit;
+
+    background: transparent;
+
+    // This is the exact empty-search composition used by the web route: one
+    // understated title followed by four searchable-domain hints.
+    if (root.query == "") : VerticalLayout {
+        alignment: center;
+        spacing: 2.5 * root.unit;
+        padding-left: 2 * root.unit;
+        padding-right: 2 * root.unit;
+
+        Text {
+            text: "Search anything";
+            color: Theme.text-primary;
+            opacity: 0.4;
+            font-size: 1.6 * root.unit;
+            horizontal-alignment: center;
+        }
+
+        HorizontalLayout {
+            width: min(46 * root.unit, root.width - 4 * root.unit);
+            height: 10 * root.unit;
+            alignment: center;
+            spacing: 2 * root.unit;
+
+            SearchHint {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/trailer.svg");
+                label: "Categories";
+            }
+            SearchHint {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/actors.svg");
+                label: "Persons";
+            }
+            SearchHint {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/link.svg");
+                label: "Protocols";
+            }
+            SearchHint {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/imdb-outline.svg");
+                label: "Types";
+            }
+        }
+    }
+
+    if (root.query != "") : ScrollView {
+        viewport-width: root.width;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+        VerticalLayout {
+            width: root.width;
+            padding-left: root.unit;
+            padding-right: root.unit;
+            padding-bottom: 2 * root.unit;
+            spacing: 0px;
+            alignment: start;
+
+            if (root.loading && root.sections.length == 0) : Rectangle {
+                width: root.width - 2 * root.unit;
+                height: 12 * root.unit;
+                Text {
+                    text: "Searching all addon catalogs…";
+                    color: Theme.text-secondary;
+                    font-size: root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if (!root.loading && root.catalog-count == 0) : VerticalLayout {
+                width: root.width - 2 * root.unit;
+                padding-top: 4 * root.unit;
+                alignment: center;
+                spacing: root.unit;
+
+                Image {
+                    width: 10 * root.unit;
+                    height: 10 * root.unit;
+                    source: @image-url("../assets/images/icons/addons-outline.svg");
+                    colorize: Theme.text-primary;
+                    opacity: 0.3;
+                    image-fit: contain;
+                }
+                Text {
+                    text: "No installed addons support search";
+                    color: Theme.text-secondary;
+                    font-size: 1.6 * root.unit;
+                    horizontal-alignment: center;
+                }
+            }
+
+            if (!root.loading && root.catalog-count > 0 && root.sections.length == 0) : Rectangle {
+                width: root.width - 2 * root.unit;
+                height: 12 * root.unit;
+                Text {
+                    text: "No results found";
+                    color: Theme.text-secondary;
+                    font-size: 1.2 * root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if (root.sections.length > 0) : VerticalLayout {
+                spacing: 0px;
+
+                for section in root.sections : VerticalLayout {
+                    spacing: 0px;
+
+                    Rectangle { height: root.unit; }
+                    Rectangle {
+                        width: root.width - 2 * root.unit;
+                        height: 2.5 * root.unit;
+                        Text {
+                            x: root.unit;
+                            width: parent.width - 2 * root.unit;
+                            height: parent.height;
+                            text: section.title;
+                            color: Theme.text-primary;
+                            font-size: 1.6 * root.unit;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    Rectangle { height: 0.25 * root.unit; }
+
+                    MediaCarousel {
+                        width: root.width - 2 * root.unit;
+                        height: root.card-height;
+                        unit: root.unit;
+                        card-width: root.card-width;
+                        card-height: root.card-height;
+                        items: section.items;
+                        item-selected(id, media-type, video-id) => {
+                            root.item-selected(id, media-type, video-id);
+                        }
+                        poster-requested(url) => { root.poster-requested(url); }
+                    }
+                    Rectangle { height: 2 * root.unit; }
+                }
+            }
+        }
+    }
+}

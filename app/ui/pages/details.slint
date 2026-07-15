@@ -1,0 +1,837 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, IconData } from "../theme.slint";
+import { NativeTextField, SelectField } from "../components/form_controls.slint";
+
+export struct StreamLink {
+    id: string,
+    name: string,
+    description: string,
+    provider: string,
+}
+
+export struct EpisodeItem {
+    id: string,
+    title: string,
+    released: string,
+    thumbnail: image,
+    season: int,
+    episode-num: int,
+    is-upcoming: bool,
+    is-watched: bool,
+}
+
+component IconAction inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> icon-source;
+    in property <string> label: "";
+    in property <bool> wide: false;
+    in property <bool> active: false;
+    callback clicked;
+
+    width: root.wide ? 11.5 * root.unit : 4 * root.unit;
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    background: root.active ? Theme.accent : (area.has-hover ? #ffffff26 : #14121b99);
+    border-width: area.has-hover ? Theme.focus-outline-size : 0px;
+    border-color: Theme.text-primary;
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding-left: root.wide ? 1.5 * root.unit : root.unit;
+        padding-right: root.wide ? 1.5 * root.unit : root.unit;
+        spacing: 0.75 * root.unit;
+        alignment: center;
+
+        Rectangle {
+            width: 1.65 * root.unit;
+            height: parent.height;
+            background: transparent;
+
+            Image {
+                y: (parent.height - self.height) / 2;
+                width: 1.65 * root.unit;
+                height: 1.65 * root.unit;
+                source: root.icon-source;
+                colorize: Theme.text-primary;
+                image-fit: contain;
+                opacity: 0.85;
+            }
+        }
+
+        if (root.wide) : Text {
+            height: parent.height;
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: root.unit;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component IconActionPair inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> first-icon;
+    in property <image> second-icon;
+    in property <bool> first-active: false;
+    in property <bool> second-active: false;
+    callback first-clicked;
+    callback second-clicked;
+
+    width: 8 * root.unit;
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    background: #14121b99;
+    clip: true;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        Rectangle {
+            horizontal-stretch: 1;
+            background: root.first-active ? Theme.accent : (first-area.has-hover ? #ffffff26 : transparent);
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.65 * root.unit;
+                height: 1.65 * root.unit;
+                source: root.first-icon;
+                colorize: Theme.text-primary;
+                opacity: 0.9;
+                image-fit: contain;
+            }
+            first-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.first-clicked(); }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: #ffffff14;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            background: root.second-active ? Theme.accent : (second-area.has-hover ? #ffffff26 : transparent);
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.65 * root.unit;
+                height: 1.65 * root.unit;
+                source: root.second-icon;
+                colorize: Theme.text-primary;
+                opacity: 0.9;
+                image-fit: contain;
+            }
+            second-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.second-clicked(); }
+            }
+        }
+    }
+}
+
+component MetaChip inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+
+    width: 9.5 * root.unit;
+    height: 2.8 * root.unit;
+    border-radius: self.height / 2;
+    background: #17151e99;
+
+    Text {
+        x: 0.75 * root.unit;
+        width: parent.width - 1.5 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.text-primary;
+        opacity: 0.82;
+        font-size: 0.95 * root.unit;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component StreamRow inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <StreamLink> stream;
+    callback play;
+
+    height: 5.2 * root.unit;
+    border-radius: 0.5 * root.unit;
+    background: area.has-hover ? #ffffff14 : transparent;
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.play(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 0.75 * root.unit;
+        padding-right: 0.75 * root.unit;
+        spacing: 1.25 * root.unit;
+        alignment: center;
+
+        Text {
+            width: 7.5 * root.unit;
+            text: root.stream.name;
+            color: Theme.text-primary;
+            opacity: 0.85;
+            font-size: 1.05 * root.unit;
+            font-weight: 500;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.stream.description;
+            color: Theme.text-primary;
+            opacity: 0.85;
+            font-size: 0.95 * root.unit;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component EpisodeRow inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <EpisodeItem> episode;
+    callback selected;
+    callback toggle-watched;
+
+    height: 5.5 * root.unit;
+    border-radius: 0.5 * root.unit;
+    background: area.has-hover ? #ffffff14 : transparent;
+    opacity: root.episode.is-upcoming ? 0.45 : 1;
+
+    area := TouchArea {
+        enabled: !root.episode.is-upcoming;
+        mouse-cursor: pointer;
+        clicked => { root.selected(); }
+    }
+
+    HorizontalLayout {
+        padding: 0.5 * root.unit;
+        spacing: root.unit;
+
+        Rectangle {
+            width: 7 * root.unit;
+            border-radius: 0.4 * root.unit;
+            background: Theme.overlay;
+            clip: true;
+
+            if (root.episode.thumbnail.width > 0) : Image {
+                width: parent.width;
+                height: parent.height;
+                source: root.episode.thumbnail;
+                image-fit: cover;
+                opacity: 0.85;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 0.25 * root.unit;
+
+            Text {
+                text: "E" + root.episode.episode-num + "  " + root.episode.title;
+                color: Theme.text-primary;
+                font-size: root.unit;
+                font-weight: 500;
+                overflow: elide;
+            }
+            Text {
+                text: root.episode.released;
+                color: Theme.text-primary;
+                opacity: 0.45;
+                font-size: 0.8 * root.unit;
+                overflow: elide;
+            }
+        }
+
+        Rectangle {
+            width: 2.5 * root.unit;
+            background: transparent;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.4 * root.unit;
+                height: 1.4 * root.unit;
+                source: root.episode.is-watched
+                    ? @image-url("../assets/images/icons/eye.svg")
+                    : @image-url("../assets/images/icons/eye-off.svg");
+                colorize: Theme.text-primary;
+                opacity: root.episode.is-watched ? 0.9 : 0.4;
+                image-fit: contain;
+            }
+
+            TouchArea { clicked => { root.toggle-watched(); } }
+        }
+    }
+}
+
+export component DetailsPage inherits Rectangle {
+    in property <string> item-title: "";
+    in property <string> description: "";
+    in property <image> poster;
+    in property <image> background-image;
+    in property <string> release-year: "";
+    in property <string> runtime: "";
+    in property <string> rating: "";
+    in property <[string]> genres: [];
+    in property <[string]> cast: [];
+    in property <[string]> directors: [];
+    in property <[StreamLink]> streams: [];
+    in property <[string]> stream-providers: ["All"];
+    in property <int> stream-loading-count: 0;
+    in-out property <string> active-stream-provider: "All";
+    in property <bool> loading: false;
+    in property <bool> is-in-library: false;
+    in property <bool> is-watched: false;
+    in property <bool> has-trailer: false;
+    in property <string> trailer-selection-id: "";
+    callback toggle-library;
+    callback toggle-watched;
+    callback play-trailer(string);
+    in property <bool> is-series: false;
+    in property <[int]> available-seasons: [];
+    in-out property <int> active-season: 1;
+    in property <[string]> episode-names: [];
+    in-out property <int> active-episode-idx: 0;
+    in property <[EpisodeItem]> episodes: [];
+    in-out property <bool> in-stream-view: false;
+    in-out property <string> episode-search-query: "";
+    in property <string> username: "";
+    in property <image> avatar-image;
+    in property <bool> has-avatar-image: false;
+    in property <image> default-avatar-icon;
+    in property <image> anonymous-icon;
+    callback toggle-fullscreen;
+    callback season-changed(int);
+    callback episode-changed(int);
+    callback toggle-episode-watched(string);
+    callback episode-search-changed(string);
+    callback copy-stream-link(string);
+    callback copy-magnet-link(string);
+    callback copy-download-link(string);
+    callback toggle-season-watched(int);
+    in property <IconData> icon-play;
+    in property <IconData> icon-link;
+    in property <IconData> icon-magnet;
+    in property <IconData> icon-download;
+    in property <IconData> icon-eye;
+    in property <IconData> icon-eye-off;
+    in property <IconData> icon-clapperboard;
+    callback play-stream(string);
+    callback close;
+
+    property <length> unit: root.width > 2700px ? 18px :
+        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
+    property <length> drawer-width: 30 * root.unit;
+    property <bool> stream-filter-open: false;
+
+    background: #0b0910;
+    clip: true;
+
+    if (root.background-image.width > 0) : Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.background-image;
+        image-fit: cover;
+        horizontal-alignment: right;
+        opacity: 0.34;
+    }
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: @linear-gradient(90deg, #07060a42 0%, #08070b52 48%, #08070aaf 76%, #08070ad9 100%);
+    }
+
+    if (root.loading) : Rectangle {
+        Text {
+            text: "Loading metadata and streams…";
+            color: Theme.text-primary;
+            opacity: 0.65;
+            font-size: 1.2 * root.unit;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if (!root.loading) : Rectangle {
+        x: 0px;
+        width: parent.width - root.drawer-width;
+        height: parent.height;
+        background: transparent;
+        clip: true;
+
+        SquareActionBack := Rectangle {
+            x: root.unit;
+            y: root.unit;
+            width: 3.5 * root.unit;
+            height: 3.5 * root.unit;
+            border-radius: self.height / 2;
+            background: back-area.has-hover ? #ffffff20 : transparent;
+            z: 10;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.5 * root.unit;
+                height: 1.5 * root.unit;
+                source: @image-url("../assets/images/icons/chevron-back.svg");
+                opacity: 0.85;
+                image-fit: contain;
+            }
+            back-area := TouchArea { clicked => { root.close(); } }
+        }
+
+        ScrollView {
+            x: 4 * root.unit;
+            y: 5.5 * root.unit;
+            width: parent.width - 8 * root.unit;
+            height: parent.height - 14 * root.unit;
+            viewport-width: self.width;
+
+            VerticalLayout {
+                width: parent.width;
+                padding-right: root.unit;
+                spacing: 1.25 * root.unit;
+                alignment: start;
+
+                Text {
+                    width: parent.width;
+                    height: 4 * root.unit;
+                    text: root.item-title;
+                    color: Theme.text-primary;
+                    font-size: 1.7 * root.unit;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    height: 3 * root.unit;
+                    spacing: 3 * root.unit;
+                    alignment: start;
+
+                    if (root.runtime != "") : Text {
+                        text: root.runtime;
+                        color: Theme.text-primary;
+                        font-size: 1.25 * root.unit;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    if (root.release-year != "") : Text {
+                        text: root.release-year;
+                        color: Theme.text-primary;
+                        font-size: 1.25 * root.unit;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    if (root.rating != "") : HorizontalLayout {
+                        spacing: 0.5 * root.unit;
+                        Text {
+                            text: root.rating;
+                            color: Theme.text-primary;
+                            font-size: 1.25 * root.unit;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                        Image {
+                            width: 2.5 * root.unit;
+                            height: 1.5 * root.unit;
+                            source: @image-url("../assets/images/icons/imdb.svg");
+                            image-fit: contain;
+                        }
+                    }
+                }
+
+                if (root.genres.length > 0) : VerticalLayout {
+                    spacing: 0.5 * root.unit;
+                    Text {
+                        height: 1.5 * root.unit;
+                        text: "GENRES";
+                        color: Theme.text-primary;
+                        opacity: 0.35;
+                        font-size: 0.9 * root.unit;
+                        font-weight: 700;
+                    }
+                    HorizontalLayout {
+                        height: 2.8 * root.unit;
+                        spacing: 0.6 * root.unit;
+                        alignment: start;
+                        for genre in root.genres : MetaChip {
+                            unit: root.unit;
+                            label: genre;
+                        }
+                    }
+                }
+
+                if (root.cast.length > 0) : VerticalLayout {
+                    spacing: 0.5 * root.unit;
+                    Text {
+                        height: 1.5 * root.unit;
+                        text: "CAST";
+                        color: Theme.text-primary;
+                        opacity: 0.35;
+                        font-size: 0.9 * root.unit;
+                        font-weight: 700;
+                    }
+                    HorizontalLayout {
+                        height: 2.8 * root.unit;
+                        spacing: 0.6 * root.unit;
+                        alignment: start;
+                        for actor in root.cast : MetaChip {
+                            unit: root.unit;
+                            label: actor;
+                        }
+                    }
+                }
+
+                if (root.directors.length > 0) : VerticalLayout {
+                    spacing: 0.5 * root.unit;
+                    Text {
+                        height: 1.5 * root.unit;
+                        text: "DIRECTORS";
+                        color: Theme.text-primary;
+                        opacity: 0.35;
+                        font-size: 0.9 * root.unit;
+                        font-weight: 700;
+                    }
+                    HorizontalLayout {
+                        height: 2.8 * root.unit;
+                        spacing: 0.6 * root.unit;
+                        alignment: start;
+                        for director in root.directors : MetaChip {
+                            unit: root.unit;
+                            label: director;
+                        }
+                    }
+                }
+
+                if (root.description != "") : VerticalLayout {
+                    spacing: 0.5 * root.unit;
+                    Text {
+                        height: 1.5 * root.unit;
+                        text: "SUMMARY";
+                        color: Theme.text-primary;
+                        opacity: 0.35;
+                        font-size: 0.9 * root.unit;
+                        font-weight: 700;
+                    }
+                    Text {
+                        width: parent.width;
+                        text: root.description;
+                        color: Theme.text-primary;
+                        opacity: 0.88;
+                        font-size: root.unit;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            x: 4 * root.unit;
+            y: parent.height - 7 * root.unit;
+            height: 4 * root.unit;
+            spacing: root.unit;
+            alignment: start;
+
+            IconAction {
+                unit: root.unit;
+                wide: true;
+                label: "Trailer";
+                icon-source: @image-url("../assets/images/icons/trailer.svg");
+                visible: root.has-trailer && root.trailer-selection-id != "";
+                width: self.visible ? 11.5 * root.unit : 0px;
+                clicked => { root.play-trailer(root.trailer-selection-id); }
+            }
+
+            IconActionPair {
+                unit: root.unit;
+                first-active: root.is-in-library;
+                first-icon: root.is-in-library
+                    ? @image-url("../assets/images/icons/remove-from-library.svg")
+                    : @image-url("../assets/images/icons/add-to-library.svg");
+                second-active: root.is-watched;
+                second-icon: root.is-watched
+                    ? @image-url("../assets/images/icons/eye-off.svg")
+                    : @image-url("../assets/images/icons/eye.svg");
+                first-clicked => { root.toggle-library(); }
+                second-clicked => { root.toggle-watched(); }
+            }
+
+            IconActionPair {
+                unit: root.unit;
+                first-icon: @image-url("../assets/images/icons/thumbs-up.svg");
+                second-icon: @image-url("../assets/images/icons/heart-outline.svg");
+            }
+            IconAction {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/share.svg");
+            }
+        }
+    }
+
+    if (!root.loading) : Rectangle {
+        x: parent.width - root.drawer-width;
+        y: 6 * root.unit;
+        width: root.drawer-width;
+        height: parent.height - 6 * root.unit;
+        border-radius: 0.75 * root.unit;
+        background: #09070bc7;
+        clip: true;
+
+        VerticalLayout {
+            padding-top: 1.5 * root.unit;
+            padding-left: 1.5 * root.unit;
+            padding-right: 1.5 * root.unit;
+            padding-bottom: root.unit;
+            spacing: root.unit;
+
+            if (!root.is-series) : SelectField {
+                unit: root.unit;
+                field-width: parent.width - 3 * root.unit;
+                value: root.active-stream-provider;
+                options: root.stream-providers;
+                open: root.stream-filter-open;
+                toggle => { root.stream-filter-open = !root.stream-filter-open; }
+                selected(provider) => {
+                    root.active-stream-provider = provider;
+                    root.stream-filter-open = false;
+                }
+            }
+
+            if (root.is-series && !root.in-stream-view) : HorizontalLayout {
+                height: 3.2 * root.unit;
+                spacing: 0.5 * root.unit;
+                alignment: start;
+
+                for season in root.available-seasons : Rectangle {
+                    height: 3.2 * root.unit;
+                    border-radius: self.height / 2;
+                    background: root.active-season == season ? Theme.accent : Theme.overlay;
+                    Text {
+                        x: root.unit;
+                        width: parent.width - 2 * root.unit;
+                        height: parent.height;
+                        text: "Season " + season;
+                        color: Theme.text-primary;
+                        font-size: root.unit;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.active-season = season;
+                            root.season-changed(season);
+                        }
+                    }
+                }
+            }
+
+            if (root.is-series && !root.in-stream-view) : HorizontalLayout {
+                height: 3.2 * root.unit;
+                spacing: root.unit;
+                NativeTextField {
+                    horizontal-stretch: 1;
+                    unit: root.unit;
+                    text <=> root.episode-search-query;
+                    placeholder-text: "Search episodes";
+                    edited => { root.episode-search-changed(self.text); }
+                }
+                IconAction {
+                    unit: root.unit;
+                    icon-source: @image-url("../assets/images/icons/eye.svg");
+                    clicked => { root.toggle-season-watched(root.active-season); }
+                }
+            }
+
+            if (root.is-series && root.in-stream-view) : HorizontalLayout {
+                height: 3.5 * root.unit;
+                spacing: root.unit;
+
+                Rectangle {
+                    width: 2.5 * root.unit;
+                    background: back-stream.has-hover ? Theme.overlay : transparent;
+                    border-radius: 0.5 * root.unit;
+                    Image {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 1.25 * root.unit;
+                        height: 1.25 * root.unit;
+                        source: @image-url("../assets/images/icons/chevron-back.svg");
+                        opacity: 0.75;
+                        image-fit: contain;
+                    }
+                    back-stream := TouchArea { clicked => { root.in-stream-view = false; } }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.episode-names.length > root.active-episode-idx
+                        ? root.episode-names[root.active-episode-idx]
+                        : "Episode streams";
+                    color: Theme.text-primary;
+                    font-size: 1.05 * root.unit;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    width: 4 * root.unit;
+                    text: "All  ▾";
+                    color: Theme.text-primary;
+                    opacity: 0.8;
+                    font-size: root.unit;
+                    vertical-alignment: center;
+                }
+            }
+
+            if (root.is-series && !root.in-stream-view) : ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 0.25 * root.unit;
+                    for episode[index] in root.episodes : EpisodeRow {
+                        unit: root.unit;
+                        episode: episode;
+                        selected => {
+                            root.active-episode-idx = index;
+                            root.episode-changed(index);
+                            root.in-stream-view = true;
+                        }
+                        toggle-watched => { root.toggle-episode-watched(episode.id); }
+                    }
+                }
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.streams.length == 0) : Rectangle {
+                height: 8 * root.unit;
+                background: transparent;
+                Text {
+                    text: "No streams found. Install more addons and try again.";
+                    color: Theme.text-primary;
+                    opacity: 0.55;
+                    font-size: root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.streams.length > 0) : ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 0.1 * root.unit;
+                    for stream in root.streams : StreamRow {
+                        visible: root.active-stream-provider == "All"
+                            || stream.provider == root.active-stream-provider;
+                        height: self.visible ? 5.2 * root.unit : 0px;
+                        unit: root.unit;
+                        stream: stream;
+                        play => { root.play-stream(stream.id); }
+                    }
+                }
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.stream-loading-count > 0) : VerticalLayout {
+                height: 4 * root.unit;
+                spacing: 0.75 * root.unit;
+                Text {
+                    text: root.stream-loading-count + " addons are still loading";
+                    color: Theme.text-primary;
+                    font-size: root.unit;
+                    horizontal-alignment: center;
+                }
+                Rectangle {
+                    height: 0.3 * root.unit;
+                    border-radius: self.height / 2;
+                    background: Theme.accent;
+                }
+            }
+        }
+    }
+
+    if (!root.loading) : HorizontalLayout {
+        x: parent.width - 11 * root.unit;
+        y: root.unit;
+        height: 3.5 * root.unit;
+        spacing: 0.5 * root.unit;
+        alignment: start;
+        z: 50;
+
+        Rectangle {
+            width: 3.5 * root.unit;
+            border-radius: 0.75 * root.unit;
+            background: fullscreen-area.has-hover ? Theme.overlay : transparent;
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 2 * root.unit;
+                height: 2 * root.unit;
+                source: @image-url("../assets/images/icons/maximize.svg");
+                opacity: 0.65;
+                image-fit: contain;
+            }
+            fullscreen-area := TouchArea { clicked => { root.toggle-fullscreen(); } }
+        }
+
+        Rectangle {
+            width: 3.5 * root.unit;
+            border-radius: 0.75 * root.unit;
+            background: transparent;
+            Rectangle {
+                x: 0.55 * root.unit;
+                y: 0.55 * root.unit;
+                width: 2.4 * root.unit;
+                height: 2.4 * root.unit;
+                background: Theme.accent;
+                border-radius: self.width / 2;
+                border-width: 0.15 * root.unit;
+                border-color: Theme.accent;
+                clip: true;
+
+                if (root.username == "" || root.username == "Guest") : Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.anonymous-icon;
+                    image-fit: cover;
+                }
+                if (root.username != "" && root.username != "Guest" && root.has-avatar-image) : Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.avatar-image;
+                    image-fit: cover;
+                }
+                if (root.username != "" && root.username != "Guest" && !root.has-avatar-image) : Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.default-avatar-icon;
+                    image-fit: cover;
+                }
+            }
+        }
+    }
+}

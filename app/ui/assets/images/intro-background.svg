@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <filter id="intro-blur" x="-25%" y="-40%" width="150%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="96"/>
+    </filter>
+    <clipPath id="bottom-clip">
+      <rect width="968" height="565" transform="translate(0 262)"/>
+    </clipPath>
+    <clipPath id="top-clip">
+      <rect width="718" height="356" transform="translate(602 -8)"/>
+    </clipPath>
+  </defs>
+  <rect width="1920" height="1080" fill="#0c0b11"/>
+  <g filter="url(#intro-blur)">
+    <svg x="-16" y="486" width="1018" height="594" viewBox="0 0 968 565">
+      <g transform="translate(0 -262)" clip-path="url(#bottom-clip)">
+        <path d="M410.951-49.5c337,24.76,699.788,308.381,792,500.579S897.064,762.814,577.9,762.814,0,593.971,0,385.694,73.955-74.26,410.951-49.5Z" transform="translate(-301.147 411.907)" fill="#362565" opacity="0.8"/>
+        <path d="M360.91-73.97c324,27.3,638,301.633,720.932,474.48S806.748,680.86,519.716,680.86,0,529.016,0,341.708,36.91-101.27,360.91-73.97Z" transform="translate(-231.91 594.67)" fill="#7b5bf5" fill-opacity="0.83" opacity="0.8"/>
+        <path d="M262.171-10C444.7-10,659.821,73.865,660.993,203.729S513.025,402.667,330.5,402.667,0,313.6,0,203.729,79.643-10,262.171-10Z" transform="translate(-69 681.267)" fill="#5126ed"/>
+        <path d="M262.171-10C444.7-10,659.821,66.535,660.993,185.049S513.025,366.6,330.5,366.6,0,285.317,0,185.049,79.643-10,262.171-10Z" transform="translate(-69 762.333)" fill="#4516fc"/>
+      </g>
+    </svg>
+    <svg x="883" y="-16" width="1037" height="514" viewBox="0 0 718 356">
+      <g transform="translate(-602 8)" clip-path="url(#top-clip)">
+        <g transform="translate(-49.883 86.23)">
+          <path d="M264.138,0C470.016,0,780.486,131.36,775.97,319.553S578.654,535.889,372.776,535.889,0,418.717,0,274.178,58.26,0,264.138,0Z" transform="translate(1521.635 173.714) rotate(180)" fill="#895bf5" fill-opacity="0.64" opacity="0.52"/>
+          <path d="M177.9,0C301.753,0,447.725,59.059,448.52,150.512s-100.4,140.1-224.26,140.1S0,227.885,0,150.512,54.042,0,177.9,0Z" transform="translate(1366.094 26.124) rotate(180)" fill="#4722d2"/>
+        </g>
+      </g>
+    </svg>
+  </g>
+</svg>

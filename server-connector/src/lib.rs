@@ -1,0 +1,221 @@
+use anyhow::{Context, Result};
+use settings_gui::{
+    ChangelogPayload, CurrentLogTail, LogsSnapshot, ServerConnector, SettingsPayload,
+};
+
+pub struct AppServerConnector {
+    server_url: String,
+    #[allow(unused)]
+    http_client: reqwest::Client,
+}
+
+impl AppServerConnector {
+    pub fn new(server_url: String) -> Self {
+        Self {
+            server_url: server_url.trim_end_matches('/').to_string(),
+            http_client: reqwest::Client::new(),
+        }
+    }
+
+    #[allow(unused)]
+    async fn dispatch_in_process<IN, OUT>(
+        &self,
+        method: http::Method,
+        path: &str,
+        body: Option<IN>,
+    ) -> Result<OUT>
+    where
+        IN: serde::Serialize + Send + 'static,
+        for<'de> OUT: serde::Deserialize<'de> + Send + 'static,
+    {
+        #[cfg(feature = "in-process")]
+        {
+            use http::Request;
+            use tower::ServiceExt;
+
+            let app_state = {
+                let guard = stream_server::GLOBAL_STATE
+                    .read()
+                    .map_err(|e| anyhow::anyhow!("Failed to read GLOBAL_STATE lock: {e}"))?;
+                guard
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("stream-server AppState is not initialized"))?
+            };
+
+            let router = stream_server::build_router(app_state);
+
+            let body_bytes = if let Some(b) = body {
+                serde_json::to_vec(&b)?
+            } else {
+                Vec::new()
+            };
+
+            let req = Request::builder()
+                .method(method)
+                .uri(path)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(body_bytes))?;
+
+            let response = router
+                .oneshot(req)
+                .await
+                .map_err(|e| anyhow::anyhow!("Router dispatch failed: {e}"))?;
+
+            let body_data = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to read response body: {e}"))?;
+
+            let result: OUT = serde_json::from_slice(&body_data)?;
+            Ok(result)
+        }
+        #[cfg(not(feature = "in-process"))]
+        {
+            Err(anyhow::anyhow!("in-process feature is not enabled"))
+        }
+    }
+
+    async fn dispatch_http<IN, OUT>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<IN>,
+    ) -> Result<OUT>
+    where
+        IN: serde::Serialize + Send + 'static,
+        for<'de> OUT: serde::Deserialize<'de> + Send + 'static,
+    {
+        let url = format!("{}{}", self.server_url, path);
+        let mut builder = self.http_client.request(method, &url);
+
+        if let Some(b) = body {
+            builder = builder.json(&b);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("Failed to send HTTP request")?
+            .error_for_status()
+            .context("HTTP request failed with error status")?;
+
+        let val: OUT = resp.json().await.context("Failed to parse JSON response")?;
+        Ok(val)
+    }
+}
+
+#[async_trait::async_trait]
+impl ServerConnector for AppServerConnector {
+    async fn get_settings(&self) -> Result<SettingsPayload> {
+        if cfg!(feature = "in-process") {
+            self.dispatch_in_process(http::Method::GET, "/settings", None::<()>)
+                .await
+        } else {
+            self.dispatch_http(reqwest::Method::GET, "/settings", None::<()>)
+                .await
+        }
+    }
+
+    async fn apply_settings(&self, settings: SettingsPayload) -> Result<()> {
+        if cfg!(feature = "in-process") {
+            let _: serde_json::Value = self
+                .dispatch_in_process(http::Method::POST, "/settings", Some(settings))
+                .await?;
+            Ok(())
+        } else {
+            let _: serde_json::Value = self
+                .dispatch_http(reqwest::Method::POST, "/settings", Some(settings))
+                .await?;
+            Ok(())
+        }
+    }
+
+    async fn get_logs(&self) -> Result<LogsSnapshot> {
+        if cfg!(feature = "in-process") {
+            self.dispatch_in_process(http::Method::GET, "/diagnostics/logs", None::<()>)
+                .await
+        } else {
+            self.dispatch_http(reqwest::Method::GET, "/diagnostics/logs", None::<()>)
+                .await
+        }
+    }
+
+    async fn get_current_log(&self) -> Result<CurrentLogTail> {
+        if cfg!(feature = "in-process") {
+            self.dispatch_in_process(
+                http::Method::GET,
+                "/diagnostics/logs/current?format=json&lines=500",
+                None::<()>,
+            )
+            .await
+        } else {
+            self.dispatch_http(
+                reqwest::Method::GET,
+                "/diagnostics/logs/current?format=json&lines=500",
+                None::<()>,
+            )
+            .await
+        }
+    }
+
+    async fn get_changelog(&self, force: bool) -> Result<ChangelogPayload> {
+        let path = format!("/update/changelog?force={}", force);
+        if cfg!(feature = "in-process") {
+            self.dispatch_in_process(http::Method::GET, &path, None::<()>)
+                .await
+        } else {
+            self.dispatch_http(reqwest::Method::GET, &path, None::<()>)
+                .await
+        }
+    }
+
+    async fn export_diagnostics(&self) -> Result<Vec<u8>> {
+        if cfg!(feature = "in-process") {
+            #[cfg(feature = "in-process")]
+            {
+                use http::Request;
+                use tower::ServiceExt;
+
+                let app_state = {
+                    let guard = stream_server::GLOBAL_STATE
+                        .read()
+                        .map_err(|e| anyhow::anyhow!("Failed to read GLOBAL_STATE lock: {e}"))?;
+                    guard.clone().ok_or_else(|| {
+                        anyhow::anyhow!("stream-server AppState is not initialized")
+                    })?
+                };
+
+                let router = stream_server::build_router(app_state);
+
+                let req = Request::builder()
+                    .method(http::Method::GET)
+                    .uri("/diagnostics/export")
+                    .body(axum::body::Body::empty())?;
+
+                let response = router
+                    .oneshot(req)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Router dispatch failed: {e}"))?;
+
+                let body_data = axum::body::to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to read response body: {e}"))?;
+
+                Ok(body_data.to_vec())
+            }
+            #[cfg(not(feature = "in-process"))]
+            {
+                Err(anyhow::anyhow!("in-process feature is not enabled"))
+            }
+        } else {
+            let url = format!("{}/diagnostics/export", self.server_url);
+            let resp = self
+                .http_client
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?;
+            let bytes = resp.bytes().await?;
+            Ok(bytes.to_vec())
+        }
+    }
+}

@@ -1,0 +1,4 @@
+[target.'cfg(all(windows, target_env = "msvc"))']
+# MPV's official MSVC dependency bundle uses /MD. Keep Rust on the matching
+# dynamic CRT while libmpv, FFmpeg, and the codec stack remain static archives.
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,42 @@
+import { Theme } from "../theme.slint";
+
+export component TextInputField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <length> unit: 16px;
+    callback accepted;
+    callback edited;
+
+    height: 3.5 * root.unit;
+    border-radius: 0.75 * root.unit;
+    border-width: editor.has-focus ? Theme.focus-outline-size : 1px;
+    border-color: editor.has-focus ? Theme.accent : Theme.overlay;
+    background: Theme.overlay;
+
+    animate border-color { duration: 120ms; }
+
+    if (root.text == "") : Text {
+        x: root.unit;
+        width: parent.width - 2 * root.unit;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.text-primary;
+        opacity: 0.4;
+        font-size: root.unit;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    editor := TextInput {
+        x: root.unit;
+        width: parent.width - 2 * root.unit;
+        height: parent.height;
+        text <=> root.text;
+        color: Theme.text-primary;
+        font-size: root.unit;
+        single-line: true;
+        vertical-alignment: center;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+}

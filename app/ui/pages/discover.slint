@@ -1,0 +1,417 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { MediaCard, MediaCardItem } from "../components/media_card.slint";
+import { SelectField, PillButton } from "../components/form_controls.slint";
+
+export struct DiscoverRow {
+    cols: [MediaCardItem],
+}
+
+component MetadataTag inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+
+    height: 2.2 * root.unit;
+    border-radius: root.height / 2;
+    background: Theme.overlay;
+
+    Text {
+        x: root.unit;
+        width: parent.width - 2 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.text-primary;
+        opacity: 0.7;
+        font-size: 0.85 * root.unit;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component PreviewIconButton inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> icon-source;
+    in property <bool> active: false;
+    callback clicked;
+
+    width: 3.5 * root.unit;
+    height: 3.5 * root.unit;
+    border-radius: root.height / 2;
+    background: root.active ? Theme.accent : (action.has-hover ? #ffffff26 : #14121b99);
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 1.55 * root.unit;
+        height: 1.55 * root.unit;
+        source: root.icon-source;
+        colorize: Theme.text-primary;
+        opacity: 0.9;
+        image-fit: contain;
+    }
+    action := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component DiscoverPage inherits Rectangle {
+    in property <[DiscoverRow]> rows: [];
+    in property <int> column-count: 6;
+    in property <bool> loading: false;
+
+    in property <[string]> available-types: [];
+    in property <string> active-type: "";
+    in property <[string]> available-catalogs: [];
+    in property <string> active-catalog: "";
+    in property <[string]> available-genres: [];
+    in property <string> active-genre: "";
+
+    in-out property <length> scroll-y: 0px;
+
+    in property <bool> has-preview: false;
+    in property <string> preview-title: "";
+    in property <string> preview-description: "";
+    in property <string> preview-rating: "";
+    in property <string> preview-year: "";
+    in property <string> preview-runtime: "";
+    in property <[string]> preview-genres: [];
+    in property <[string]> preview-cast: [];
+    in property <[string]> preview-directors: [];
+    in property <image> preview-poster;
+    in property <bool> preview-is-in-library: false;
+    in property <bool> preview-is-watched: false;
+    in property <bool> preview-has-trailer: false;
+    in property <string> preview-trailer-selection-id: "";
+
+    callback type-changed(string);
+    callback catalog-changed(string);
+    callback genre-changed(string);
+    callback item-selected(string);
+    callback poster-requested(string);
+    callback play-preview;
+    callback toggle-library-preview;
+    callback toggle-watched-preview;
+    callback play-trailer-preview(string);
+
+    property <length> unit: root.width > 2700px ? 18px :
+        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
+    property <bool> preview-visible: root.has-preview && root.preview-title != "" && root.width > 1000px;
+    property <bool> type-open: false;
+    property <bool> catalog-open: false;
+    property <bool> genre-open: false;
+    property <length> grid-width: catalog.width - 3 * root.unit;
+    property <length> card-width: root.column-count > 0
+        ? (root.grid-width - (root.column-count - 1) * 0.5 * root.unit) / root.column-count
+        : root.grid-width;
+    property <length> card-height: (root.card-width - 2 * root.unit) * 1.464 + 6 * root.unit;
+
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        catalog := VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 0px;
+
+            Rectangle {
+                height: 5.75 * root.unit;
+                z: 50;
+
+                HorizontalLayout {
+                    padding: 1.5 * root.unit;
+                    spacing: 1.5 * root.unit;
+                    alignment: start;
+
+                    SelectField {
+                        unit: root.unit;
+                        field-width: 15 * root.unit;
+                        value: root.active-type;
+                        placeholder: "Type";
+                        options: root.available-types;
+                        open: root.type-open;
+                        toggle => {
+                            root.type-open = !root.type-open;
+                            root.catalog-open = false;
+                            root.genre-open = false;
+                        }
+                        selected(value) => {
+                            root.type-open = false;
+                            root.type-changed(value);
+                        }
+                    }
+
+                    SelectField {
+                        unit: root.unit;
+                        field-width: 15 * root.unit;
+                        value: root.active-catalog;
+                        placeholder: "Catalog";
+                        options: root.available-catalogs;
+                        open: root.catalog-open;
+                        toggle => {
+                            root.catalog-open = !root.catalog-open;
+                            root.type-open = false;
+                            root.genre-open = false;
+                        }
+                        selected(value) => {
+                            root.catalog-open = false;
+                            root.catalog-changed(value);
+                        }
+                    }
+
+                    SelectField {
+                        unit: root.unit;
+                        field-width: 15 * root.unit;
+                        value: root.active-genre;
+                        placeholder: "Genre";
+                        options: root.available-genres;
+                        open: root.genre-open;
+                        toggle => {
+                            root.genre-open = !root.genre-open;
+                            root.type-open = false;
+                            root.catalog-open = false;
+                        }
+                        selected(value) => {
+                            root.genre-open = false;
+                            root.genre-changed(value);
+                        }
+                    }
+                }
+            }
+
+            if (root.loading) : Rectangle {
+                vertical-stretch: 1;
+                Text {
+                    text: "Loading catalog…";
+                    color: Theme.text-primary;
+                    opacity: 0.6;
+                    font-size: 1.2 * root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if (!root.loading && root.rows.length == 0) : Rectangle {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: root.unit;
+                    Text {
+                        text: "No items found";
+                        color: Theme.text-primary;
+                        font-size: 2 * root.unit;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Try changing the catalog filters.";
+                        color: Theme.text-primary;
+                        opacity: 0.5;
+                        font-size: root.unit;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            if (!root.loading && root.rows.length > 0) : catalog-scroll := ListView {
+                vertical-stretch: 1;
+                viewport-width: catalog.width;
+                viewport-y <=> root.scroll-y;
+                mouse-drag-pan-enabled: true;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+                for row in root.rows : Rectangle {
+                    width: catalog.width;
+                    height: root.card-height + 0.5 * root.unit;
+
+                    HorizontalLayout {
+                        x: 1.5 * root.unit;
+                        width: root.grid-width;
+                        height: root.card-height;
+                        spacing: 0.5 * root.unit;
+                        alignment: start;
+
+                        for card-item in row.cols : MediaCard {
+                            width: root.card-width;
+                            unit: root.unit;
+                            item: card-item;
+                            clicked => { root.item-selected(card-item.id); }
+                            poster-requested(url) => { root.poster-requested(url); }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (root.preview-visible) : preview := Rectangle {
+            width: 29 * root.unit;
+            background: Theme.modal-background;
+            border-radius: 0.75 * root.unit;
+            clip: true;
+
+            if (root.preview-poster.width > 0) : Image {
+                source: root.preview-poster;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+                opacity: 0.07;
+            }
+
+            ScrollView {
+                mouse-drag-pan-enabled: true;
+                VerticalLayout {
+                    padding-left: 2.5 * root.unit;
+                    padding-right: 2.5 * root.unit;
+                    padding-top: 2 * root.unit;
+                    padding-bottom: 2 * root.unit;
+                    spacing: 1.5 * root.unit;
+                    alignment: start;
+
+                    Text {
+                        text: root.preview-title;
+                        color: Theme.text-primary;
+                        font-size: 1.8 * root.unit;
+                        font-weight: 600;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 2.25 * root.unit;
+                        alignment: start;
+                        Text {
+                            text: root.preview-runtime;
+                            color: Theme.text-primary;
+                            opacity: 0.85;
+                            font-size: 1.1 * root.unit;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: root.preview-year;
+                            color: Theme.text-primary;
+                            opacity: 0.6;
+                            font-size: root.unit;
+                        }
+                        Text {
+                            text: root.preview-rating;
+                            color: Theme.text-primary;
+                            opacity: 0.6;
+                            font-size: root.unit;
+                        }
+                        if (root.preview-rating != "") : Image {
+                            width: 2.5 * root.unit;
+                            height: 1.4 * root.unit;
+                            source: @image-url("../assets/images/icons/imdb.svg");
+                            image-fit: contain;
+                        }
+                    }
+
+                    Text {
+                        text: root.preview-description;
+                        color: Theme.text-primary;
+                        opacity: 0.65;
+                        font-size: root.unit;
+                        wrap: word-wrap;
+                    }
+
+                    if (root.preview-genres.length > 0) : VerticalLayout {
+                        spacing: 0.75 * root.unit;
+                        Text {
+                            text: "Genres";
+                            color: Theme.text-primary;
+                            opacity: 0.4;
+                            font-size: 0.85 * root.unit;
+                            font-weight: 600;
+                        }
+                        HorizontalLayout {
+                            spacing: 0.5 * root.unit;
+                            alignment: start;
+                            for genre in root.preview-genres : MetadataTag {
+                                unit: root.unit;
+                                label: genre;
+                            }
+                        }
+                    }
+
+                    if (root.preview-cast.length > 0) : VerticalLayout {
+                        spacing: 0.75 * root.unit;
+                        Text {
+                            text: "Cast";
+                            color: Theme.text-primary;
+                            opacity: 0.4;
+                            font-size: 0.85 * root.unit;
+                            font-weight: 600;
+                        }
+                        HorizontalLayout {
+                            spacing: 0.5 * root.unit;
+                            alignment: start;
+                            for actor in root.preview-cast : MetadataTag {
+                                unit: root.unit;
+                                label: actor;
+                            }
+                        }
+                    }
+
+                    if (root.preview-directors.length > 0) : VerticalLayout {
+                        spacing: 0.75 * root.unit;
+                        Text {
+                            text: "DIRECTORS";
+                            color: Theme.text-primary;
+                            opacity: 0.4;
+                            font-size: 0.85 * root.unit;
+                            font-weight: 600;
+                        }
+                        HorizontalLayout {
+                            spacing: 0.5 * root.unit;
+                            alignment: start;
+                            for director in root.preview-directors : MetadataTag {
+                                unit: root.unit;
+                                label: director;
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+
+                    HorizontalLayout {
+                        height: 3.5 * root.unit;
+                        spacing: 0.65 * root.unit;
+
+                        if (root.preview-has-trailer && root.preview-trailer-selection-id != "") : PreviewIconButton {
+                            unit: root.unit;
+                            icon-source: @image-url("../assets/images/icons/trailer.svg");
+                            clicked => { root.play-trailer-preview(root.preview-trailer-selection-id); }
+                        }
+
+                        PreviewIconButton {
+                            unit: root.unit;
+                            active: root.preview-is-in-library;
+                            icon-source: root.preview-is-in-library
+                                ? @image-url("../assets/images/icons/remove-from-library.svg")
+                                : @image-url("../assets/images/icons/add-to-library.svg");
+                            clicked => { root.toggle-library-preview(); }
+                        }
+
+                        PreviewIconButton {
+                            unit: root.unit;
+                            active: root.preview-is-watched;
+                            icon-source: root.preview-is-watched
+                                ? @image-url("../assets/images/icons/eye-off.svg")
+                                : @image-url("../assets/images/icons/eye.svg");
+                            clicked => { root.toggle-watched-preview(); }
+                        }
+
+                        PillButton {
+                            horizontal-stretch: 1;
+                            unit: root.unit;
+                            label: "Show";
+                            primary: true;
+                            clicked => { root.play-preview(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

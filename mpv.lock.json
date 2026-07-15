@@ -1,0 +1,37 @@
+﻿{
+    "schemaVersion":  2,
+    "channel":  "stable",
+    "linkage":  "static",
+    "release":  "v0.41.0",
+    "clientApi":  {
+                      "major":  2,
+                      "minor":  5
+                  },
+    "source":  {
+                   "url":  "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+                   "sha256":  "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+               },
+    "headers":  {
+                    "client.h":  "3c073236a09cb456c6e80587d5523c8771c32fb22ca014e0f99cc3d43905b75c",
+                    "render.h":  "192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55",
+                    "render_gl.h":  "48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69"
+                },
+    "artifacts":  {
+                      "windows-x86_64-static":  {
+                                                    "directory":  "dist/mpv/windows-x86_64-static",
+                                                    "library":  {
+                                                                    "file":  "lib/mpv.lib",
+                                                                    "sha256":  "9bbe9f2fd79ac73bfcba83736d991012cd4d0068ddbd21b87dc20f8bf959801b"
+                                                                },
+                                                    "linkManifest":  {
+                                                                         "file":  "link-libraries.txt",
+                                                                         "sha256":  "f3930677ba7373a920346613198c0a6d06f471130803e24883353b0bf7269d09"
+                                                                     },
+                                                    "sdkManifest":  {
+                                                                        "file":  "static-sdk.json",
+                                                                        "sha256":  "b63b60f6044b55ebca5b59bd3c5b5882cd7c114e74c071e077227253aaf17372"
+                                                                    }
+                                                }
+                  },
+    "verifiedAt":  "2026-07-13"
+}

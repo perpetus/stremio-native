@@ -1,0 +1,35 @@
+export struct IconData {
+    glyph: string,
+    font_family: string,
+}
+
+export global Theme {
+    // Canonical stremio-web tokens. Keep these values synchronized with
+    // stremio-web/src/App/styles.less.
+    in-out property <color> background: #0c0b11;
+    in-out property <brush> main-gradient: @linear-gradient(41deg, #0c0b11 0%, #1a173e 100%);
+    in-out property <color> sidebar-background: #0f0d2099;
+    in-out property <color> secondary-background: #1a173e;
+    in-out property <color> modal-background: #0f0d20;
+    in-out property <color> overlay: #ffffff0d;
+    in-out property <color> accent: #7b5bf5;
+    in-out property <color> accent-hover: #9275f7;
+    in-out property <color> facebook: #1877f1;
+    in-out property <color> card-background: #151320;
+    in-out property <color> card-border: #201e2f;
+    in-out property <color> text-primary: #ffffffe6;
+    in-out property <color> text-secondary: #ffffff99;
+    in-out property <color> text-muted: #ffffff66;
+    
+    in-out property <color> danger: #dc2626;
+    in-out property <color> success: #22b365;
+    in-out property <color> warning: #f6c700;
+
+    in-out property <length> border-radius: 12px;
+    in-out property <length> focus-outline-size: 2px;
+    in-out property <length> horizontal-nav-bar-size: 88px;
+    in-out property <length> vertical-nav-bar-size: 96px;
+
+    in-out property <color> skeleton-base: #1a1828;
+    in-out property <color> skeleton-shimmer: #2a2838;
+}

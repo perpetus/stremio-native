@@ -1,0 +1,245 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { MediaCard, MediaCardItem } from "../components/media_card.slint";
+
+export struct BoardSection {
+    title: string,
+    r-type: string,
+    catalog-id: string,
+    addon-base: string,
+    items: [MediaCardItem],
+}
+
+component SeeAllButton inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label: "See All";
+    callback clicked;
+
+    width: 6.5 * root.unit;
+    height: 2.5 * root.unit;
+    border-radius: 2.5 * root.unit;
+    background: area.has-hover ? Theme.overlay : transparent;
+    opacity: area.has-hover ? 1 : 0.6;
+
+    animate background, opacity { duration: 100ms; }
+
+    area := TouchArea { clicked => { root.clicked(); } }
+
+    HorizontalLayout {
+        padding-left: root.unit;
+        padding-right: 0.5 * root.unit;
+        spacing: 0.5 * root.unit;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: root.unit;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 1.5 * root.unit;
+            height: parent.height;
+            background: transparent;
+
+            Image {
+                y: (parent.height - self.height) / 2;
+                width: 1.5 * root.unit;
+                height: 1.5 * root.unit;
+                source: @image-url("../assets/images/icons/chevron-forward.svg");
+                colorize: Theme.text-primary;
+                image-fit: contain;
+            }
+        }
+    }
+}
+
+export component MediaCarousel inherits Rectangle {
+    in property <[MediaCardItem]> items: [];
+    in property <length> unit: 16px;
+    in property <length> card-width;
+    in property <length> card-height;
+    in property <bool> show-close-button: false;
+    callback item-selected(string, string, string);
+    callback remove-clicked(string);
+    callback poster-requested(string);
+
+    property <length> items-width: root.items.length * root.card-width;
+    property <length> content-width: root.items-width > root.width ? root.items-width : root.width;
+
+    height: root.card-height;
+    background: transparent;
+    clip: true;
+
+    ScrollView {
+        width: parent.width;
+        height: parent.height;
+        viewport-width: root.content-width;
+        viewport-height: root.card-height;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+
+        HorizontalLayout {
+            width: root.content-width;
+            height: root.card-height;
+            spacing: 0px;
+            alignment: start;
+
+            for card-item in root.items : MediaCard {
+                width: root.card-width;
+                unit: root.unit;
+                item: card-item;
+                enable-lazy-loading: false;
+                show-close-button: root.show-close-button;
+                clicked => {
+                    root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
+                }
+                remove-clicked => { root.remove-clicked(card-item.id); }
+                poster-requested(url) => { root.poster-requested(url); }
+            }
+        }
+    }
+}
+
+export component BoardPage inherits Rectangle {
+    in property <[MediaCardItem]> continue-watching: [];
+    in property <[BoardSection]> sections: [];
+    in property <bool> loading: false;
+
+    callback item-selected(string, string, string);
+    callback remove-continue-watching(string);
+    callback see-all-continue-watching;
+    callback see-all-clicked(string, string, string);
+    callback poster-requested(string);
+
+    property <length> unit: root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px);
+    property <int> visible-count: root.width > 2100px ? 9 :
+        (root.width > 1500px ? 8 : (root.width > 1200px ? 7 : (root.width > 900px ? 6 : 4)));
+    property <length> card-width: (root.width - 2 * root.unit) / root.visible-count;
+    property <length> card-height: (root.card-width - 2 * root.unit) * 1.464 + 6 * root.unit;
+
+    background: transparent;
+
+    ScrollView {
+        viewport-width: root.width;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+        VerticalLayout {
+            width: root.width;
+            padding-left: root.unit;
+            padding-right: root.unit;
+            padding-bottom: 2 * root.unit;
+            spacing: 0px;
+            alignment: start;
+
+            // Continue Watching is sourced from durable profile state and is
+            // ready before remote recommendation catalogs. Keep existing
+            // rows visible while catalogs refresh instead of replacing the
+            // entire Board with a loading label.
+            if (root.loading && root.continue-watching.length == 0 && root.sections.length == 0) : Rectangle {
+                height: 14 * root.unit;
+                Text {
+                    text: "Loading recommendations...";
+                    color: Theme.text-secondary;
+                    font-size: root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if (root.continue-watching.length > 0) : VerticalLayout {
+                spacing: 0px;
+
+                Rectangle { height: root.unit; }
+                Rectangle {
+                    width: root.width - 2 * root.unit;
+                    height: 2.5 * root.unit;
+
+                    Text {
+                        x: root.unit;
+                        width: parent.width - 9 * root.unit;
+                        height: parent.height;
+                        text: "Continue watching";
+                        color: Theme.text-primary;
+                        font-size: 1.6 * root.unit;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                    SeeAllButton {
+                        x: root.width - 2 * root.unit - self.width;
+                        unit: root.unit;
+                        clicked => { root.see-all-continue-watching(); }
+                    }
+                }
+                Rectangle { height: 0.25 * root.unit; }
+
+                MediaCarousel {
+                    width: root.width - 2 * root.unit;
+                    height: root.card-height;
+                    unit: root.unit;
+                    card-width: root.card-width;
+                    card-height: root.card-height;
+                    items: root.continue-watching;
+                    show-close-button: true;
+                    item-selected(id, media-type, video-id) => {
+                        root.item-selected(id, media-type, video-id);
+                    }
+                    remove-clicked(id) => { root.remove-continue-watching(id); }
+                    poster-requested(url) => { root.poster-requested(url); }
+                }
+                Rectangle { height: 2 * root.unit; }
+            }
+
+            if (root.sections.length > 0) : VerticalLayout {
+                spacing: 0px;
+
+                for section in root.sections : VerticalLayout {
+                    spacing: 0px;
+
+                    Rectangle { height: root.unit; }
+                    Rectangle {
+                        width: root.width - 2 * root.unit;
+                        height: 2.5 * root.unit;
+
+                        Text {
+                            x: root.unit;
+                            width: parent.width - 9 * root.unit;
+                            height: parent.height;
+                            text: section.title;
+                            color: Theme.text-primary;
+                            font-size: 1.6 * root.unit;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        SeeAllButton {
+                            x: root.width - 2 * root.unit - self.width;
+                            unit: root.unit;
+                            clicked => {
+                                root.see-all-clicked(section.r-type, section.catalog-id, section.addon-base);
+                            }
+                        }
+                    }
+                    Rectangle { height: 0.25 * root.unit; }
+
+                    MediaCarousel {
+                        width: root.width - 2 * root.unit;
+                        height: root.card-height;
+                        unit: root.unit;
+                        card-width: root.card-width;
+                        card-height: root.card-height;
+                        items: section.items;
+                        item-selected(id, media-type, video-id) => {
+                            root.item-selected(id, section.r-type, video-id);
+                        }
+                        poster-requested(url) => { root.poster-requested(url); }
+                    }
+                    Rectangle { height: 2 * root.unit; }
+                }
+            }
+        }
+    }
+}

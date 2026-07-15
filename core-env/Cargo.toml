@@ -1,0 +1,24 @@
+[package]
+name = "core-env"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+stremio-core = { path = "../../stremio-core", features = ["derive", "analytics", "env-future-send"] }
+stream-server = { path = "../../stream-server/server", package = "server" }
+reqwest = { workspace = true, features = ["json", "rustls", "charset", "http2"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+http.workspace = true
+url.workspace = true
+futures.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+tokio = { workspace = true, features = ["full"] }
+axum.workspace = true
+tower = { workspace = true, features = ["util"] }
+
+[features]
+default = ["stremio-core/env-future-send"]
+in-process = []

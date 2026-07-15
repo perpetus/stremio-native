@@ -1,0 +1,9 @@
+[package]
+name = "playback-mpv"
+version = "0.1.0"
+edition = "2024"
+links = "mpv"
+
+[dependencies]
+glow.workspace = true
+thiserror.workspace = true
