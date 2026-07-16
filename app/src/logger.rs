@@ -7,6 +7,7 @@ use crate::performance::ProfileConfig;
 
 pub struct LoggerGuards {
     pub _file_guard: tracing_appender::non_blocking::WorkerGuard,
+    #[cfg(debug_assertions)]
     pub _chrome_guard: Option<tracing_chrome::FlushGuard>,
 }
 
@@ -17,6 +18,8 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
     // A fixed, truncated file makes each report correspond to exactly one run.
     let log_file = std::fs::File::create(&log_path)?;
     let (file_writer, file_guard) = tracing_appender::non_blocking(log_file);
+
+    #[cfg(debug_assertions)]
     let (chrome_layer, chrome_guard) = if profile.mode.enabled() {
         let mut builder = tracing_chrome::ChromeLayerBuilder::new()
             .include_args(true)
@@ -39,6 +42,8 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
     } else {
         (None, None)
     };
+
+    #[cfg(debug_assertions)]
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -47,6 +52,16 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
                 .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
         )
         .with(chrome_layer)
+        .init();
+
+    #[cfg(not(debug_assertions))]
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::io::stderr.and(file_writer))
+                .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
+        )
         .init();
 
     // Also append panics synchronously. This preserves the failure even when a
@@ -78,6 +93,7 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
 
     Ok(LoggerGuards {
         _file_guard: file_guard,
+        #[cfg(debug_assertions)]
         _chrome_guard: chrome_guard,
     })
 }

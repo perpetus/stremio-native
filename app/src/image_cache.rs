@@ -2,7 +2,7 @@ use futures::StreamExt;
 use moka::sync::Cache;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
@@ -24,7 +24,9 @@ enum DownloadState {
 
 static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static IMAGE_CACHE: OnceLock<Cache<String, ImageEntry>> = OnceLock::new();
+static REQUIRED_IMAGE_CACHE: OnceLock<Cache<String, ImageEntry>> = OnceLock::new();
 static DOWNLOAD_STATE: OnceLock<Cache<String, DownloadState>> = OnceLock::new();
+static FETCH_QUEUE: OnceLock<Mutex<FetchQueue>> = OnceLock::new();
 static NETWORK_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static DISK_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static DECODE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -33,7 +35,8 @@ static REFRESH_URLS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static REFRESH_PENDING: AtomicBool = AtomicBool::new(false);
 static MAINTENANCE_STARTED: AtomicBool = AtomicBool::new(false);
 
-const MEMORY_CAPACITY_BYTES: u64 = 256 * 1024 * 1024;
+const MEMORY_CAPACITY_BYTES: u64 = 32 * 1024 * 1024;
+const REQUIRED_IMAGE_IDLE_TTL: Duration = Duration::from_secs(60);
 const DISK_CAPACITY_BYTES: u64 = 1536 * 1024 * 1024;
 const DISK_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
@@ -42,7 +45,19 @@ const MAX_DECODE_HEIGHT: u32 = 1920;
 const MAX_CONCURRENT_DOWNLOADS: usize = 8;
 const MAX_CONCURRENT_DISK_READS: usize = 4;
 const MAX_CONCURRENT_DECODES: usize = 3;
+const MAX_FETCH_WORKERS: usize = 16;
 const MAX_RETRY_ATTEMPTS: u32 = 3;
+
+struct FetchJob {
+    url: String,
+    previous_attempts: u32,
+}
+
+#[derive(Default)]
+struct FetchQueue {
+    jobs: VecDeque<FetchJob>,
+    active_workers: usize,
+}
 
 pub fn set_refresh_callback(f: impl Fn(Vec<String>) + Send + Sync + 'static) {
     let _ = REFRESH_CALLBACK.set(Arc::new(f));
@@ -50,6 +65,13 @@ pub fn set_refresh_callback(f: impl Fn(Vec<String>) + Send + Sync + 'static) {
 
 pub fn get_poster_image(
     url: &Option<Url>,
+    _ui_weak: &slint::Weak<crate::MainWindow>,
+) -> slint::Image {
+    get_poster_image_ref(url.as_ref(), _ui_weak)
+}
+
+pub fn get_poster_image_ref(
+    url: Option<&Url>,
     _ui_weak: &slint::Weak<crate::MainWindow>,
 ) -> slint::Image {
     let Some(url) = url else {
@@ -84,8 +106,15 @@ pub fn request_image(url: &str) {
 }
 
 fn get_image(url: &str, request_on_miss: bool) -> slint::Image {
+    if let Some(buffer) = required_image_cache().get(url) {
+        crate::performance::counters().record_image_memory_hit();
+        return slint::Image::from_rgba8(buffer);
+    }
     if let Some(buffer) = image_cache().get(url) {
         crate::performance::counters().record_image_memory_hit();
+        if request_on_miss {
+            required_image_cache().insert(url.to_owned(), buffer.clone());
+        }
         return slint::Image::from_rgba8(buffer);
     }
 
@@ -94,6 +123,16 @@ fn get_image(url: &str, request_on_miss: bool) -> slint::Image {
     }
 
     slint::Image::default()
+}
+
+/// Holds the currently requested decoded working set. It starts empty and
+/// grows beyond the 32 MiB base cache only while images continue to be used.
+fn required_image_cache() -> &'static Cache<String, ImageEntry> {
+    REQUIRED_IMAGE_CACHE.get_or_init(|| {
+        Cache::builder()
+            .time_to_idle(REQUIRED_IMAGE_IDLE_TTL)
+            .build()
+    })
 }
 
 fn image_cache() -> &'static Cache<String, ImageEntry> {
@@ -173,40 +212,79 @@ fn schedule_fetch(url: String) {
     download_state().insert(url.clone(), DownloadState::InProgress);
     start_disk_maintenance_once();
 
-    tokio::spawn(async move {
-        let result = load_from_disk(&url).await;
-
-        let result = match result {
-            Some(buffer) => {
-                crate::performance::counters().record_image_disk_hit();
-                Ok(buffer)
-            }
-            None => download_and_cache(&url).await,
-        };
-
-        match result {
-            Ok(buffer) => {
-                image_cache().insert(url.clone(), buffer);
-                download_state().invalidate(&url);
-                notify_ui_refresh(url);
-            }
-            Err(error) => {
-                crate::performance::counters().record_image_failure();
-                let attempts = previous_attempts.saturating_add(1);
-                let backoff_seconds = 2_u64.saturating_pow(attempts.min(6)).max(2);
-                download_state().insert(
-                    url.clone(),
-                    DownloadState::Failed {
-                        attempts,
-                        retry_at: Instant::now() + Duration::from_secs(backoff_seconds),
-                    },
-                );
-                tracing::warn!(%url, %error, attempts, "image request failed");
-            }
-        }
-    });
+    let workers_to_start = {
+        let mut queue = fetch_queue()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        queue.jobs.push_back(FetchJob {
+            url,
+            previous_attempts,
+        });
+        let available_workers = MAX_FETCH_WORKERS.saturating_sub(queue.active_workers);
+        let workers_to_start = available_workers.min(queue.jobs.len());
+        queue.active_workers += workers_to_start;
+        workers_to_start
+    };
+    for _ in 0..workers_to_start {
+        tokio::spawn(fetch_worker());
+    }
 }
 
+fn fetch_queue() -> &'static Mutex<FetchQueue> {
+    FETCH_QUEUE.get_or_init(|| Mutex::new(FetchQueue::default()))
+}
+
+async fn fetch_worker() {
+    loop {
+        let job = {
+            let mut queue = fetch_queue()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match queue.jobs.pop_front() {
+                Some(job) => job,
+                None => {
+                    queue.active_workers = queue.active_workers.saturating_sub(1);
+                    return;
+                }
+            }
+        };
+        process_fetch(job).await;
+    }
+}
+
+async fn process_fetch(job: FetchJob) {
+    let result = match load_from_disk(&job.url).await {
+        Some(buffer) => {
+            crate::performance::counters().record_image_disk_hit();
+            Ok(buffer)
+        }
+        None => download_and_cache(&job.url).await,
+    };
+
+    match result {
+        Ok(buffer) => {
+            required_image_cache().insert(job.url.clone(), buffer.clone());
+            image_cache().insert(job.url.clone(), buffer);
+            download_state().invalidate(&job.url);
+            notify_ui_refresh(job.url);
+        }
+        Err(error) => {
+            crate::performance::counters().record_image_failure();
+            let attempts = job.previous_attempts.saturating_add(1);
+            let backoff_seconds = 2_u64.saturating_pow(attempts.min(6)).max(2);
+            download_state().insert(
+                job.url.clone(),
+                DownloadState::Failed {
+                    attempts,
+                    retry_at: Instant::now() + Duration::from_secs(backoff_seconds),
+                },
+            );
+            tracing::warn!(url = %job.url, %error, attempts, "image request failed");
+        }
+    }
+}
+
+#[tracing::instrument(skip_all, fields(url = %url))]
 async fn load_from_disk(url: &str) -> Option<ImageEntry> {
     let _permit = disk_semaphore().clone().acquire_owned().await.ok()?;
     let path = cache_path(url);
@@ -223,9 +301,10 @@ async fn load_from_disk(url: &str) -> Option<ImageEntry> {
     .ok()
     .flatten()?;
 
-    decode(bytes).await.ok()
+    decode(bytes).await.ok().map(|(decoded, _bytes)| decoded)
 }
 
+#[tracing::instrument(skip_all, fields(url = %url))]
 async fn download_and_cache(url: &str) -> Result<ImageEntry, String> {
     let _permit = network_semaphore()
         .clone()
@@ -235,7 +314,7 @@ async fn download_and_cache(url: &str) -> Result<ImageEntry, String> {
     let bytes = download_with_retry(url).await?;
     crate::performance::counters().record_image_download();
 
-    let decoded = decode(bytes.clone()).await?;
+    let (decoded, bytes) = decode(bytes).await?;
     let path = cache_path(url);
     match tokio::task::spawn_blocking(move || write_cache_file(&path, &bytes)).await {
         Ok(Ok(())) => {}
@@ -316,7 +395,8 @@ async fn download_with_retry(url: &str) -> Result<Vec<u8>, String> {
     Err(last_error)
 }
 
-async fn decode(bytes: Vec<u8>) -> Result<ImageEntry, String> {
+#[tracing::instrument(skip_all, fields(size = bytes.len()))]
+async fn decode(bytes: Vec<u8>) -> Result<(ImageEntry, Vec<u8>), String> {
     let _permit = decode_semaphore()
         .clone()
         .acquire_owned()
@@ -334,11 +414,12 @@ async fn decode(bytes: Vec<u8>) -> Result<ImageEntry, String> {
             image
         };
         let rgba = image.into_rgba8();
-        Ok(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+        let decoded = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
             rgba.as_raw(),
             rgba.width(),
             rgba.height(),
-        ))
+        );
+        Ok((decoded, bytes))
     })
     .await
     .map_err(|error| format!("image decoder stopped: {error}"))?
@@ -444,25 +525,58 @@ fn notify_ui_refresh(url: String) {
 
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(16)).await;
-        REFRESH_PENDING.store(false, Ordering::Release);
-        let urls = REFRESH_URLS
-            .get_or_init(|| Mutex::new(HashSet::new()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .drain()
-            .collect::<Vec<_>>();
-        if urls.is_empty() {
-            return;
-        }
-        if let Some(callback) = REFRESH_CALLBACK.get().cloned() {
-            let _ = slint::invoke_from_event_loop(move || callback(urls));
-        }
+        dispatch_ui_refresh();
     });
+}
+
+fn dispatch_ui_refresh() {
+    let urls = drain_refresh_urls();
+    if urls.is_empty() {
+        finish_ui_refresh();
+        return;
+    }
+    let Some(callback) = REFRESH_CALLBACK.get().cloned() else {
+        finish_ui_refresh();
+        return;
+    };
+    let result = slint::invoke_from_event_loop(move || {
+        callback(urls);
+        finish_ui_refresh();
+    });
+    if let Err(error) = result {
+        tracing::error!(%error, "could not enqueue image refresh on the Slint event loop");
+        finish_ui_refresh();
+    }
+}
+
+fn drain_refresh_urls() -> Vec<String> {
+    REFRESH_URLS
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .drain()
+        .collect()
+}
+
+fn finish_ui_refresh() {
+    REFRESH_PENDING.store(false, Ordering::Release);
+    let has_pending_urls = !REFRESH_URLS
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_empty();
+    if has_pending_urls
+        && REFRESH_PENDING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
+    {
+        dispatch_ui_refresh();
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_RESPONSE_BYTES, cache_path};
+    use super::{MAX_RESPONSE_BYTES, MEMORY_CAPACITY_BYTES, REQUIRED_IMAGE_IDLE_TTL, cache_path};
 
     #[test]
     fn cache_path_is_stable_and_sharded() {
@@ -475,5 +589,11 @@ mod tests {
     #[test]
     fn response_limit_is_not_unbounded() {
         assert!(MAX_RESPONSE_BYTES <= 32 * 1024 * 1024);
+    }
+
+    #[test]
+    fn decoded_cache_has_a_small_base_and_temporary_growth_window() {
+        assert_eq!(MEMORY_CAPACITY_BYTES, 32 * 1024 * 1024);
+        assert!(!REQUIRED_IMAGE_IDLE_TTL.is_zero());
     }
 }

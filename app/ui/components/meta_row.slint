@@ -1,0 +1,205 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { HorizontalScroll } from "horizontal_scroll.slint";
+import { SkeletonBlock } from "feedback.slint";
+
+export component SeeAllButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label: "See All";
+
+    width: 7 * root.unit;
+    height: 2.5 * root.unit;
+    border-radius: self.height / 2;
+    background: root.has-hover || root.has-focus ? Theme.overlay-color : transparent;
+    opacity: root.has-hover || root.has-focus ? 1 : 0.6;
+    accessible-name: root.label;
+
+    animate background, opacity { duration: Theme.motion-fast; }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 0px;
+        width: 5.25 * root.unit;
+        height: parent.height;
+        background: transparent;
+
+        text-label := Text {
+            x: 0px;
+            y: 0px;
+            width: 3.25 * root.unit;
+            height: parent.height;
+            text: root.label;
+            color: Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Image {
+            x: 3.75 * root.unit;
+            y: (parent.height - self.height) / 2;
+            width: 1.5 * root.unit;
+            height: 1.5 * root.unit;
+            source: @image-url("../assets/images/icons/chevron-forward.svg");
+            colorize: Theme.primary-foreground;
+            image-fit: contain;
+        }
+    }
+}
+
+// Generic official MetaRow frame. The caller supplies reusable item components
+// through the child slot while this component owns header and scroll behavior.
+export component MetaRow inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> title: "";
+    in property <string> message: "";
+    in property <bool> show-see-all: false;
+    in property <string> see-all-label: "See All";
+    in property <length> content-width: root.width;
+    in property <length> content-height: 19 * root.unit;
+    in property <color> fade-surface-color: Theme.background;
+    in property <bool> show-edge-fades: false;
+    callback see-all-requested;
+
+    height: 3 * root.unit + root.content-height;
+    background: transparent;
+    clip: false;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 2.75 * root.unit;
+        background: transparent;
+
+        Text {
+            x: root.unit;
+            y: 0px;
+            width: parent.width - 2 * root.unit
+                - (root.show-see-all ? 12 * root.unit : 0px);
+            height: parent.height;
+            text: root.title;
+            color: Theme.primary-foreground;
+            font-size: 1.6 * root.unit;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if (root.show-see-all) : SeeAllButton {
+            // Preserve a full two-unit safe area so the chevron and its hover
+            // surface never meet the page clip at the right edge.
+            x: parent.width - self.width - 2 * root.unit;
+            y: (parent.height - self.height) / 2;
+            unit: root.unit;
+            label: root.see-all-label;
+            clicked => { root.see-all-requested(); }
+        }
+    }
+
+    if (root.message != "") : Text {
+        x: 0.5 * root.unit;
+        y: 3 * root.unit;
+        width: parent.width - root.unit;
+        height: min(root.content-height, 3.6 * root.unit);
+        text: root.message;
+        color: Theme.primary-foreground;
+        opacity: 0.6;
+        font-size: 1.3 * root.unit;
+        wrap: word-wrap;
+        overflow: elide;
+    }
+
+    content-scroll := HorizontalScroll {
+        visible: root.message == "";
+        x: 0px;
+        y: 3 * root.unit;
+        width: parent.width;
+        height: root.content-height;
+        unit: root.unit;
+        content-width: root.content-width;
+        content-height: root.content-height;
+        fade-surface-color: root.fade-surface-color;
+        show-edge-fades: root.show-edge-fades;
+
+        @children
+    }
+}
+
+export component MetaRowPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> title: "";
+    in property <bool> show-see-all: false;
+    in property <[int]> items: [0, 1, 2, 3, 4, 5, 6, 7];
+    in property <length> item-width: 11 * root.unit;
+    in property <float> poster-ratio: Theme.poster-shape-ratio;
+
+    width: 80 * root.unit;
+    height: 3 * root.unit + root.item-width * root.poster-ratio + 2.8 * root.unit;
+    background: transparent;
+    clip: true;
+
+    // Keep the catalogue heading in normal layout flow. An unpositioned
+    // absolute child can inherit vertical layout constraints from a repeated
+    // row and was placing this bar across the middle of the posters.
+    VerticalLayout {
+        width: parent.width;
+        height: parent.height;
+        spacing: 0.25 * root.unit;
+
+        Rectangle {
+            height: 2.75 * root.unit;
+            background: transparent;
+
+            if (root.title != "") : Text {
+                x: root.unit;
+                y: 0px;
+                width: parent.width - 2 * root.unit;
+                height: parent.height;
+                text: root.title;
+                color: Theme.text-muted;
+                font-size: 1.6 * root.unit;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if (root.title == "") : SkeletonBlock {
+                x: root.unit;
+                y: 0.75 * root.unit;
+                width: parent.width * 0.4;
+                height: 1.2 * root.unit;
+            }
+        }
+
+        HorizontalLayout {
+            width: parent.width;
+            height: root.item-width * root.poster-ratio + 2.8 * root.unit;
+            spacing: 1.5 * root.unit;
+            padding-left: root.unit;
+            padding-right: root.unit;
+            alignment: start;
+
+            for _item in root.items : Rectangle {
+                width: root.item-width;
+                height: root.item-width * root.poster-ratio + 2.8 * root.unit;
+                background: transparent;
+
+                SkeletonBlock {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: root.item-width * root.poster-ratio;
+                    radius: Theme.border-radius;
+                }
+                SkeletonBlock {
+                    x: parent.width * 0.2;
+                    y: root.item-width * root.poster-ratio + 0.8 * root.unit;
+                    width: parent.width * 0.6;
+                    height: 1.2 * root.unit;
+                    radius: Theme.border-radius;
+                }
+            }
+        }
+    }
+}

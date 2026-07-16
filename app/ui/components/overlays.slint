@@ -1,0 +1,429 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { DialogAction } from "types.slint";
+
+// Visual half of the official Popup. The caller owns anchor measurement and
+// supplies the menu body through the child slot.
+export component PopupMenuSurface inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> direction: "bottom-right";
+
+    border-radius: Theme.border-radius;
+    background: Theme.modal-color;
+    drop-shadow-blur: Theme.outer-glow-blur;
+    drop-shadow-color: Theme.outer-glow-color;
+    clip: true;
+
+    @children
+}
+
+export component ModalDialog inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <bool> open: false;
+    in property <string> title: "";
+    in property <image> background-image;
+    in property <bool> has-background-image: false;
+    in property <[DialogAction]> actions: [];
+    in property <length> dialog-width: 44 * root.unit;
+    in property <length> dialog-height: 36 * root.unit;
+    callback close-requested;
+    callback action-triggered(string);
+
+    visible: root.open;
+    background: Theme.background-dark-40;
+    forward-focus: dialog-focus;
+
+    close-layer := TouchArea {
+        enabled: root.open;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.close-requested(); }
+    }
+
+    dialog := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(root.dialog-width, parent.width * 0.8);
+        height: min(root.dialog-height, parent.height * 0.8);
+        border-radius: Theme.border-radius;
+        background: Theme.modal-color;
+        drop-shadow-blur: Theme.outer-glow-blur;
+        drop-shadow-color: Theme.outer-glow-color;
+        clip: true;
+
+        // Prevent pointer events inside the dialog from reaching the scrim.
+        TouchArea { }
+
+        if (root.has-background-image) : Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.background-image;
+            image-fit: cover;
+            opacity: 0.1;
+        }
+
+        close-button := ButtonSurface {
+            x: parent.width - 3.5 * root.unit;
+            y: 0.5 * root.unit;
+            width: 3 * root.unit;
+            height: 3 * root.unit;
+            border-radius: Theme.border-radius;
+            accessible-name: "Close";
+            clicked => { root.close-requested(); }
+
+            Image {
+                x: 0.5 * root.unit;
+                y: 0.5 * root.unit;
+                width: parent.width - root.unit;
+                height: parent.height - root.unit;
+                source: @image-url("../assets/images/icons/close.svg");
+                colorize: Theme.primary-foreground;
+                opacity: close-button.has-hover || close-button.has-focus ? 1 : 0.4;
+                image-fit: contain;
+            }
+        }
+
+        if (root.title != "") : Text {
+            x: 2 * root.unit;
+            width: parent.width - 6 * root.unit;
+            height: 4.5 * root.unit;
+            text: root.title;
+            color: Theme.primary-foreground;
+            font-size: 1.2 * root.unit;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        body := Rectangle {
+            x: 2 * root.unit;
+            y: root.title == "" ? 2 * root.unit : 4.5 * root.unit;
+            width: parent.width - 4 * root.unit;
+            height: parent.height
+                - (root.title == "" ? 4 * root.unit : 6.5 * root.unit)
+                - (root.actions.length > 0 ? 5.5 * root.unit : 0px);
+            clip: true;
+
+            @children
+        }
+
+        if (root.actions.length > 0) : HorizontalLayout {
+            x: 2 * root.unit;
+            y: parent.height - 5.5 * root.unit;
+            width: parent.width - 4 * root.unit;
+            height: 3.5 * root.unit;
+            spacing: root.unit;
+
+            for action in root.actions : action-button := ButtonSurface {
+                min-width: 8 * root.unit;
+                preferred-width: 12 * root.unit;
+                height: 3.5 * root.unit;
+                border-radius: self.height / 2;
+                enabled: action.enabled;
+                accessible-name: action.label;
+                background: action.primary
+                    ? (self.has-hover ? transparent : Theme.secondary-accent)
+                    : (self.has-hover ? Theme.overlay-hover : Theme.overlay-color);
+                border-width: self.has-focus || (action.primary && self.has-hover)
+                    ? Theme.focus-outline-size
+                    : 0px;
+                border-color: action.primary && self.has-hover
+                    ? Theme.secondary-accent
+                    : Theme.primary-foreground;
+                clicked => { root.action-triggered(action.id); }
+
+                HorizontalLayout {
+                    padding-left: 1.2 * root.unit;
+                    padding-right: 1.2 * root.unit;
+                    spacing: 0.5 * root.unit;
+                    alignment: center;
+
+                    if (action.has-icon) : Image {
+                        width: 1.2 * root.unit;
+                        height: 1.2 * root.unit;
+                        source: action.icon;
+                        colorize: Theme.primary-foreground;
+                        image-fit: contain;
+                    }
+                    Text {
+                        text: action.label;
+                        color: Theme.primary-foreground;
+                        font-size: 1.1 * root.unit;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+
+    dialog-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.open;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component BottomSheet inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <bool> open: false;
+    in property <string> title: "";
+    in property <length> sheet-height: 32 * root.unit;
+    callback close-requested;
+
+    private property <length> drag-offset: 0px;
+    visible: root.open;
+    background: transparent;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: Theme.background;
+        opacity: 0.8;
+        TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => { root.drag-offset = sheet.height; }
+        }
+    }
+
+    sheet := Rectangle {
+        x: 0px;
+        y: parent.height - self.height + root.drag-offset;
+        width: parent.width;
+        height: min(root.sheet-height, parent.height - 5.5 * root.unit);
+        border-top-left-radius: 2 * root.unit;
+        border-top-right-radius: 2 * root.unit;
+        border-bottom-left-radius: 0px;
+        border-bottom-right-radius: 0px;
+        background: Theme.modal-color;
+        drop-shadow-blur: Theme.outer-glow-blur;
+        drop-shadow-color: Theme.outer-glow-color;
+        clip: true;
+
+        animate y {
+            duration: drag-area.pressed ? 0ms : Theme.motion-fast;
+            easing: ease-out;
+        }
+
+        changed y => {
+            if (root.open && root.drag-offset >= self.height) {
+                root.drag-offset = 0px;
+                root.close-requested();
+            }
+        }
+
+        Rectangle {
+            width: parent.width;
+            height: 2.5 * root.unit;
+            background: transparent;
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 3 * root.unit;
+                height: 0.3 * root.unit;
+                border-radius: root.unit;
+                background: Theme.primary-foreground.with-alpha(0.3);
+            }
+
+            drag-area := TouchArea {
+                mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                moved => {
+                    root.drag-offset = max(0px, self.mouse-y - self.pressed-y);
+                }
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                        if (root.drag-offset > 100px) {
+                            root.drag-offset = sheet.height;
+                        } else {
+                            root.drag-offset = 0px;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (root.title != "") : Text {
+            x: 1.5 * root.unit;
+            y: 2.5 * root.unit;
+            width: parent.width - 3 * root.unit;
+            height: 2 * root.unit;
+            text: root.title;
+            color: Theme.primary-foreground;
+            font-size: 1.25 * root.unit;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        content := Rectangle {
+            x: 0px;
+            y: root.title == "" ? 2.5 * root.unit : 5 * root.unit;
+            width: parent.width;
+            height: parent.height - self.y - root.unit;
+            clip: true;
+
+            @children
+        }
+    }
+}
+
+// Context menu positioning is kept data-driven so the shell can pass pointer
+// or trigger coordinates and retain exact viewport clamping.
+export component ContextMenuSurface inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <bool> open: false;
+    in property <length> requested-x: 0px;
+    in property <length> requested-y: 0px;
+    in property <string> lock-direction: "";
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> anchor-width: 0px;
+    in property <length> anchor-height: 0px;
+    in property <length> menu-width: 16 * root.unit;
+    in property <length> menu-height: 20 * root.unit;
+    in property <bool> auto-close: true;
+    callback close-requested;
+    callback content-clicked;
+
+    private property <length> desired-x:
+        root.lock-direction == "left" ? root.anchor-x - root.menu-width :
+        (root.lock-direction == "right" ? root.anchor-x + root.anchor-width :
+        (root.lock-direction == "top" || root.lock-direction == "bottom"
+            ? root.anchor-x : root.requested-x));
+    private property <length> desired-y:
+        root.lock-direction == "top" ? root.anchor-y - root.menu-height :
+        (root.lock-direction == "bottom" ? root.anchor-y + root.anchor-height :
+        (root.lock-direction == "left" || root.lock-direction == "right"
+            ? root.anchor-y : root.requested-y));
+    private property <length> flipped-x:
+        root.lock-direction == "" && root.desired-x + root.menu-width > root.width - 8px
+            ? root.desired-x - root.menu-width
+            : root.desired-x;
+    private property <length> flipped-y:
+        root.lock-direction == "" && root.desired-y + root.menu-height > root.height - 8px
+            ? root.desired-y - root.menu-height
+            : root.desired-y;
+
+    visible: root.open;
+    opacity: root.open ? 1 : 0;
+    background: transparent;
+    forward-focus: menu-focus;
+    z: 100000;
+
+    animate opacity { duration: Theme.motion-fast; }
+
+    TouchArea {
+        clicked => {
+            root.open = false;
+            root.close-requested();
+        }
+    }
+
+    menu := Rectangle {
+        x: max(8px, min(root.flipped-x, parent.width - self.width - 8px));
+        y: max(8px, min(root.flipped-y, parent.height - self.height - 8px));
+        width: root.menu-width;
+        height: root.menu-height;
+        border-radius: Theme.border-radius;
+        background: Theme.modal-color;
+        drop-shadow-offset-y: 1.35 * root.unit;
+        drop-shadow-blur: 2.7 * root.unit;
+        drop-shadow-color: Theme.background-dark-40;
+        clip: true;
+
+        content-area := TouchArea {
+            clicked => {
+                root.content-clicked();
+                if (root.auto-close) {
+                    root.open = false;
+                    root.close-requested();
+                }
+            }
+        }
+
+        @children
+    }
+
+    menu-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.open;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.open = false;
+                root.close-requested();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// Standard row for ContextMenuSurface. The menu owns viewport placement and
+// dismissal while each row remains a normal reusable button.
+export component ContextMenuOption inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label: "";
+    in property <image> icon-source;
+    in property <bool> show-icon: false;
+    in property <bool> selected: false;
+    in property <bool> destructive: false;
+    in property <brush> selection-color: Theme.primary-accent;
+
+    height: 3.25 * root.unit;
+    border-radius: 0px;
+    background: root.has-hover || root.has-focus ? Theme.overlay-color : transparent;
+    accessible-name: root.label;
+
+    HorizontalLayout {
+        padding-left: 1.5 * root.unit;
+        padding-right: 1.5 * root.unit;
+        spacing: root.unit;
+        alignment: start;
+
+        if (root.show-icon) : VerticalLayout {
+            alignment: center;
+            Image {
+                width: 1.35 * root.unit;
+                height: 1.35 * root.unit;
+                source: root.icon-source;
+                colorize: root.destructive ? Theme.danger : Theme.primary-foreground;
+                opacity: 0.9;
+                image-fit: contain;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: root.destructive ? Theme.danger : Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if (root.selected) : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 0.5 * root.unit;
+                height: 0.5 * root.unit;
+                border-radius: self.width / 2;
+                background: root.selection-color;
+            }
+        }
+    }
+}

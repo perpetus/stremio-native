@@ -1,0 +1,49 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { ActionItem } from "types.slint";
+
+// Exact geometry port of stremio-web/ActionsGroup. Slint has no backdrop-filter,
+// so the official overlay color is retained without the CSS-only 5px blur.
+export component ActionsGroup inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[ActionItem]> items: [];
+    in property <bool> compact: false;
+    callback action-triggered(string);
+
+    private property <length> item-size: (root.compact ? 3 : 4) * root.unit;
+
+    width: root.items.length * root.item-size;
+    height: root.item-size;
+    border-radius: self.height / 2;
+    background: Theme.overlay-color;
+    clip: false;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        for action in root.items : action-button := ButtonSurface {
+            width: root.item-size;
+            height: root.item-size;
+            enabled: !action.disabled;
+            opacity: 1;
+            border-radius: self.height / 2;
+            accessible-name: action.label;
+            background: action-button.has-hover || action-button.has-focus
+                ? Theme.overlay-color
+                : transparent;
+            clicked => { root.action-triggered(action.id); }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: (root.compact ? 1.75 : 2) * root.unit;
+                height: (root.compact ? 1.75 : 2) * root.unit;
+                source: action.icon;
+                colorize: Theme.primary-foreground;
+                opacity: action-button.has-hover || action-button.has-focus || action.active ? 1 : 0.7;
+                image-fit: contain;
+                animate opacity { duration: Theme.motion-fast; }
+            }
+        }
+    }
+}

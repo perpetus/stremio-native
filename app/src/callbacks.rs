@@ -1,5 +1,5 @@
 use crate::{
-    ACTIVE_TAB, MainWindow,
+    MainWindow, NavigationController, NavigationIntent, Tab,
     app_model::{AppModel, AppModelField},
     config::AppConfig,
     models,
@@ -8,7 +8,6 @@ use crate::{
 };
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use stremio_core::{
     models::{
@@ -28,16 +27,17 @@ pub fn setup_ui_callbacks(
     native_playback_bridge: &Option<NativePlaybackBridge>,
     ui_weak: slint::Weak<MainWindow>,
     config: &AppConfig,
+    navigation: NavigationController,
 ) {
     // Hook up submodel setup functions
     models::auth::setup(ui, runtime);
-    models::board::setup(ui, runtime);
-    models::calendar::setup(ui, runtime);
-    models::discover::setup(ui, runtime);
-    models::library::setup(ui, runtime);
-    models::search::setup(ui, runtime);
-    models::addons::setup(ui, runtime);
-    models::details::setup(ui, runtime);
+    models::board::setup(ui, runtime, &navigation);
+    models::calendar::setup(ui, runtime, &navigation);
+    models::discover::setup(ui, runtime, &navigation);
+    models::library::setup(ui, runtime, &navigation);
+    models::search::setup(ui, runtime, &navigation);
+    models::addons::setup(ui, runtime, &navigation);
+    models::details::setup(ui, runtime, &navigation);
     models::settings::setup(ui, runtime, config);
 
     // Play stream action
@@ -46,6 +46,7 @@ pub fn setup_ui_callbacks(
         let runtime = runtime.clone();
         let playback_selections = playback_selections.clone();
         let native_playback_bridge = native_playback_bridge.clone();
+        let navigation = navigation.clone();
         move |selection_id| {
             tracing::info!(
                 selection_id = %selection_id,
@@ -63,11 +64,6 @@ pub fn setup_ui_callbacks(
                 return;
             };
 
-            runtime.dispatch(RuntimeAction {
-                field: None,
-                action: Action::Load(ActionLoad::Player(Box::new(selected))),
-            });
-
             if let Some(ui) = ui_weak.upgrade() {
                 let detail_title = ui.get_detail_title().to_string();
                 tracing::info!(title = %detail_title, "player page shown");
@@ -81,6 +77,7 @@ pub fn setup_ui_callbacks(
                 ui.set_player_loading(true);
                 ui.set_player_buffering(false);
                 ui.set_player_buffering_percent(0.0);
+                ui.set_player_controls_visible(true);
 
                 let is_series = ui.get_detail_is_series();
                 ui.set_player_is_series(is_series);
@@ -89,8 +86,12 @@ pub fn setup_ui_callbacks(
                     ui.set_player_active_episode_idx(ui.get_detail_active_episode_idx());
                 }
 
-                ui.set_show_player(true);
+                navigation.dispatch_and_project(&ui, NavigationIntent::OpenPlayer);
             }
+            runtime.dispatch(RuntimeAction {
+                field: None,
+                action: Action::Load(ActionLoad::Player(Box::new(selected))),
+            });
         }
     });
 
@@ -250,6 +251,28 @@ pub fn setup_ui_callbacks(
         }
     });
 
+    ui.on_navigation_back({
+        let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                navigation.dispatch_and_project(&ui, NavigationIntent::Back);
+                ui.set_details_loading(false);
+            }
+        }
+    });
+
+    ui.on_navigation_forward({
+        let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                navigation.dispatch_and_project(&ui, NavigationIntent::Forward);
+                ui.set_details_loading(false);
+            }
+        }
+    });
+
     ui.on_toggle_fullscreen({
         let ui_weak = ui_weak.clone();
         move || {
@@ -262,8 +285,12 @@ pub fn setup_ui_callbacks(
     });
 }
 
-pub fn trigger_initial_load(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
+pub fn trigger_initial_load(
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    navigation: &NavigationController,
+) {
     let rt = runtime.clone();
+    let load_calendar = navigation.active_tab_index() == Tab::Calendar.index();
     tokio::spawn(async move {
         rt.dispatch(RuntimeAction {
             field: None,
@@ -308,7 +335,7 @@ pub fn trigger_initial_load(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
                 },
             )),
         });
-        if ACTIVE_TAB.load(Ordering::Relaxed) == 5 {
+        if load_calendar {
             rt.dispatch(RuntimeAction {
                 field: None,
                 action: Action::Load(ActionLoad::Calendar(None)),

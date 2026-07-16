@@ -21,7 +21,7 @@ pub fn install_runtime_handle(handle: Handle) {
     let _ = TOKIO_HANDLE.set(handle);
 }
 
-fn spawn_on_runtime(future: impl Future<Output = ()> + Send + 'static) {
+pub fn spawn_on_runtime(future: impl Future<Output = ()> + Send + 'static) {
     if let Some(handle) = TOKIO_HANDLE.get() {
         drop(handle.spawn(future));
     } else if let Ok(handle) = Handle::try_current() {
@@ -45,14 +45,6 @@ fn get_http_client() -> &'static reqwest::Client {
             .build()
             .expect("Failed to build HTTP client")
     })
-}
-
-fn get_storage_path(key: &str) -> PathBuf {
-    let base_dir = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("storage");
-    let _ = std::fs::create_dir_all(&base_dir);
-    base_dir.join(format!("{}.json", key))
 }
 
 pub struct DesktopEnv;
@@ -172,6 +164,57 @@ impl DesktopEnv {
     }
 }
 
+static DB: OnceLock<turso::Database> = OnceLock::new();
+
+/// Returned when a database is installed after core storage has already
+/// initialized its database handle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DatabaseAlreadyInstalled;
+
+impl std::fmt::Display for DatabaseAlreadyInstalled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("core database is already installed")
+    }
+}
+
+impl std::error::Error for DatabaseAlreadyInstalled {}
+
+/// Shares the application's Turso database and its internal connection pool
+/// with the Stremio core storage environment.
+pub fn install_database(database: turso::Database) -> Result<(), DatabaseAlreadyInstalled> {
+    DB.set(database).map_err(|_| DatabaseAlreadyInstalled)
+}
+
+async fn get_db_conn() -> Result<turso::Connection, EnvError> {
+    let db = match DB.get() {
+        Some(db) => db,
+        None => {
+            let db_path = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("storage")
+                .join("stremio.db");
+            let db_path_str = db_path.to_string_lossy().into_owned();
+            let db = turso::Builder::new_local(&db_path_str)
+                .build()
+                .await
+                .map_err(|e| EnvError::Other(e.to_string()))?;
+
+            let _ = DB.set(db);
+            DB.get().ok_or_else(|| {
+                EnvError::Other("core database initialization raced and failed".to_owned())
+            })?
+        }
+    };
+    let conn = db.connect().map_err(|e| EnvError::Other(e.to_string()))?;
+
+    // Apply optimizations on every connection
+    let _ = conn.execute("PRAGMA synchronous = NORMAL;", ()).await;
+    let _ = conn.execute("PRAGMA temp_store = MEMORY;", ()).await;
+    let _ = conn.execute("PRAGMA cache_size = -10000;", ()).await;
+
+    Ok(conn)
+}
+
 impl Env for DesktopEnv {
     fn fetch<IN, OUT>(request: Request<IN>) -> TryEnvFuture<OUT>
     where
@@ -191,61 +234,58 @@ impl Env for DesktopEnv {
     fn get_storage<T: for<'de> Deserialize<'de> + Send + 'static>(
         key: &str,
     ) -> TryEnvFuture<Option<T>> {
-        let _span = tracing::info_span!("get_storage", key = %key).entered();
-        let path = get_storage_path(key);
-        let result = if !path.exists() {
-            tracing::info!(key = %key, "Storage file does not exist");
-            Ok(None)
-        } else {
-            let start = std::time::Instant::now();
-            std::fs::read_to_string(&path)
-                .map_err(|e| EnvError::StorageReadError(e.to_string()))
-                .and_then(|data| {
-                    let parse_res =
-                        serde_json::from_str(&data).map_err(|e| EnvError::Serde(e.to_string()));
-                    tracing::info!(
-                        key = %key,
-                        bytes = data.len(),
-                        elapsed_ms = start.elapsed().as_millis(),
-                        "Loaded and parsed storage file"
-                    );
-                    parse_res
-                })
-                .map(Some)
-        };
-        future::ready(result).boxed()
+        let key = key.to_owned();
+        async move {
+            let conn = get_db_conn().await?;
+            let mut rows = conn
+                .query("SELECT value FROM core_storage WHERE key = ?", [key])
+                .await
+                .map_err(|e| EnvError::StorageReadError(e.to_string()))?;
+
+            if let Some(row) = rows
+                .next()
+                .await
+                .map_err(|e| EnvError::StorageReadError(e.to_string()))?
+            {
+                let value_str: String = row
+                    .get(0)
+                    .map_err(|e| EnvError::StorageReadError(e.to_string()))?;
+                let val: T =
+                    serde_json::from_str(&value_str).map_err(|e| EnvError::Serde(e.to_string()))?;
+                Ok(Some(val))
+            } else {
+                Ok(None)
+            }
+        }
+        .boxed()
     }
 
     fn set_storage<T: Serialize>(key: &str, value: Option<&T>) -> TryEnvFuture<()> {
-        let _span = tracing::info_span!("set_storage", key = %key).entered();
-        let path = get_storage_path(key);
-        let result = match value {
-            Some(v) => {
-                let start = std::time::Instant::now();
-                serde_json::to_string_pretty(v)
-                    .map_err(|e| EnvError::Serde(e.to_string()))
-                    .and_then(|data| {
-                        let len = data.len();
-                        let write_res = std::fs::write(&path, data)
-                            .map_err(|e| EnvError::StorageWriteError(e.to_string()));
-                        tracing::info!(
-                            key = %key,
-                            bytes = len,
-                            elapsed_ms = start.elapsed().as_millis(),
-                            "Serialized and saved storage file"
-                        );
-                        write_res
-                    })
-            }
-            None => {
-                if path.exists() {
-                    let _ = std::fs::remove_file(&path);
-                    tracing::info!(key = %key, "Removed storage file");
-                }
-                Ok(())
-            }
+        let key = key.to_owned();
+        let value_str = match value {
+            Some(v) => match serde_json::to_string(v) {
+                Ok(s) => Some(s),
+                Err(e) => return future::ready(Err(EnvError::Serde(e.to_string()))).boxed(),
+            },
+            None => None,
         };
-        future::ready(result).boxed()
+        async move {
+            let conn = get_db_conn().await?;
+            if let Some(val) = value_str {
+                conn.execute(
+                    "INSERT OR REPLACE INTO core_storage (key, value) VALUES (?, ?)",
+                    (key, val),
+                )
+                .await
+                .map_err(|e| EnvError::StorageWriteError(e.to_string()))?;
+            } else {
+                conn.execute("DELETE FROM core_storage WHERE key = ?", [key])
+                    .await
+                    .map_err(|e| EnvError::StorageWriteError(e.to_string()))?;
+            }
+            Ok(())
+        }
+        .boxed()
     }
 
     fn exec_concurrent<F: Future<Output = ()> + Send + 'static>(future: F) {

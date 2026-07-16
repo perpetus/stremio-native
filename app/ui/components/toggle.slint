@@ -1,35 +1,40 @@
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
 
-export component Toggle inherits Rectangle {
+// Behavior and geometry match stremio-web/Toggle. Consumers may override the
+// semantic colors without changing its interaction contract.
+export component ToggleSwitch inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
     in-out property <bool> checked: false;
-    in property <length> unit: 16px;
+    in property <brush> active-color: Theme.secondary-accent;
+    in property <brush> inactive-color: Theme.overlay-color;
+    in property <brush> thumb-color: Theme.primary-foreground;
     callback toggled;
 
-    width: 3.25 * root.unit;
-    height: 1.8 * root.unit;
+    width: 3.2 * root.unit;
+    height: 1.7 * root.unit;
     border-radius: root.height / 2;
-    background: root.checked ? Theme.accent : Theme.overlay;
-    border-width: 1px;
-    border-color: root.checked ? Theme.accent-hover.with-alpha(0.3) : Theme.overlay;
+    background: root.checked ? root.active-color : root.inactive-color;
+    accessible-name: root.checked ? "On" : "Off";
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
 
-    animate background { duration: 120ms; }
-
-    Rectangle {
-        width: 1.35 * root.unit;
-        height: self.width;
-        x: root.checked ? parent.width - self.width - 0.225 * root.unit : 0.225 * root.unit;
-        y: (parent.height - self.height) / 2;
-        border-radius: self.width / 2;
-        background: Theme.text-primary;
-        
-        animate x { duration: 120ms; easing: ease-in-out; }
+    clicked => {
+        root.checked = !root.checked;
+        root.toggled();
     }
 
-    TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            root.checked = !root.checked;
-            root.toggled();
-        }
+    animate background { duration: Theme.motion-fast; easing: ease-in-out; }
+
+    Rectangle {
+        width: 1.2 * root.unit;
+        height: 1.2 * root.unit;
+        x: root.checked ? 1.75 * root.unit : 0.25 * root.unit;
+        y: 0.25 * root.unit;
+        border-radius: self.width / 2;
+        background: root.thumb-color;
+
+        animate x { duration: Theme.motion-fast; easing: ease-in-out; }
     }
 }

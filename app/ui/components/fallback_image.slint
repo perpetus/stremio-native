@@ -1,0 +1,37 @@
+import { Theme } from "../theme.slint";
+
+// Slint image resources are resolved by the host. The host can mark a primary
+// resource unavailable after a failed load, which switches to fallback-source
+// or to caller-provided fallback content.
+export component FallbackImage inherits Rectangle {
+    in property <image> source;
+    in property <image> fallback-source;
+    in property <bool> primary-available: root.source.width > 0;
+    in property <bool> fallback-available: root.fallback-source.width > 0;
+    in property <bool> contain: false;
+    in property <brush> background-color: transparent;
+    in property <color> colorize: transparent;
+    in property <float> image-opacity: 1;
+    out property <bool> showing-fallback: !root.primary-available;
+
+    background: root.background-color;
+    clip: true;
+
+    fallback-content := Rectangle {
+        width: parent.width;
+        height: parent.height;
+        visible: !root.primary-available && !root.fallback-available;
+        background: transparent;
+
+        @children
+    }
+
+    if (root.primary-available || root.fallback-available) : Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.primary-available ? root.source : root.fallback-source;
+        image-fit: root.contain ? ImageFit.contain : ImageFit.cover;
+        colorize: root.colorize;
+        opacity: root.image-opacity;
+    }
+}

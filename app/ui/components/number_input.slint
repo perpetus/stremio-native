@@ -1,0 +1,134 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+
+export component NumberInput inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <bool> show-buttons: false;
+    in property <bool> has-explicit-minimum: false;
+    in property <int> minimum: 0;
+    in property <bool> has-maximum: false;
+    in property <int> maximum: 0;
+    in-out property <int> value: 0;
+    callback changed(int);
+    callback submitted(int);
+
+    width: 14 * root.unit;
+    max-width: 14 * root.unit;
+    height: 3.5 * root.unit;
+    border-radius: root.height / 2;
+    background: Theme.overlay-color;
+    opacity: root.enabled ? 1 : 0.5;
+
+    public function clamp(candidate: int) -> int {
+        if (candidate < root.minimum) {
+            return root.minimum;
+        }
+        if (root.has-maximum && candidate > root.maximum) {
+            return root.maximum;
+        }
+        candidate
+    }
+
+    public function update-value(candidate: int) {
+        if (root.enabled) {
+            root.value = root.clamp(candidate);
+            editor.text = root.value;
+            root.changed(root.value);
+        }
+    }
+
+    public function increment() { root.update-value(root.value + 1); }
+    public function decrement() { root.update-value(root.value - 1); }
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        if (root.show-buttons) : decrement-button := ButtonSurface {
+            width: 3.5 * root.unit;
+            height: 3.5 * root.unit;
+            border-radius: self.width / 2;
+            enabled: root.enabled && !(root.has-explicit-minimum && root.value <= root.minimum);
+            accessible-name: "Decrease";
+            background: Theme.overlay-color;
+            clicked => { root.decrement(); }
+
+            Image {
+                x: root.unit;
+                y: root.unit;
+                width: parent.width - 2 * root.unit;
+                height: parent.height - 2 * root.unit;
+                source: @image-url("../assets/images/icons/remove.svg");
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
+        }
+
+        number-display := Rectangle {
+            horizontal-stretch: 1;
+            background: transparent;
+
+            if (root.label != "") : Text {
+                x: root.unit;
+                y: 0.55 * root.unit;
+                width: parent.width - 2 * root.unit;
+                height: root.unit;
+                text: root.label;
+                color: Theme.primary-foreground;
+                opacity: 0.7;
+                font-size: 0.8 * root.unit;
+                font-weight: 400;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            editor := TextInput {
+                x: root.unit;
+                y: root.label == "" ? 0px : 1.35 * root.unit;
+                width: parent.width - 2 * root.unit;
+                height: root.label == "" ? parent.height : 1.6 * root.unit;
+                text: root.value;
+                color: Theme.primary-foreground;
+                font-size: 1.2 * root.unit;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                single-line: true;
+                enabled: root.enabled;
+                input-type: InputType.number;
+                edited => {
+                    if (self.text.is-float()) {
+                        root.update-value(self.text.to-float());
+                    }
+                }
+                accepted => {
+                    if (!self.text.is-float()) {
+                        self.text = root.value;
+                    }
+                    root.submitted(root.value);
+                }
+            }
+        }
+
+        if (root.show-buttons) : increment-button := ButtonSurface {
+            width: 3.5 * root.unit;
+            height: 3.5 * root.unit;
+            border-radius: self.width / 2;
+            enabled: root.enabled && !(root.has-maximum && root.value >= root.maximum);
+            accessible-name: "Increase";
+            background: Theme.overlay-color;
+            clicked => { root.increment(); }
+
+            Image {
+                x: root.unit;
+                y: root.unit;
+                width: parent.width - 2 * root.unit;
+                height: parent.height - 2 * root.unit;
+                source: @image-url("../assets/images/icons/add.svg");
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
+        }
+    }
+}

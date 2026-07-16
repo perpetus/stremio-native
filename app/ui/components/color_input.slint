@@ -1,0 +1,190 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+
+// Swatch input from the official ColorInput. The picker remains a separate
+// primitive so callers can compose it inside any modal implementation.
+export component ColorInput inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <color> value: #ffffffff;
+    in property <string> transparent-label: "Transparent";
+    callback open-requested(color);
+
+    height: 3.5 * root.unit;
+    border-radius: Theme.border-radius;
+    background: root.value;
+    accessible-name: root.value.alpha == 0 ? root.transparent-label : "Choose color";
+    clicked => { root.open-requested(root.value); }
+
+    if (root.value.alpha == 0) : Text {
+        x: 0.5 * root.unit;
+        y: 0px;
+        width: parent.width - root.unit;
+        height: parent.height;
+        text: root.transparent-label;
+        color: Theme.primary-foreground;
+        font-size: root.unit;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// Native HSVA editor used in place of the web-only a-color-picker dependency.
+// It preserves the official alpha-capable color model for future theme editing.
+export component ColorPicker inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <color> value: #ffffffff;
+    in-out property <float> hue: root.value.to-hsv().hue;
+    in-out property <float> saturation: root.value.to-hsv().saturation;
+    in-out property <float> brightness: root.value.to-hsv().value;
+    in-out property <float> alpha: root.value.to-hsv().alpha;
+    callback input(color);
+
+    width: 26 * root.unit;
+    height: 20 * root.unit;
+    background: transparent;
+
+    public function commit() {
+        root.value = hsv(root.hue, root.saturation, root.brightness, root.alpha);
+        root.input(root.value);
+    }
+
+    saturation-field := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 14 * root.unit;
+        border-width: 1px;
+        border-color: Theme.background;
+        background: @linear-gradient(
+            90deg,
+            #ffffff 0%,
+            hsv(root.hue, 1, 1) 100%
+        );
+        clip: true;
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: @linear-gradient(
+                180deg,
+                #00000000 0%,
+                #000000 100%
+            );
+        }
+
+        Rectangle {
+            x: root.saturation * parent.width - self.width / 2;
+            y: (1 - root.brightness) * parent.height - self.height / 2;
+            width: root.unit;
+            height: root.unit;
+            border-radius: self.width / 2;
+            border-width: 2px;
+            border-color: Theme.primary-foreground;
+            background: transparent;
+            drop-shadow-blur: 0.2 * root.unit;
+            drop-shadow-color: Theme.background;
+        }
+
+        TouchArea {
+            mouse-cursor: MouseCursor.crosshair;
+            moved => {
+                if (self.pressed) {
+                    root.saturation = max(0, min(1, self.mouse-x / parent.width));
+                    root.brightness = max(0, min(1, 1 - self.mouse-y / parent.height));
+                    root.commit();
+                }
+            }
+            clicked => {
+                root.saturation = max(0, min(1, self.mouse-x / parent.width));
+                root.brightness = max(0, min(1, 1 - self.mouse-y / parent.height));
+                root.commit();
+            }
+        }
+    }
+
+    hue-field := Rectangle {
+        x: 0px;
+        y: 15.5 * root.unit;
+        width: parent.width;
+        height: 1.5 * root.unit;
+        border-radius: 0.75 * root.unit;
+        border-width: 1px;
+        border-color: Theme.background;
+        background: @linear-gradient(
+            90deg,
+            #ff0000 0%,
+            #ffff00 16.667%,
+            #00ff00 33.333%,
+            #00ffff 50%,
+            #0000ff 66.667%,
+            #ff00ff 83.333%,
+            #ff0000 100%
+        );
+
+        Rectangle {
+            x: (root.hue / 360) * parent.width - self.width / 2;
+            y: -0.25 * root.unit;
+            width: 0.75 * root.unit;
+            height: 2 * root.unit;
+            border-radius: self.width / 2;
+            border-width: 2px;
+            border-color: Theme.primary-foreground;
+            background: hsv(root.hue, 1, 1);
+        }
+
+        TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            moved => {
+                if (self.pressed) {
+                    root.hue = max(0, min(360, 360 * self.mouse-x / parent.width));
+                    root.commit();
+                }
+            }
+            clicked => {
+                root.hue = max(0, min(360, 360 * self.mouse-x / parent.width));
+                root.commit();
+            }
+        }
+    }
+
+    alpha-field := Rectangle {
+        x: 0px;
+        y: 18.5 * root.unit;
+        width: parent.width;
+        height: 1.5 * root.unit;
+        border-radius: 0.75 * root.unit;
+        border-width: 1px;
+        border-color: Theme.background;
+        background: @linear-gradient(
+            90deg,
+            hsv(root.hue, root.saturation, root.brightness, 0) 0%,
+            hsv(root.hue, root.saturation, root.brightness, 1) 100%
+        );
+
+        Rectangle {
+            x: root.alpha * parent.width - self.width / 2;
+            y: -0.25 * root.unit;
+            width: 0.75 * root.unit;
+            height: 2 * root.unit;
+            border-radius: self.width / 2;
+            border-width: 2px;
+            border-color: Theme.primary-foreground;
+            background: root.value;
+        }
+
+        TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            moved => {
+                if (self.pressed) {
+                    root.alpha = max(0, min(1, self.mouse-x / parent.width));
+                    root.commit();
+                }
+            }
+            clicked => {
+                root.alpha = max(0, min(1, self.mouse-x / parent.width));
+                root.commit();
+            }
+        }
+    }
+}

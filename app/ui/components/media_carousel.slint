@@ -1,0 +1,110 @@
+import { Theme } from "../theme.slint";
+import { MediaCard, MediaCardItem } from "media_card.slint";
+import { MetaRow } from "meta_row.slint";
+import { SkeletonBlock } from "feedback.slint";
+
+// Reusable catalog row shared by Board, Search, Library-like collections, and
+// deterministic previews. MetaRow owns the single horizontal viewport while
+// cards remain lightweight delegates with stable geometry.
+export component MediaCatalogRow inherits MetaRow {
+    in property <[MediaCardItem]> items: [];
+    in property <length> card-width: 12 * root.unit;
+    in property <length> card-height:
+        (root.card-width - 2 * root.unit) * Theme.poster-shape-ratio + 6 * root.unit;
+    in property <bool> show-close-button: false;
+    in property <bool> show-play-button: false;
+    in property <bool> show-menu-button: false;
+    in property <bool> enable-lazy-loading: false;
+    callback item-selected(string, string, string);
+    callback remove-clicked(string);
+    callback play-clicked(string);
+    callback menu-clicked(string);
+    callback poster-requested(string);
+
+    content-width: max(root.width, root.items.length * root.card-width);
+    content-height: root.card-height;
+
+    for card-item[index] in root.items : MediaCard {
+        x: index * root.card-width;
+        y: 0px;
+        width: root.card-width;
+        height: root.card-height;
+        unit: root.unit;
+        item: card-item;
+        show-close-button: root.show-close-button;
+        show-play-button: root.show-play-button;
+        show-menu-button: root.show-menu-button;
+        enable-lazy-loading: root.enable-lazy-loading;
+        clicked => {
+            root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
+        }
+        remove-clicked => { root.remove-clicked(card-item.id); }
+        play-clicked => { root.play-clicked(card-item.id); }
+        menu-clicked => { root.menu-clicked(card-item.id); }
+        poster-requested(url) => { root.poster-requested(url); }
+    }
+}
+
+// One virtualizable grid row. Pages retain their ListView model and delegate
+// only card rendering and spacing to this shared component.
+export component MediaCardGridRow inherits Rectangle {
+    in property <[MediaCardItem]> items: [];
+    in property <length> unit: Theme.root-font-size;
+    in property <length> card-width: 12 * root.unit;
+    in property <length> card-height:
+        (root.card-width - 2 * root.unit) * Theme.poster-shape-ratio + 6 * root.unit;
+    in property <length> spacing: 0.5 * root.unit;
+    in property <bool> enable-lazy-loading: false;
+    callback item-selected(string, string, string);
+    callback poster-requested(string);
+
+    height: root.card-height;
+    background: transparent;
+
+    for card-item[index] in root.items : MediaCard {
+        x: index * (root.card-width + root.spacing);
+        y: 0px;
+        width: root.card-width;
+        height: root.card-height;
+        unit: root.unit;
+        item: card-item;
+        enable-lazy-loading: root.enable-lazy-loading;
+        clicked => {
+            root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
+        }
+        poster-requested(url) => { root.poster-requested(url); }
+    }
+}
+
+export component MediaGridPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[int]> columns: [0, 1, 2, 3, 4, 5];
+    in property <length> card-width: 12 * root.unit;
+    in property <length> card-height:
+        (root.card-width - 2 * root.unit) * Theme.poster-shape-ratio + 6 * root.unit;
+    in property <length> spacing: 0.5 * root.unit;
+
+    height: root.card-height;
+    background: transparent;
+    clip: true;
+
+    for column in root.columns : Rectangle {
+        x: column * (root.card-width + root.spacing) + root.unit;
+        width: root.card-width - 2 * root.unit;
+        height: root.card-height;
+        background: transparent;
+
+        SkeletonBlock {
+            width: parent.width;
+            height: parent.width * Theme.poster-shape-ratio;
+            radius: Theme.border-radius;
+        }
+        SkeletonBlock {
+            x: parent.width * 0.2;
+            y: parent.width * Theme.poster-shape-ratio + root.unit;
+            width: parent.width * 0.6;
+            height: root.unit;
+            radius: Theme.compact-radius;
+        }
+    }
+}

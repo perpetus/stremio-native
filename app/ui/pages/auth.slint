@@ -1,179 +1,7 @@
 import { Theme, IconData } from "../theme.slint";
-
-component CredentialsInput inherits Rectangle {
-    in-out property <string> text;
-    in property <string> placeholder-text;
-    in property <bool> is-password: false;
-    in property <length> unit: 16px;
-
-    callback accepted;
-    callback edited;
-
-    public function focus-input() {
-        editor.focus();
-    }
-
-    height: 3.2 * root.unit;
-    border-radius: 0.75 * root.unit;
-    border-width: editor.has-focus ? Theme.focus-outline-size : 0px;
-    border-color: Theme.overlay;
-    background: Theme.overlay;
-
-    if (root.text == "") : Text {
-        x: root.unit;
-        width: parent.width - 2 * root.unit;
-        height: parent.height;
-        text: root.placeholder-text;
-        color: Theme.text-secondary;
-        opacity: 0.6;
-        font-size: root.unit;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-
-    editor := TextInput {
-        x: root.unit;
-        width: parent.width - 2 * root.unit;
-        height: parent.height;
-        text <=> root.text;
-        input-type: root.is-password ? InputType.password : InputType.text;
-        color: Theme.text-primary;
-        font-size: root.unit;
-        vertical-alignment: center;
-        single-line: true;
-        accepted => { root.accepted(); }
-        edited => { root.edited(); }
-    }
-}
-
-component StremioButton inherits Rectangle {
-    in property <string> label;
-    in property <length> unit: 16px;
-    in property <bool> enabled: true;
-    in property <bool> outlined: false;
-    in property <bool> has-icon: false;
-    in property <IconData> icon;
-    in property <brush> fill: transparent;
-    in property <brush> normal-foreground: Theme.text-primary;
-    in property <brush> hover-foreground: Theme.background;
-    in property <brush> outline-color: Theme.text-primary;
-
-    callback clicked;
-
-    height: 4 * root.unit;
-    // CSS clamps an oversized radius to half the element height. Slint does
-    // not, so express the clamped value directly to keep a true capsule.
-    border-radius: self.height / 2;
-    border-width: root.outlined || button-area.has-hover ? Theme.focus-outline-size : 0px;
-    border-color: root.outline-color;
-    background: button-area.has-hover ? (root.outlined ? root.outline-color : transparent) : root.fill;
-    opacity: root.enabled ? 1 : 0.4;
-
-    animate background, opacity { duration: 100ms; }
-
-    button-area := TouchArea {
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-    }
-
-    HorizontalLayout {
-        alignment: center;
-        spacing: root.unit;
-        padding-left: root.unit;
-        padding-right: root.unit;
-
-        if (root.has-icon) : Text {
-            width: 2 * root.unit;
-            text: root.icon.glyph;
-            font-family: root.icon.font-family;
-            font-size: 2 * root.unit;
-            color: button-area.has-hover ? root.hover-foreground : root.normal-foreground;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            animate color { duration: 120ms; }
-        }
-
-        Text {
-            text: root.label;
-            color: button-area.has-hover ? root.hover-foreground : root.normal-foreground;
-            font-size: 1.1 * root.unit;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: elide;
-            animate color { duration: 120ms; }
-        }
-    }
-}
-
-component StremioCheckbox inherits Rectangle {
-    in-out property <bool> checked;
-    in property <string> label;
-    in property <string> link-label: "";
-    in property <length> unit: 16px;
-
-    callback toggled;
-
-    height: 2.5 * root.unit;
-    // The official checkbox row intentionally stays on one line. Clamp it to
-    // the form column so localized/legal copy can never cover the options.
-    clip: true;
-
-    checkbox-area := TouchArea {
-        clicked => {
-            root.checked = !root.checked;
-            root.toggled();
-        }
-    }
-
-    Rectangle {
-        x: 0.3 * root.unit;
-        y: (parent.height - self.height) / 2;
-        width: 1.5 * root.unit;
-        height: 1.5 * root.unit;
-        border-radius: 0.3 * root.unit;
-        border-width: checkbox-area.has-hover ? Theme.focus-outline-size : 0px;
-        border-color: #ffffff33;
-        background: root.checked ? Theme.accent : Theme.overlay;
-
-        animate background { duration: 100ms; }
-
-        if (root.checked) : Text {
-            text: "✓";
-            color: Theme.text-primary;
-            font-size: 0.9 * root.unit;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-    }
-
-    HorizontalLayout {
-        x: 2.8 * root.unit;
-        width: parent.width - 2.8 * root.unit;
-        height: parent.height;
-        spacing: 0.35 * root.unit;
-        alignment: start;
-
-        Text {
-            text: root.label;
-            color: Theme.text-primary;
-            opacity: 0.6;
-            font-size: 0.8 * root.unit;
-            vertical-alignment: center;
-            overflow: elide;
-            wrap: word-wrap;
-        }
-
-        if (root.link-label != "") : Text {
-            text: root.link-label;
-            color: Theme.accent;
-            font-size: 0.8 * root.unit;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
-}
+import { PillButton } from "../components/button.slint";
+import { Checkbox } from "../components/checkbox.slint";
+import { NativeTextField } from "../components/text_input.slint";
 
 component BrandHeader inherits Rectangle {
     in property <length> unit: 16px;
@@ -237,19 +65,27 @@ component FormSection inherits VerticalLayout {
     spacing: root.unit;
     alignment: start;
 
-    CredentialsInput {
+    NativeTextField {
         unit: root.unit;
+        height: 3.2 * root.unit;
+        border-radius: 0.75 * root.unit;
+        surface-color: Theme.overlay;
+        focus-color: Theme.overlay;
         text <=> root.email;
         placeholder-text: "E-mail";
         accepted => { password-input.focus-input(); }
         edited => { root.edited(); }
     }
 
-    password-input := CredentialsInput {
+    password-input := NativeTextField {
         unit: root.unit;
+        height: 3.2 * root.unit;
+        border-radius: 0.75 * root.unit;
+        surface-color: Theme.overlay;
+        focus-color: Theme.overlay;
         text <=> root.password;
         placeholder-text: "Password";
-        is-password: true;
+        input-type: InputType.password;
         accepted => {
             if (!root.register-mode) {
                 root.submit();
@@ -258,11 +94,15 @@ component FormSection inherits VerticalLayout {
         edited => { root.edited(); }
     }
 
-    if (root.register-mode) : confirm-input := CredentialsInput {
+    if (root.register-mode) : confirm-input := NativeTextField {
         unit: root.unit;
+        height: 3.2 * root.unit;
+        border-radius: 0.75 * root.unit;
+        surface-color: Theme.overlay;
+        focus-color: Theme.overlay;
         text <=> root.confirm-password;
         placeholder-text: "Confirm password";
-        is-password: true;
+        input-type: InputType.password;
         accepted => { root.submit(); }
         edited => { root.edited(); }
     }
@@ -288,28 +128,29 @@ component FormSection inherits VerticalLayout {
     if (root.register-mode) : VerticalLayout {
         spacing: 0px;
 
-        StremioCheckbox {
+        Checkbox {
             unit: root.unit;
             checked <=> root.tos-accepted;
-            
             label: "I have read and agree with the Stremio";
             link-label: "Terms and Conditions";
-            toggled => { root.edited(); }
+            has-link: true;
+            toggled(_checked) => { root.edited(); }
         }
 
-        StremioCheckbox {
+        Checkbox {
             unit: root.unit;
             checked <=> root.privacy-accepted;
             label: "I have read and agree with the Stremio";
             link-label: "Privacy Policy";
-            toggled => { root.edited(); }
+            has-link: true;
+            toggled(_checked) => { root.edited(); }
         }
 
-        StremioCheckbox {
+        Checkbox {
             unit: root.unit;
             checked <=> root.marketing-accepted;
             label: "I agree to receive marketing communications from Stremio";
-            toggled => { root.edited(); }
+            toggled(_checked) => { root.edited(); }
         }
     }
 
@@ -321,11 +162,17 @@ component FormSection inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    StremioButton {
+    PillButton {
         unit: root.unit;
+        height: 4 * root.unit;
         label: root.register-mode ? "Sign up" : "Log in";
         enabled: !root.loading;
         outlined: true;
+        surface-color: transparent;
+        hover-color: Theme.text-primary;
+        foreground-color: Theme.text-primary;
+        hover-foreground-color: Theme.background;
+        outline-color: Theme.text-primary;
         clicked => { root.submit(); }
     }
 }
@@ -345,50 +192,70 @@ component OptionsSection inherits VerticalLayout {
     spacing: root.unit;
     alignment: start;
 
-    StremioButton {
+    PillButton {
         unit: root.unit;
+        height: 4 * root.unit;
         label: "Continue with Facebook";
         enabled: !root.loading;
-        has-icon: true;
+        show-icon: true;
         icon: root.facebook-icon;
-        fill: Theme.facebook;
+        surface-color: Theme.facebook;
+        hover-color: transparent;
         outline-color: Theme.facebook;
-        normal-foreground: Theme.text-primary;
-        hover-foreground: Theme.facebook;
+        hover-outline-color: Theme.facebook;
+        foreground-color: Theme.text-primary;
+        hover-foreground-color: Theme.facebook;
         clicked => { root.facebook-login(); }
     }
 
-    StremioButton {
+    PillButton {
         unit: root.unit;
+        height: 4 * root.unit;
         label: "Continue with Apple";
         enabled: !root.loading;
-        has-icon: true;
+        show-icon: true;
         icon: root.apple-icon;
-        fill: Theme.text-primary;
+        surface-color: Theme.text-primary;
+        hover-color: transparent;
         outline-color: Theme.text-primary;
-        normal-foreground: Theme.background;
-        hover-foreground: Theme.text-primary;
+        hover-outline-color: Theme.text-primary;
+        foreground-color: Theme.background;
+        hover-foreground-color: Theme.text-primary;
         clicked => { root.apple-login(); }
     }
 
-    StremioButton {
+    PillButton {
         unit: root.unit;
+        height: 4 * root.unit;
         label: root.register-mode ? "Log in" : "Sign up with email";
         enabled: !root.loading;
         outlined: true;
+        surface-color: transparent;
+        hover-color: Theme.text-primary;
+        foreground-color: Theme.text-primary;
+        hover-foreground-color: Theme.background;
+        outline-color: Theme.text-primary;
         clicked => { root.toggle-mode(); }
     }
 
-    if (root.register-mode) : StremioButton {
+    if (root.register-mode) : PillButton {
         unit: root.unit;
+        height: 4 * root.unit;
         label: "Guest login";
         enabled: !root.loading;
         outlined: true;
+        surface-color: transparent;
+        hover-color: Theme.text-primary;
+        foreground-color: Theme.text-primary;
+        hover-foreground-color: Theme.background;
+        outline-color: Theme.text-primary;
         clicked => { root.guest-login(); }
     }
 }
 
 export component AuthPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in-out property <string> error-message: "";
     in property <bool> loading: false;
     in property <IconData> mail-icon;
@@ -418,8 +285,7 @@ export component AuthPage inherits Rectangle {
     property <string> reset-email: "";
     property <string> reset-error: "";
     property <bool> is-wide: root.width > 1000px;
-    property <length> unit: root.width > 2800px ? 18px :
-        (root.width > 2200px ? 16px : (root.width > 1600px ? 15px : 14px));
+    in property <length> unit: Theme.root-font-size;
     property <length> compact-height: root.register-mode ? 74 * root.unit : 60 * root.unit;
 
     background: Theme.background;
@@ -583,8 +449,12 @@ export component AuthPage inherits Rectangle {
 
                 Rectangle { height: 2 * root.unit; }
 
-                CredentialsInput {
+                NativeTextField {
                     unit: root.unit;
+                    height: 3.2 * root.unit;
+                    border-radius: 0.75 * root.unit;
+                    surface-color: Theme.overlay;
+                    focus-color: Theme.overlay;
                     text <=> root.reset-email;
                     placeholder-text: "E-mail";
                     edited => { root.reset-error = ""; }
@@ -606,19 +476,28 @@ export component AuthPage inherits Rectangle {
                     height: 3.5 * root.unit;
                     spacing: root.unit;
 
-                    StremioButton {
+                    PillButton {
                         unit: root.unit;
+                        height: 3.5 * root.unit;
                         label: "Cancel";
                         outlined: true;
+                        surface-color: transparent;
+                        hover-color: Theme.text-primary;
+                        foreground-color: Theme.text-primary;
+                        hover-foreground-color: Theme.background;
+                        outline-color: Theme.text-primary;
                         clicked => { root.reset-open = false; }
                     }
-                    StremioButton {
+                    PillButton {
                         unit: root.unit;
+                        height: 3.5 * root.unit;
                         label: "Send";
-                        fill: Theme.accent;
+                        surface-color: Theme.accent;
+                        hover-color: transparent;
                         outline-color: Theme.accent;
-                        normal-foreground: Theme.text-primary;
-                        hover-foreground: Theme.accent;
+                        hover-outline-color: Theme.accent;
+                        foreground-color: Theme.text-primary;
+                        hover-foreground-color: Theme.accent;
                         clicked => { root.send-password-reset(); }
                     }
                 }
@@ -660,12 +539,15 @@ export component AuthPage inherits Rectangle {
                 spacing: root.unit;
                 alignment: center;
 
-                Image {
-                    width: 5 * root.unit;
-                    height: 5 * root.unit;
-                    source: @image-url("../assets/images/anonymous.png");
-                    image-fit: contain;
-                    opacity: 0.8;
+                HorizontalLayout {
+                    alignment: center;
+                    Image {
+                        width: 5 * root.unit;
+                        height: 5 * root.unit;
+                        source: @image-url("../assets/images/anonymous.png");
+                        image-fit: contain;
+                        opacity: 0.8;
+                    }
                 }
                 Text {
                     text: "Authenticating";
@@ -674,10 +556,16 @@ export component AuthPage inherits Rectangle {
                     horizontal-alignment: center;
                 }
                 Rectangle { height: root.unit; }
-                StremioButton {
+                PillButton {
                     unit: root.unit;
+                    height: 4 * root.unit;
                     label: "Cancel";
                     outlined: true;
+                    surface-color: transparent;
+                    hover-color: Theme.text-primary;
+                    foreground-color: Theme.text-primary;
+                    hover-foreground-color: Theme.background;
+                    outline-color: Theme.text-primary;
                     clicked => { root.cancel-auth(); }
                 }
             }

@@ -1,0 +1,148 @@
+import { Theme } from "../theme.slint";
+import { ShortcutKey, ShortcutCombo, ShortcutItem } from "types.slint";
+
+export component KeyCap inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label;
+
+    width: max(2.5 * root.unit, key-label.preferred-width + 2 * root.unit);
+    height: 2.5 * root.unit;
+    border-radius: 0.25 * root.unit;
+    background: Theme.overlay-color;
+    drop-shadow-offset-y: 4px;
+    drop-shadow-blur: 0px;
+    drop-shadow-color: Theme.surface-light.with-alpha(0.1);
+
+    key-label := Text {
+        x: root.unit;
+        width: parent.width - 2 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.primary-foreground;
+        font-size: root.unit;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+export component ShortcutComboView inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[ShortcutKey]> keys: [];
+
+    height: 2.5 * root.unit;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 0px;
+        alignment: start;
+
+        for key in root.keys : HorizontalLayout {
+            spacing: 0px;
+
+            KeyCap {
+                unit: root.unit;
+                label: key.label;
+            }
+            if (key.separator != "") : Text {
+                width: 2.5 * root.unit;
+                height: 2.5 * root.unit;
+                text: key.separator;
+                color: Theme.primary-foreground;
+                font-size: root.unit;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component ShortcutCombosView inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[ShortcutCombo]> combos: [];
+
+    height: 2.5 * root.unit;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 0px;
+        alignment: end;
+
+        for combo in root.combos : HorizontalLayout {
+            spacing: 0px;
+
+            ShortcutComboView {
+                unit: root.unit;
+                keys: combo.keys;
+            }
+            if (combo.trailing-separator != "") : Text {
+                width: 3.5 * root.unit;
+                height: 2.5 * root.unit;
+                text: combo.trailing-separator;
+                color: Theme.primary-foreground;
+                opacity: 0.6;
+                font-size: root.unit;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component ShortcutsGroup inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> title;
+    in property <[ShortcutItem]> shortcuts: [];
+
+    width: 35 * root.unit;
+    height: 3 * root.unit + root.shortcuts.length * 4.5 * root.unit;
+    background: transparent;
+
+    Text {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: root.unit;
+        text: root.title;
+        color: Theme.primary-foreground;
+        opacity: 0.6;
+        font-size: root.unit;
+        font-weight: 400;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    VerticalLayout {
+        x: 0px;
+        y: 3 * root.unit;
+        width: parent.width;
+        height: root.shortcuts.length * 4.5 * root.unit;
+        spacing: 2 * root.unit;
+
+        for shortcut in root.shortcuts : Rectangle {
+            height: 2.5 * root.unit;
+            background: transparent;
+
+            Text {
+                x: 0px;
+                y: 0px;
+                width: parent.width * 0.42;
+                height: parent.height;
+                text: shortcut.label;
+                color: Theme.primary-foreground;
+                font-size: root.unit;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            ShortcutCombosView {
+                x: parent.width * 0.42 + 2 * root.unit;
+                y: 0px;
+                width: parent.width * 0.58 - 2 * root.unit;
+                unit: root.unit;
+                combos: shortcut.combos;
+            }
+        }
+    }
+}

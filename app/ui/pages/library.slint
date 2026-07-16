@@ -1,13 +1,17 @@
 import { ListView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
-import { MediaCard, MediaCardItem } from "../components/media_card.slint";
-import { SelectField } from "../components/form_controls.slint";
+import { MediaCardItem } from "../components/media_card.slint";
+import { MediaCardGridRow, MediaGridPlaceholder } from "../components/media_carousel.slint";
+import { EmptyState } from "../components/feedback.slint";
+import { SelectField } from "../components/select.slint";
 
 export struct LibraryRow {
     cols: [MediaCardItem],
 }
 
 export component LibraryPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in property <[LibraryRow]> rows: [];
     in property <int> column-count: 6;
     in property <bool> loading: false;
@@ -16,14 +20,13 @@ export component LibraryPage inherits Rectangle {
 
     callback type-changed(string);
     callback sort-changed(string);
-    callback item-selected(string);
+    callback item-selected(string, string);
     callback poster-requested(string);
     in-out property <length> scroll-y: 0px;
 
-    property <length> unit: root.width > 2700px ? 18px :
-        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
-    property <bool> type-open: false;
-    property <bool> sort-open: false;
+    in property <length> unit: Theme.root-font-size;
+    in-out property <bool> type-open: false;
+    in-out property <bool> sort-open: false;
     property <length> grid-width: root.width - 3 * root.unit;
     property <length> card-width: root.column-count > 0
         ? (root.grid-width - (root.column-count - 1) * 0.5 * root.unit) / root.column-count
@@ -37,7 +40,7 @@ export component LibraryPage inherits Rectangle {
 
         Rectangle {
             height: 5.75 * root.unit;
-            z: 50;
+            z: 1000;
 
             HorizontalLayout {
                 padding: 1.5 * root.unit;
@@ -80,52 +83,19 @@ export component LibraryPage inherits Rectangle {
             }
         }
 
-        if (root.loading) : Rectangle {
+        if (root.loading) : MediaGridPlaceholder {
             vertical-stretch: 1;
-            Text {
-                text: "Loading library…";
-                color: Theme.text-primary;
-                opacity: 0.6;
-                font-size: 1.2 * root.unit;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+            unit: root.unit;
+            card-width: root.card-width;
+            card-height: root.card-height;
         }
 
-        if (!root.loading && root.rows.length == 0) : Rectangle {
+        if (!root.loading && root.rows.length == 0) : EmptyState {
             vertical-stretch: 1;
-            VerticalLayout {
-                alignment: center;
-                spacing: root.unit;
-                Rectangle {
-                    width: parent.width;
-                    height: 12 * root.unit;
-
-                    Image {
-                        x: (parent.width - self.width) / 2;
-                        width: 12 * root.unit;
-                        height: 12 * root.unit;
-                        source: @image-url("../assets/images/icons/library.svg");
-                        colorize: Theme.text-primary;
-                        opacity: 0.2;
-                        image-fit: contain;
-                    }
-                }
-                Text {
-                    text: "Your library is empty";
-                    color: Theme.text-primary;
-                    font-size: 2 * root.unit;
-                    font-weight: 400;
-                    horizontal-alignment: center;
-                }
-                Text {
-                    text: "Add movies and series to find them here.";
-                    color: Theme.text-primary;
-                    opacity: 0.5;
-                    font-size: root.unit;
-                    horizontal-alignment: center;
-                }
-            }
+            unit: root.unit;
+            icon-source: @image-url("../assets/images/icons/library.svg");
+            title: "Your library is empty";
+            message: "Add movies and series to find them here.";
         }
 
         if (!root.loading && root.rows.length > 0) : library-scroll := ListView {
@@ -139,20 +109,19 @@ export component LibraryPage inherits Rectangle {
                 width: root.width;
                 height: root.card-height + 0.5 * root.unit;
 
-                HorizontalLayout {
+                MediaCardGridRow {
                     x: 1.5 * root.unit;
                     width: root.grid-width;
                     height: root.card-height;
+                    unit: root.unit;
+                    items: row.cols;
+                    card-width: root.card-width;
+                    card-height: root.card-height;
                     spacing: 0.5 * root.unit;
-                    alignment: start;
-
-                    for card-item in row.cols : MediaCard {
-                        width: root.card-width;
-                        unit: root.unit;
-                        item: card-item;
-                        clicked => { root.item-selected(card-item.id); }
-                        poster-requested(url) => { root.poster-requested(url); }
+                    item-selected(id, media-type, _video-id) => {
+                        root.item-selected(id, media-type);
                     }
+                    poster-requested(url) => { root.poster-requested(url); }
                 }
             }
         }

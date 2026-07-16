@@ -1,0 +1,108 @@
+import { Theme } from "../theme.slint";
+
+// Lifecycle-equivalent port of DelayedRenderer. Increment reset-key when the
+// caller needs the one-shot delay to start again for a new data request.
+export component DelayedRenderer inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <duration> delay: 500ms;
+    in property <int> reset-key: 0;
+    out property <bool> ready: false;
+    callback became-ready;
+
+    background: transparent;
+
+    changed enabled => {
+        if (root.enabled) {
+            root.ready = false;
+            delay-timer.restart();
+        } else {
+            delay-timer.stop();
+            root.ready = false;
+        }
+    }
+
+    changed reset-key => {
+        root.ready = false;
+        if (root.enabled) {
+            delay-timer.restart();
+        }
+    }
+
+    delay-timer := Timer {
+        interval: root.delay;
+        running: root.enabled && !root.ready;
+        triggered => {
+            self.stop();
+            root.ready = true;
+            root.became-ready();
+        }
+    }
+
+    content := Rectangle {
+        width: parent.width;
+        height: parent.height;
+        visible: root.ready;
+        background: transparent;
+
+        @children
+    }
+}
+
+// Generic fade / slide-left / slide-up wrapper following the official class
+// transitions. Content remains mounted until its exit transition completes.
+export component VisibilityTransition inherits Rectangle {
+    in property <bool> when: false;
+    in property <string> kind: "fade";
+    in property <duration> duration:
+        root.kind == "fade" ? Theme.motion-fast : Theme.motion-panel;
+    in property <bool> motion-enabled: true;
+    out property <bool> mounted: root.when;
+    callback entered;
+    callback exited;
+
+    background: transparent;
+    visible: root.mounted;
+    clip: false;
+
+    changed when => {
+        exit-timer.stop();
+        if (root.when) {
+            root.mounted = true;
+            root.entered();
+        } else if (root.mounted) {
+            exit-timer.restart();
+        }
+    }
+
+    exit-timer := Timer {
+        interval: root.motion-enabled ? root.duration : 0ms;
+        running: false;
+        triggered => {
+            self.stop();
+            root.mounted = false;
+            root.exited();
+        }
+    }
+
+    content := Rectangle {
+        x: root.kind == "slide-left" && !root.when ? root.width : 0px;
+        y: root.kind == "slide-up" && !root.when ? root.height : 0px;
+        width: parent.width;
+        height: parent.height;
+        opacity: root.kind == "fade" && !root.when ? 0 : 1;
+        background: transparent;
+
+        animate x, y {
+            duration: root.duration;
+            easing: cubic-bezier(0.32, 0, 0.67, 0);
+            enabled: root.motion-enabled;
+        }
+        animate opacity {
+            duration: root.duration;
+            easing: cubic-bezier(0.32, 0, 0.67, 0);
+            enabled: root.motion-enabled;
+        }
+
+        @children
+    }
+}

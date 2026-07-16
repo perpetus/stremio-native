@@ -1,0 +1,565 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { ActionsGroup } from "action_group.slint";
+import { SkeletonBlock } from "feedback.slint";
+import { HorizontalScroll } from "horizontal_scroll.slint";
+import { MetaLinkItem, MetaLinkGroup } from "types.slint";
+
+export component MetaActionButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> icon-source;
+    in property <string> label: "";
+    in property <bool> tooltip: false;
+    in property <bool> emphasized: false;
+
+    width: root.tooltip ? 4 * root.unit
+        : max(4 * root.unit, label-measure.preferred-width + 6.75 * root.unit);
+    height: 4 * root.unit;
+    border-radius: self.height / 2;
+    background: root.emphasized
+        ? (root.has-hover ? transparent : Theme.secondary-accent)
+        : (root.has-hover || root.has-focus ? transparent : Theme.overlay-color);
+    border-width: root.has-hover || root.has-focus ? Theme.focus-outline-size : 0px;
+    border-color: root.emphasized ? Theme.secondary-accent : Theme.primary-foreground;
+    accessible-name: root.label;
+
+    label-measure := Text {
+        visible: false;
+        text: root.label;
+        font-size: root.unit;
+        font-weight: 500;
+    }
+
+    Image {
+        x: root.tooltip
+            ? (parent.width - self.width) / 2
+            : 2 * root.unit;
+        y: (parent.height - self.height) / 2;
+        width: 1.75 * root.unit;
+        height: 1.75 * root.unit;
+        source: root.icon-source;
+        colorize: Theme.primary-foreground;
+        opacity: 0.9;
+        image-fit: contain;
+    }
+
+    if (!root.tooltip && root.label != "") : Text {
+        x: 4.75 * root.unit;
+        width: parent.width - 6.75 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.primary-foreground;
+        opacity: 0.9;
+        font-size: root.unit;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    if (root.tooltip && root.label != "") : Text {
+        x: -2 * root.unit;
+        y: -3 * root.unit;
+        width: parent.width + 4 * root.unit;
+        height: 2.4 * root.unit;
+        text: root.label;
+        color: Theme.primary-foreground;
+        opacity: root.has-hover || root.has-focus ? 0.7 : 0;
+        font-size: root.unit;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        animate opacity { duration: Theme.motion-panel; }
+    }
+}
+
+export component MetaLinkChip inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <MetaLinkItem> link;
+    in property <string> label: root.link.label;
+    in property <string> value: root.link.value;
+
+    width: label-measure.preferred-width + 2.5 * root.unit;
+    height: 2.4 * root.unit;
+    border-radius: self.height / 2;
+    border-width: root.has-focus ? Theme.focus-outline-size : 0px;
+    border-color: Theme.primary-foreground;
+    background: root.has-hover || root.has-focus
+        ? Theme.surface-light-30
+        : Theme.overlay-color;
+    accessible-name: root.label;
+
+    label-measure := Text {
+        visible: false;
+        text: root.label;
+        font-size: root.unit;
+        font-weight: 500;
+    }
+
+    Text {
+        x: 1.25 * root.unit;
+        width: parent.width - 2.5 * root.unit;
+        height: parent.height;
+        text: root.label;
+        color: Theme.primary-foreground;
+        font-size: root.unit;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// String-backed metadata links let Rust pages pass their existing lightweight
+// models while sharing the exact MetaPreview chip and scroll behavior.
+export component MetaStringLinks inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label: "";
+    in property <[string]> values: [];
+    callback link-selected(string);
+
+    height: (root.label != "" ? 1.7 * root.unit : 0px) + 2.4 * root.unit;
+    background: transparent;
+    clip: true;
+
+    VerticalLayout {
+        width: parent.width;
+        height: parent.height;
+        spacing: root.label != "" ? 0.7 * root.unit : 0px;
+        alignment: start;
+
+        if (root.label != "") : Text {
+            horizontal-stretch: 1;
+            height: root.unit;
+            text: root.label;
+            color: Theme.primary-foreground;
+            opacity: 0.3;
+            font-size: 0.95 * root.unit;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        HorizontalScroll {
+            horizontal-stretch: 1;
+            height: 2.4 * root.unit;
+            unit: root.unit;
+            content-width: max(root.width, link-row.preferred-width);
+            content-height: self.height;
+            // A solid edge scrim reads as a black rectangle when this row is
+            // used over drawers and artwork. Clipping plus drag scrolling is
+            // enough to communicate the remaining horizontal content.
+            show-edge-fades: false;
+            fade-surface-color: Theme.background;
+
+            link-row := HorizontalLayout {
+                // Keep short metadata groups flush-left. A content-sized row
+                // inside ScrollView is centered by Slint's child layout when
+                // it is narrower than the viewport; spanning the viewport and
+                // using start alignment matches the web flex row.
+                x: 0px;
+                y: 0px;
+                width: max(root.width, self.preferred-width);
+                height: 2.4 * root.unit;
+                spacing: 0.75 * root.unit;
+                alignment: start;
+
+                for value in root.values : MetaLinkChip {
+                    unit: root.unit;
+                    label: value;
+                    value: value;
+                    clicked => { root.link-selected(value); }
+                }
+            }
+        }
+    }
+}
+
+export component MetaLinks inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <MetaLinkGroup> group;
+    callback link-selected(string);
+
+    height: (root.group.label != "" ? 1.7 * root.unit : 0px) + 3.15 * root.unit;
+    background: transparent;
+    clip: true;
+
+    if (root.group.label != "") : Text {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: root.unit;
+        text: root.group.label;
+        color: Theme.primary-foreground;
+        opacity: 0.3;
+        font-size: 0.95 * root.unit;
+        font-weight: 700;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    HorizontalLayout {
+        x: 0px;
+        y: root.group.label != "" ? 1.7 * root.unit : 0px;
+        width: parent.width;
+        height: 2.4 * root.unit;
+        spacing: 0.75 * root.unit;
+        alignment: start;
+
+        for link in root.group.links : MetaLinkChip {
+            unit: root.unit;
+            link: link;
+            clicked => { root.link-selected(link.value); }
+        }
+    }
+}
+
+// Reusable metadata presentation shared by Discover, Details, and the player
+// drawer. Data normalization and URL policy remain in the Rust/controller layer.
+export component MetaPreview inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <bool> compact: false;
+    in property <string> name: "";
+    in property <image> logo;
+    in property <bool> has-logo: root.logo.width > 0;
+    in property <image> background-image;
+    in property <bool> has-background: root.background-image.width > 0;
+    in property <string> runtime: "";
+    in property <string> release-info: "";
+    in property <string> imdb-label: "";
+    in property <string> description: "";
+    in property <[MetaLinkGroup]> link-groups: [];
+    in property <[string]> genres: [];
+    in property <[string]> cast: [];
+    in property <[string]> directors: [];
+    in property <bool> show-trailer: false;
+    in property <bool> show-library-actions: false;
+    in property <bool> in-library: false;
+    in property <bool> watched: false;
+    in property <bool> show-title-action: false;
+    in property <bool> show-ratings: false;
+    in property <bool> liked: false;
+    in property <bool> loved: false;
+    in property <bool> ratings-enabled: true;
+    in property <bool> show-share: false;
+    callback trailer-requested;
+    callback library-requested(bool);
+    callback watched-requested(bool);
+    callback show-requested;
+    callback rating-requested(string, bool);
+    callback share-requested;
+    callback imdb-requested;
+    callback link-selected(string);
+
+    private property <length> actions-height: root.compact ? 5.5 * root.unit : 8.5 * root.unit;
+
+    background: transparent;
+    clip: false;
+
+    // Slint has no arbitrary image blur. Keep the exact official expansion and
+    // opacity; callers can omit this layer when an unblurred image is unsuitable.
+    if (root.has-background) : Image {
+        x: -10px;
+        y: -10px;
+        width: parent.width + 20px;
+        height: parent.height + 20px;
+        source: root.background-image;
+        image-fit: cover;
+        opacity: 0.3;
+        z: -1;
+    }
+
+    info-scroll := ScrollView {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: max(0px, parent.height - root.actions-height);
+        viewport-width: parent.width;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+
+        VerticalLayout {
+            width: parent.width;
+            spacing: root.unit;
+
+            Rectangle {
+                height: root.compact ? 6 * root.unit : 9 * root.unit;
+                background: transparent;
+
+                if (root.has-logo) : Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.logo;
+                    image-fit: contain;
+                }
+                if (!root.has-logo) : Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.name;
+                    color: Theme.surface-light-90;
+                    font-size: 1.7 * root.unit;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+            }
+
+            if (root.runtime != "" || root.release-info != "" || root.imdb-label != "") : Rectangle {
+                height: 3 * root.unit;
+                background: transparent;
+
+                HorizontalLayout {
+                    spacing: root.compact ? 0.8 * root.unit : 3 * root.unit;
+                    alignment: root.compact ? space-between : start;
+
+                    if (root.runtime != "") : Text {
+                        text: root.runtime;
+                        color: Theme.primary-foreground;
+                        font-size: 1.25 * root.unit;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    if (root.release-info != "") : Text {
+                        text: root.release-info;
+                        color: Theme.primary-foreground;
+                        font-size: 1.25 * root.unit;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    if (root.imdb-label != "") : imdb-button := ButtonSurface {
+                        width: imdb-measure.preferred-width + 5 * root.unit;
+                        height: 3 * root.unit;
+                        border-width: 0px;
+                        background: transparent;
+                        accessible-name: "IMDb " + root.imdb-label;
+                        clicked => { root.imdb-requested(); }
+
+                        imdb-measure := Text {
+                            visible: false;
+                            text: root.imdb-label;
+                            font-size: 1.25 * root.unit;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            x: 0.5 * root.unit;
+                            width: imdb-measure.preferred-width;
+                            height: parent.height;
+                            text: root.imdb-label;
+                            color: Theme.primary-foreground;
+                            font-size: 1.25 * root.unit;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                        Image {
+                            x: 1.5 * root.unit + imdb-measure.preferred-width;
+                            y: (parent.height - self.height) / 2;
+                            width: 3 * root.unit;
+                            height: 3 * root.unit;
+                            source: @image-url("../assets/images/icons/imdb.svg");
+                            colorize: Theme.imdb;
+                            image-fit: contain;
+                        }
+                    }
+                }
+            }
+
+            if (root.compact && root.description != "") : Text {
+                width: parent.width;
+                min-height: 4 * root.unit;
+                text: root.description;
+                color: Theme.primary-foreground;
+                font-size: root.unit;
+                wrap: word-wrap;
+            }
+
+            for group in root.link-groups : MetaLinks {
+                width: parent.width;
+                unit: root.unit;
+                group: group;
+                link-selected(value) => { root.link-selected(value); }
+            }
+
+            if (root.genres.length > 0) : MetaStringLinks {
+                width: parent.width;
+                unit: root.unit;
+                label: "GENRES";
+                values: root.genres;
+                link-selected(value) => { root.link-selected(value); }
+            }
+
+            if (root.cast.length > 0) : MetaStringLinks {
+                width: parent.width;
+                unit: root.unit;
+                label: "CAST";
+                values: root.cast;
+                link-selected(value) => { root.link-selected(value); }
+            }
+
+            if (root.directors.length > 0) : MetaStringLinks {
+                width: parent.width;
+                unit: root.unit;
+                label: "DIRECTORS";
+                values: root.directors;
+                link-selected(value) => { root.link-selected(value); }
+            }
+
+            if (!root.compact && root.description != "") : Rectangle {
+                min-height: 6 * root.unit;
+                background: transparent;
+
+                Text {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: 1.2 * root.unit;
+                    text: "SUMMARY";
+                    color: Theme.primary-foreground;
+                    opacity: 0.3;
+                    font-size: 0.95 * root.unit;
+                    font-weight: 700;
+                }
+                Text {
+                    x: 0px;
+                    y: 1.5 * root.unit;
+                    width: parent.width;
+                    min-height: 4.5 * root.unit;
+                    text: root.description;
+                    color: Theme.primary-foreground;
+                    font-size: root.unit;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    actions := Rectangle {
+        x: 0px;
+        y: parent.height - root.actions-height;
+        width: parent.width;
+        height: root.actions-height;
+        background: transparent;
+
+        HorizontalLayout {
+            y: root.compact ? 1.5 * root.unit : 3.5 * root.unit;
+            width: parent.width;
+            height: 4 * root.unit;
+            spacing: root.compact ? 0.5 * root.unit : root.unit;
+            alignment: root.compact ? space-between : start;
+
+            if (root.show-trailer) : MetaActionButton {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/trailer.svg");
+                label: "Trailer";
+                tooltip: root.compact;
+                clicked => { root.trailer-requested(); }
+            }
+
+            if (root.show-library-actions) : ActionsGroup {
+                unit: root.unit;
+                compact: root.compact;
+                items: [
+                    {
+                        id: "library",
+                        label: root.in-library ? "Remove from Library" : "Add to Library",
+                        icon: root.in-library
+                            ? @image-url("../assets/images/icons/remove-from-library.svg")
+                            : @image-url("../assets/images/icons/add-to-library.svg"),
+                        disabled: false,
+                        active: root.in-library
+                    },
+                    {
+                        id: "watched",
+                        label: root.watched ? "Mark as unwatched" : "Mark as watched",
+                        icon: root.watched
+                            ? @image-url("../assets/images/icons/eye-off.svg")
+                            : @image-url("../assets/images/icons/eye.svg"),
+                        disabled: false,
+                        active: root.watched
+                    }
+                ];
+                action-triggered(id) => {
+                    if (id == "library") {
+                        root.library-requested(!root.in-library);
+                    } else if (id == "watched") {
+                        root.watched-requested(!root.watched);
+                    }
+                }
+            }
+
+            if (root.compact && root.show-title-action) : MetaActionButton {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/play.svg");
+                label: "Show";
+                emphasized: true;
+                clicked => { root.show-requested(); }
+            }
+
+            if (!root.compact && root.show-ratings) : ActionsGroup {
+                unit: root.unit;
+                items: [
+                    {
+                        id: "like",
+                        label: root.liked ? "Unlike" : "Like",
+                        icon: root.liked
+                            ? @image-url("../assets/images/icons/thumbs-up.svg")
+                            : @image-url("../assets/images/icons/thumbs-up-outline.svg"),
+                        disabled: !root.ratings-enabled,
+                        active: root.liked
+                    },
+                    {
+                        id: "love",
+                        label: root.loved ? "Unlove" : "Love",
+                        icon: root.loved
+                            ? @image-url("../assets/images/icons/heart.svg")
+                            : @image-url("../assets/images/icons/heart-outline.svg"),
+                        disabled: !root.ratings-enabled,
+                        active: root.loved
+                    }
+                ];
+                action-triggered(id) => {
+                    root.rating-requested(id, id == "like" ? !root.liked : !root.loved);
+                }
+            }
+
+            if (!root.compact && root.show-share) : MetaActionButton {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/share.svg");
+                label: "Share";
+                tooltip: true;
+                clicked => { root.share-requested(); }
+            }
+        }
+    }
+}
+
+export component MetaPreviewPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+
+    background: transparent;
+
+    SkeletonBlock {
+        x: 0px;
+        y: 0px;
+        width: min(parent.width, 20 * root.unit);
+        height: 8 * root.unit;
+        radius: Theme.border-radius;
+    }
+    SkeletonBlock { x: 0px; y: 9 * root.unit; width: 5 * root.unit; height: 1.4 * root.unit; }
+    SkeletonBlock { x: 6 * root.unit; y: 9 * root.unit; width: 5 * root.unit; height: 1.4 * root.unit; }
+    SkeletonBlock { x: 0px; y: 12 * root.unit; width: 6.5 * root.unit; height: 1.6 * root.unit; }
+    SkeletonBlock { x: 0px; y: 14 * root.unit; width: 10 * root.unit; height: 1.2 * root.unit; }
+    SkeletonBlock { x: 0px; y: 17 * root.unit; width: 6.5 * root.unit; height: 1.6 * root.unit; }
+    SkeletonBlock { x: 0px; y: 19 * root.unit; width: 10 * root.unit; height: 1.2 * root.unit; }
+    SkeletonBlock { x: 0px; y: 22 * root.unit; width: 6.5 * root.unit; height: 1.6 * root.unit; }
+    SkeletonBlock { x: 0px; y: 24 * root.unit; width: 10 * root.unit; height: 1.2 * root.unit; }
+    SkeletonBlock {
+        x: 0px;
+        y: parent.height - 5 * root.unit;
+        width: min(parent.width, 18 * root.unit);
+        height: 4 * root.unit;
+        radius: 4 * root.unit;
+    }
+}

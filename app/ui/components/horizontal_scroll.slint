@@ -1,0 +1,66 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+
+// Reusable one-axis scroll viewport matching stremio-web/HorizontalScroll.
+// CSS mask-image has no Slint equivalent. Configurable edge scrims provide the
+// same result over a solid surface and may be disabled over non-solid content.
+export component HorizontalScroll inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <length> content-width: root.width;
+    in property <length> content-height: root.height;
+    in-out property <length> scroll-offset: 0px;
+    in property <bool> show-edge-fades: true;
+    in property <color> fade-surface-color: Theme.background;
+    in property <float> fade-ratio: 0.1;
+    out property <bool> at-left: -root.scroll-offset <= 1px;
+    out property <bool> at-right:
+        -root.scroll-offset + root.width + 1px >= root.content-width;
+    callback scrolled(length);
+
+    clip: true;
+    background: transparent;
+
+    scroll := ScrollView {
+        width: parent.width;
+        height: parent.height;
+        viewport-width: max(root.width, root.content-width);
+        viewport-height: root.content-height;
+        viewport-x <=> root.scroll-offset;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+        scrolled => { root.scrolled(root.scroll-offset); }
+
+        content := Rectangle {
+            width: max(root.width, root.content-width);
+            height: root.content-height;
+            background: transparent;
+
+            @children
+        }
+    }
+
+    if (root.show-edge-fades && !root.at-left) : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: max(1px, parent.width * root.fade-ratio);
+        height: parent.height;
+        background: @linear-gradient(
+            90deg,
+            root.fade-surface-color 0%,
+            root.fade-surface-color.with-alpha(0) 100%
+        );
+    }
+
+    if (root.show-edge-fades && !root.at-right) : Rectangle {
+        x: parent.width - self.width;
+        y: 0px;
+        width: max(1px, parent.width * root.fade-ratio);
+        height: parent.height;
+        background: @linear-gradient(
+            90deg,
+            root.fade-surface-color.with-alpha(0) 0%,
+            root.fade-surface-color 100%
+        );
+    }
+}

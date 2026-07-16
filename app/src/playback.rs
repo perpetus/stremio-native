@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        RwLock,
-        atomic::{AtomicU64, Ordering},
-    },
-};
+use std::{collections::HashMap, sync::RwLock};
 
 use stremio_core::{
     models::{common::Loadable, meta_details::MetaDetails, player::Selected},
@@ -26,17 +20,24 @@ struct RegisteredSelection {
     stream_name: String,
 }
 
+fn stream_selection_id(resource_index: usize, stream_index: usize) -> String {
+    format!("stream:{resource_index}:{stream_index}")
+}
+
 /// Keeps full core stream selections out of the Slint presentation model.
 #[derive(Default)]
 pub struct PlaybackSelections {
-    next_id: AtomicU64,
     entries: RwLock<HashMap<String, RegisteredSelection>>,
     trailer_id: RwLock<Option<String>>,
 }
 
 impl PlaybackSelections {
     /// Atomically replaces visible stream selections and returns their UI views.
-    pub fn rebuild(&self, details: &MetaDetails, addons: &[Descriptor]) -> Vec<StreamSelectionView> {
+    pub fn rebuild(
+        &self,
+        details: &MetaDetails,
+        addons: &[Descriptor],
+    ) -> Vec<StreamSelectionView> {
         let meta_request = details
             .selected
             .as_ref()
@@ -50,6 +51,10 @@ impl PlaybackSelections {
 
         let mut next_entries = HashMap::new();
         let mut views = Vec::new();
+        let provider_names: HashMap<&str, &str> = addons
+            .iter()
+            .map(|addon| (addon.transport_url.as_str(), addon.manifest.name.as_str()))
+            .collect();
 
         let trailer_id = details
             .meta_items
@@ -61,7 +66,7 @@ impl PlaybackSelections {
                 meta.preview.trailer_streams.first().cloned()
             })
             .map(|stream| {
-                let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
+                let id = "trailer".to_owned();
                 next_entries.insert(
                     id.clone(),
                     RegisteredSelection {
@@ -77,13 +82,15 @@ impl PlaybackSelections {
                 id
             });
 
-        for resource in &details.streams {
+        for (resource_index, resource) in details.streams.iter().enumerate() {
             let Some(Loadable::Ready(streams)) = &resource.content else {
                 continue;
             };
 
-            for stream in streams {
-                let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
+            for (stream_index, stream) in streams.iter().enumerate() {
+                // Stable IDs let the event loop skip replacing an unchanged
+                // Slint stream model when an unrelated core field updates.
+                let id = stream_selection_id(resource_index, stream_index);
                 let name = stream.name.clone().unwrap_or_else(|| "Stream".to_owned());
                 let description = stream.description.clone().unwrap_or_default();
                 let subtitles_path = ResourcePath {
@@ -114,10 +121,9 @@ impl PlaybackSelections {
                     id,
                     name,
                     description,
-                    provider: addons
-                        .iter()
-                        .find(|addon| addon.transport_url == resource.request.base)
-                        .map(|addon| addon.manifest.name.clone())
+                    provider: provider_names
+                        .get(resource.request.base.as_str())
+                        .map(|name| (*name).to_owned())
                         .unwrap_or_else(|| {
                             resource
                                 .request
@@ -157,5 +163,16 @@ impl PlaybackSelections {
         entries
             .get(id)
             .map(|entry| (entry.selected.clone(), entry.stream_name.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stream_selection_id;
+
+    #[test]
+    fn stream_selection_ids_are_stable_and_resource_scoped() {
+        assert_eq!(stream_selection_id(2, 7), "stream:2:7");
+        assert_ne!(stream_selection_id(1, 0), stream_selection_id(0, 1));
     }
 }

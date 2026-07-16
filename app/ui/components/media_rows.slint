@@ -1,0 +1,323 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { FallbackImage } from "fallback_image.slint";
+import { SkeletonBlock } from "feedback.slint";
+
+export component StreamRow inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> name;
+    in property <string> description;
+    in property <bool> selected: false;
+    callback play;
+
+    height: 5.4 * root.unit;
+    border-radius: Theme.border-radius;
+    background: root.selected || area.has-hover ? Theme.overlay-hover : transparent;
+
+    accessible-role: button;
+    accessible-label: root.name + " " + root.description;
+    accessible-action-default => { root.play(); }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.play(); }
+    }
+
+    HorizontalLayout {
+        padding-left: root.unit;
+        padding-right: root.unit;
+        spacing: root.unit;
+        alignment: center;
+
+        Text {
+            width: 7.5 * root.unit;
+            text: root.name;
+            color: Theme.text-primary;
+            opacity: 0.88;
+            font-size: 1.05 * root.unit;
+            font-weight: 500;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.description;
+            color: Theme.text-primary;
+            opacity: 0.86;
+            font-size: 0.95 * root.unit;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        if (root.selected || area.has-hover) : Rectangle {
+            width: 3 * root.unit;
+            height: 3 * root.unit;
+            border-radius: self.width / 2;
+            background: Theme.success;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.4 * root.unit;
+                height: 1.4 * root.unit;
+                source: @image-url("../assets/images/icons/play.svg");
+                colorize: Theme.text-primary;
+                image-fit: contain;
+            }
+        }
+    }
+}
+
+export component EpisodeRow inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> title;
+    in property <string> released;
+    in property <image> thumbnail;
+    in property <int> episode-number;
+    in property <bool> upcoming: false;
+    in property <bool> watched: false;
+    in property <bool> season-watched: false;
+    in property <bool> scheduled: false;
+    in property <bool> has-thumbnail: root.thumbnail.width > 0;
+    in property <float> progress: 0;
+    in property <bool> show-progress: root.progress > 0;
+    in property <bool> blur-spoiler: false;
+    in property <bool> selected-row: false;
+    callback selected;
+    callback toggle-watched;
+    callback toggle-season-watched;
+    callback context-requested;
+
+    height: 6.5 * root.unit;
+    background: transparent;
+    private property <bool> selection-highlight: false;
+
+    changed selected-row => {
+        if (root.selected-row) {
+            root.selection-highlight = true;
+            selection-timer.restart();
+        } else {
+            root.selection-highlight = false;
+            selection-timer.stop();
+        }
+    }
+
+    selection-timer := Timer {
+        interval: 3s;
+        running: false;
+        triggered => {
+            self.stop();
+            root.selection-highlight = false;
+        }
+    }
+
+    video-button := ButtonSurface {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 6 * root.unit;
+        enabled: !root.upcoming;
+        opacity: root.upcoming ? 0.45 : 1;
+        border-radius: Theme.border-radius;
+        border-width: 0.15 * root.unit;
+        border-color: root.selection-highlight ? Theme.primary-accent : transparent;
+        background: self.has-hover || self.has-focus || root.selected-row
+            ? Theme.overlay-color
+            : transparent;
+        accessible-name: "Episode " + root.episode-number + " " + root.title;
+        long-press-enabled: true;
+        clicked => { root.selected(); }
+        long-pressed => { root.context-requested(); }
+
+        animate background { duration: Theme.motion-fast; }
+        animate border-color { duration: 3s; easing: ease-in-out; }
+
+        thumbnail-frame := Rectangle {
+            visible: root.has-thumbnail;
+            x: 0.5 * root.unit;
+            y: 0.5 * root.unit;
+            width: 8 * root.unit;
+            height: 5 * root.unit;
+            border-radius: 0.3 * root.unit;
+            background: Theme.overlay-color;
+            clip: true;
+
+            FallbackImage {
+                width: parent.width;
+                height: parent.height;
+                source: root.thumbnail;
+                primary-available: root.thumbnail.width > 0;
+                image-opacity: 0.9;
+                background-color: Theme.overlay-color;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 3 * root.unit;
+                    height: 3 * root.unit;
+                    source: @image-url("../assets/images/icons/symbol.svg");
+                    colorize: Theme.primary-foreground;
+                    opacity: 0.25;
+                    image-fit: contain;
+                }
+            }
+
+            if (root.show-progress && root.has-thumbnail) : Rectangle {
+                x: 0.5 * root.unit;
+                y: parent.height - 0.9 * root.unit;
+                width: parent.width - root.unit;
+                height: 0.4 * root.unit;
+                border-radius: Theme.border-radius;
+                background: Theme.primary-foreground.with-alpha(0.2);
+                clip: true;
+
+                Rectangle {
+                    x: 0px;
+                    width: parent.width * max(0, min(100, root.progress)) / 100;
+                    height: parent.height;
+                    background: Theme.primary-accent;
+                }
+            }
+        }
+
+        info := Rectangle {
+            x: root.has-thumbnail ? 10 * root.unit : root.unit;
+            y: 0.5 * root.unit;
+            width: parent.width - self.x - 0.5 * root.unit;
+            height: 5 * root.unit;
+            background: transparent;
+
+            Text {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 2.4 * root.unit;
+                text: (root.episode-number > 0 ? root.episode-number + ". " : "")
+                    + root.title;
+                color: Theme.primary-foreground;
+                font-size: root.unit;
+                font-weight: 500;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            Text {
+                x: 0px;
+                y: 3.4 * root.unit;
+                width: max(0px, parent.width - badges.width - 0.5 * root.unit);
+                height: 1.2 * root.unit;
+                text: root.released != "" ? root.released : (root.scheduled ? "TBA" : "");
+                color: Theme.primary-foreground;
+                opacity: 0.44;
+                font-size: 0.8 * root.unit;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            badges := Rectangle {
+                x: parent.width - self.width;
+                y: 3.2 * root.unit;
+                width: (root.upcoming && !root.watched ? 6.5 * root.unit : 0px)
+                    + (root.watched ? 7.5 * root.unit : 0px)
+                    + (root.upcoming && root.watched ? 0.5 * root.unit : 0px);
+                height: 1.6 * root.unit;
+                background: transparent;
+
+                if (root.upcoming && !root.watched) : Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: 6.5 * root.unit;
+                    height: parent.height;
+                    border-radius: 0.3 * root.unit;
+                    background: Theme.secondary-accent;
+
+                    Text {
+                        width: parent.width;
+                        height: parent.height;
+                        text: "UPCOMING";
+                        color: Theme.secondary-foreground;
+                        font-size: 0.8 * root.unit;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                if (root.watched) : watched-button := ButtonSurface {
+                    x: parent.width - self.width;
+                    y: 0px;
+                    width: 7.5 * root.unit;
+                    height: parent.height;
+                    border-radius: 0.3 * root.unit;
+                    background: Theme.tertiary-accent;
+                    accessible-name: "Mark as unwatched";
+                    clicked => { root.toggle-watched(); }
+
+                    HorizontalLayout {
+                        padding-left: 0.5 * root.unit;
+                        padding-right: 0.5 * root.unit;
+                        spacing: 0.25 * root.unit;
+                        alignment: center;
+
+                        Image {
+                            width: 1.15 * root.unit;
+                            height: 1.15 * root.unit;
+                            source: @image-url("../assets/images/icons/eye.svg");
+                            colorize: Theme.secondary-foreground;
+                            image-fit: contain;
+                        }
+                        Text {
+                            text: "WATCHED";
+                            color: Theme.secondary-foreground;
+                            font-size: 0.8 * root.unit;
+                            font-weight: 800;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Public name retained from stremio-web. EpisodeRow remains as a descriptive
+// compatibility name for existing native call sites.
+export component Video inherits EpisodeRow { }
+
+export component VideoPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <bool> has-thumbnail: false;
+
+    private property <length> info-x: root.has-thumbnail ? 10 * root.unit : root.unit;
+    private property <length> info-width: max(0px, root.width - root.info-x - root.unit);
+
+    height: 6.5 * root.unit;
+    background: transparent;
+
+    if (root.has-thumbnail) : SkeletonBlock {
+        x: 0.5 * root.unit;
+        y: 0.5 * root.unit;
+        width: 8 * root.unit;
+        height: 5 * root.unit;
+        radius: 0.3 * root.unit;
+    }
+
+    SkeletonBlock {
+        x: root.info-x;
+        y: 0.75 * root.unit;
+        width: root.info-width * 0.8;
+        height: 1.2 * root.unit;
+    }
+
+    SkeletonBlock {
+        x: root.info-x;
+        y: 3.75 * root.unit;
+        width: root.info-width;
+        height: root.unit;
+    }
+}

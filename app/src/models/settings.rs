@@ -89,37 +89,41 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
     let conn_init = connector.clone();
     let ui_weak = ui.as_weak();
     tokio::spawn(async move {
-        let mut db_seeding = None;
-        let mut db_dht = None;
-        let mut db_pex = None;
-        let mut db_lsd = None;
-
-        if let Ok(Some(val)) = crate::db::get_setting("seeding_enabled").await {
-            db_seeding = Some(val == "true");
-        }
-        if let Ok(Some(val)) = crate::db::get_setting("bt_enable_dht").await {
-            db_dht = Some(val == "true");
-        }
-        if let Ok(Some(val)) = crate::db::get_setting("bt_enable_pex").await {
-            db_pex = Some(val == "true");
-        }
-        if let Ok(Some(val)) = crate::db::get_setting("bt_enable_lsd").await {
-            db_lsd = Some(val == "true");
-        }
+        let db_settings = crate::db::get_settings(&[
+            "seeding_enabled",
+            "bt_enable_dht",
+            "bt_enable_pex",
+            "bt_enable_lsd",
+        ])
+        .await
+        .unwrap_or_default();
+        let db_seeding = db_settings
+            .get("seeding_enabled")
+            .map(|value| value == "true");
+        let db_dht = db_settings
+            .get("bt_enable_dht")
+            .map(|value| value == "true");
+        let db_pex = db_settings
+            .get("bt_enable_pex")
+            .map(|value| value == "true");
+        let db_lsd = db_settings
+            .get("bt_enable_lsd")
+            .map(|value| value == "true");
 
         if let Ok(mut settings) = conn_init.get_settings().await {
             let mut dirty = false;
+            let seeding_value = settings.seeding_enabled.to_string();
+            let dht_value = settings.bt_enable_dht.to_string();
+            let pex_value = settings.bt_enable_pex.to_string();
+            let lsd_value = settings.bt_enable_lsd.to_string();
+            let mut missing_settings = Vec::with_capacity(4);
             if let Some(seeding) = db_seeding {
                 if settings.seeding_enabled != seeding {
                     settings.seeding_enabled = seeding;
                     dirty = true;
                 }
             } else {
-                let _ = crate::db::set_setting(
-                    "seeding_enabled",
-                    &settings.seeding_enabled.to_string(),
-                )
-                .await;
+                missing_settings.push(("seeding_enabled", seeding_value.as_str()));
             }
 
             if let Some(dht) = db_dht {
@@ -128,9 +132,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
                     dirty = true;
                 }
             } else {
-                let _ =
-                    crate::db::set_setting("bt_enable_dht", &settings.bt_enable_dht.to_string())
-                        .await;
+                missing_settings.push(("bt_enable_dht", dht_value.as_str()));
             }
 
             if let Some(pex) = db_pex {
@@ -139,9 +141,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
                     dirty = true;
                 }
             } else {
-                let _ =
-                    crate::db::set_setting("bt_enable_pex", &settings.bt_enable_pex.to_string())
-                        .await;
+                missing_settings.push(("bt_enable_pex", pex_value.as_str()));
             }
 
             if let Some(lsd) = db_lsd {
@@ -150,9 +150,11 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
                     dirty = true;
                 }
             } else {
-                let _ =
-                    crate::db::set_setting("bt_enable_lsd", &settings.bt_enable_lsd.to_string())
-                        .await;
+                missing_settings.push(("bt_enable_lsd", lsd_value.as_str()));
+            }
+
+            if !missing_settings.is_empty() {
+                let _ = crate::db::set_settings(&missing_settings).await;
             }
 
             if dirty {
@@ -390,6 +392,47 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
         let runtime = runtime.clone();
         move |value| update_profile_settings(&runtime, |settings| settings.binge_watching = value)
     });
+    ui.on_settings_change_discord_rpc_enabled({
+        let runtime = runtime.clone();
+        move |value| {
+            update_profile_settings(&runtime, |settings| settings.discord_rpc_enabled = value)
+        }
+    });
+    ui.on_settings_change_tidb_api_key({
+        move |value| {
+            let mut cfg = crate::config::load_config();
+            cfg.tidb_api_key = value.to_string();
+            crate::config::save_config(&cfg);
+        }
+    });
+    ui.on_settings_change_tidb_show_intro({
+        move |value| {
+            let mut cfg = crate::config::load_config();
+            cfg.tidb_show_intro = value;
+            crate::config::save_config(&cfg);
+        }
+    });
+    ui.on_settings_change_tidb_show_recap({
+        move |value| {
+            let mut cfg = crate::config::load_config();
+            cfg.tidb_show_recap = value;
+            crate::config::save_config(&cfg);
+        }
+    });
+    ui.on_settings_change_tidb_show_credits({
+        move |value| {
+            let mut cfg = crate::config::load_config();
+            cfg.tidb_show_credits = value;
+            crate::config::save_config(&cfg);
+        }
+    });
+    ui.on_settings_change_tidb_show_preview({
+        move |value| {
+            let mut cfg = crate::config::load_config();
+            cfg.tidb_show_preview = value;
+            crate::config::save_config(&cfg);
+        }
+    });
     ui.on_settings_change_hide_spoilers({
         let runtime = runtime.clone();
         move |value| update_profile_settings(&runtime, |settings| settings.hide_spoilers = value)
@@ -599,6 +642,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
 
 #[tracing::instrument(skip_all)]
 pub fn sync(ui: &MainWindow, settings: &ProfileSettings) {
+    let _span = tracing::info_span!("apply_ui_settings").entered();
     ui.set_settings_interface_language(language_display(&settings.interface_language).into());
     ui.set_settings_subtitles_language(
         settings
@@ -610,11 +654,12 @@ pub fn sync(ui: &MainWindow, settings: &ProfileSettings) {
     );
     ui.set_settings_hardware_acceleration(settings.hardware_decoding);
     ui.set_settings_binge_watching(settings.binge_watching);
+    ui.set_settings_discord_rpc_enabled(settings.discord_rpc_enabled);
     ui.set_settings_hide_spoilers(settings.hide_spoilers);
     ui.set_settings_gamepad_support(settings.gamepad_support);
     ui.set_settings_play_in_background(settings.play_in_background);
     ui.set_settings_subtitles_auto_select(settings.subtitles_auto_select);
-    ui.set_settings_subtitles_font(settings.subtitles_font.clone().into());
+    ui.set_settings_subtitles_font(settings.subtitles_font.as_str().into());
     ui.set_settings_subtitles_size(settings.subtitles_size.to_string().into());
     ui.set_settings_subtitles_bold(settings.subtitles_bold);
     ui.set_settings_subtitles_offset(settings.subtitles_offset.to_string().into());
@@ -635,6 +680,7 @@ pub fn sync_data_export(
     data_export: &DataExport,
     runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
 ) {
+    let _span = tracing::info_span!("apply_data_export_state").entered();
     match data_export.export_url.as_ref().map(|(_, value)| value) {
         None => {
             ui.set_settings_export_loading(false);

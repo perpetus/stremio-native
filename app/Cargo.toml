@@ -10,7 +10,7 @@ settings-gui = { path = "../../stream-server/settings-gui" }
 core-env = { path = "../core-env" }
 playback-mpv = { path = "../playback-mpv" }
 server-connector = { path = "../server-connector" }
-slint = { workspace = true, features = ["compat-1-2"] }
+slint = { workspace = true, features = ["compat-1-2", "unstable-winit-030"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true, features = ["rt"] }
 serde = { workspace = true, features = ["derive"] }
@@ -28,13 +28,15 @@ http.workspace = true
 reqwest = { workspace = true, features = ["rustls", "charset", "http2"] }
 image = { workspace = true, default-features = false, features = ["webp", "png", "jpeg"] }
 moka = { workspace = true, features = ["sync", "future"] }
-turso = "0.6.1"
+turso = { workspace = true }
 chrono = { workspace = true }
 mimalloc = "0.1.52"
 arboard = "3.4.1"
 hex = "0.4.3"
 open = "5.4.0"
 uuid = { version = "1.23.5", features = ["v4"] }
+discord-rich-presence = { workspace = true }
+
 
 [build-dependencies]
 slint-build.workspace = true

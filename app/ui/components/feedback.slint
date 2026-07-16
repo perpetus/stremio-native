@@ -1,0 +1,90 @@
+import { Theme } from "../theme.slint";
+
+export component SkeletonBlock inherits Rectangle {
+    in property <length> radius: Theme.border-radius;
+    in property <color> base-color: Theme.skeleton-base;
+
+    border-radius: root.radius;
+    background: root.base-color;
+    clip: true;
+}
+
+export component SearchHint inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> icon-source;
+    in property <string> label;
+
+    width: 9 * root.unit;
+    height: 11 * root.unit;
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 1.5 * root.unit;
+
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                width: 4 * root.unit;
+                height: 4 * root.unit;
+                source: root.icon-source;
+                colorize: Theme.text-primary;
+                opacity: 0.4;
+                image-fit: contain;
+            }
+        }
+        Text {
+            width: parent.width;
+            text: root.label;
+            color: Theme.text-primary;
+            opacity: 0.4;
+            font-size: 1.2 * root.unit;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component EmptyState inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <image> icon-source;
+    in property <string> title;
+    in property <string> message: "";
+
+    horizontal-stretch: 1;
+    height: 24 * root.unit;
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: root.unit;
+        padding: 2 * root.unit;
+
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                width: 10 * root.unit;
+                height: 10 * root.unit;
+                source: root.icon-source;
+                colorize: Theme.text-primary;
+                opacity: 0.3;
+                image-fit: contain;
+            }
+        }
+        Text {
+            text: root.title;
+            color: Theme.text-secondary;
+            font-size: 1.6 * root.unit;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if (root.message != "") : Text {
+            text: root.message;
+            color: Theme.text-muted;
+            font-size: root.unit;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

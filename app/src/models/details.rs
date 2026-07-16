@@ -1,9 +1,11 @@
-use crate::AppModel;
-use crate::EpisodeItem;
-use crate::MainWindow;
+use crate::models::{Fingerprint, SyncFingerprint};
+use crate::{AppModel, DetailsPresentation, EpisodeItem, MainWindow, NavigationController};
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::{
+    borrow::Cow,
+    sync::{Arc, Mutex, OnceLock},
+};
 use stremio_core::{
     models::{
         common::Loadable,
@@ -15,7 +17,6 @@ use stremio_core::{
     },
     types::{
         addon::ResourcePath,
-        library::LibraryBucket,
         resource::{MetaItem, Video},
     },
 };
@@ -25,6 +26,9 @@ static ACTIVE_SEASON: OnceLock<Mutex<i32>> = OnceLock::new();
 static ACTIVE_EPISODE_IDX: OnceLock<Mutex<usize>> = OnceLock::new();
 static EPISODE_SEARCH_QUERY: OnceLock<Mutex<String>> = OnceLock::new();
 static LAST_LOADED_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+thread_local! {
+    static LAST_SYNCED_EPISODES: std::cell::Cell<Option<SyncFingerprint>> = const { std::cell::Cell::new(None) };
+}
 
 fn get_active_season() -> &'static Mutex<i32> {
     ACTIVE_SEASON.get_or_init(|| Mutex::new(1))
@@ -39,11 +43,11 @@ fn get_search_query() -> &'static Mutex<String> {
 }
 
 /// Core function to load meta details and streams for an item
-pub async fn load_meta_details(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: String) {
-    load_meta_details_for_video(rt, id, None, None).await;
+pub fn load_meta_details(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: String) {
+    load_meta_details_for_video(rt, id, None, None);
 }
 
-pub async fn load_meta_details_for_video(
+pub fn load_meta_details_for_video(
     rt: &Arc<Runtime<DesktopEnv, AppModel>>,
     id: String,
     media_type: Option<String>,
@@ -96,7 +100,11 @@ pub async fn load_meta_details_for_video(
     });
 }
 
-pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
+pub fn setup(
+    ui: &MainWindow,
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    navigation: &NavigationController,
+) {
     let ui_weak = ui.as_weak();
 
     // Toggle library callback (Add / Remove)
@@ -201,6 +209,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
     ui.on_details_episode_search_changed({
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
         move |q| {
             if let Ok(mut query) = get_search_query().lock() {
                 *query = q.to_string();
@@ -210,12 +219,26 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
                 if let Ok(model) = runtime.model() {
                     let ui_sync = ui_weak.clone();
                     let rt_sync = runtime.clone();
+                    let is_in_library =
+                        model
+                            .meta_details
+                            .selected
+                            .as_ref()
+                            .is_some_and(|selected| {
+                                model
+                                    .ctx
+                                    .library
+                                    .items
+                                    .get(&selected.meta_path.id)
+                                    .is_some_and(|item| !item.removed)
+                            });
                     sync(
                         &ui,
                         &model.meta_details,
-                        &model.ctx.library,
+                        is_in_library,
                         &ui_sync,
                         &rt_sync,
+                        &navigation,
                     );
                 }
             }
@@ -272,59 +295,44 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
             let rt = runtime.clone();
             tokio::spawn(async move {
                 let model = rt.model().expect("model read failed");
-                if let Some(selected) = &model.meta_details.selected {
-                    let id = selected.meta_path.id.clone();
-
-                    // Find meta item to resolve videos list
-                    let mut meta_item: Option<MetaItem> = None;
-                    for resource in &model.meta_details.meta_items {
-                        if let Some(Loadable::Ready(item)) = &resource.content {
-                            if item.preview.id == id {
-                                meta_item = Some(item.clone());
-                                break;
-                            }
-                        }
-                    }
-
-                    if let Some(meta) = meta_item {
-                        // Gather all videos in the target season
-                        let season_videos: Vec<&Video> = meta
-                            .videos
-                            .iter()
-                            .filter(|v| {
-                                v.series_info
-                                    .as_ref()
-                                    .map(|info| info.season as i32 == season)
-                                    .unwrap_or(false)
-                            })
-                            .collect();
-
-                        if !season_videos.is_empty() {
-                            // If ALL videos in the season are watched, we unmark them. Otherwise, mark them.
-                            let mut all_watched = true;
-                            if let Some(watched) = &model.meta_details.watched {
-                                for v in &season_videos {
-                                    if !watched.get_video(&v.id) {
-                                        all_watched = false;
-                                        break;
-                                    }
+                let all_watched = model.meta_details.selected.as_ref().and_then(|selected| {
+                    let meta =
+                        model.meta_details.meta_items.iter().find_map(
+                            |resource| match &resource.content {
+                                Some(Loadable::Ready(item))
+                                    if item.preview.id == selected.meta_path.id =>
+                                {
+                                    Some(item)
                                 }
-                            } else {
-                                all_watched = false;
-                            }
-                            drop(model);
+                                _ => None,
+                            },
+                        )?;
+                    let is_target_season = |video: &&Video| {
+                        video
+                            .series_info
+                            .as_ref()
+                            .is_some_and(|info| info.season as i32 == season)
+                    };
+                    let has_videos = meta.videos.iter().any(|video| is_target_season(&video));
+                    has_videos.then(|| {
+                        model.meta_details.watched.as_ref().is_some_and(|watched| {
+                            meta.videos
+                                .iter()
+                                .filter(is_target_season)
+                                .all(|video| watched.get_video(&video.id))
+                        })
+                    })
+                });
+                drop(model);
 
-                            rt.dispatch(RuntimeAction {
-                                field: None,
-                                action: Action::MetaDetails(
-                                    ActionMetaDetails::MarkSeasonAsWatched(
-                                        season as u32,
-                                        !all_watched,
-                                    ),
-                                ),
-                            });
-                        }
-                    }
+                if let Some(all_watched) = all_watched {
+                    rt.dispatch(RuntimeAction {
+                        field: None,
+                        action: Action::MetaDetails(ActionMetaDetails::MarkSeasonAsWatched(
+                            season as u32,
+                            !all_watched,
+                        )),
+                    });
                 }
             });
         }
@@ -336,61 +344,57 @@ async fn reload_stream_for_selected_episode(
     _ui_weak: &slint::Weak<MainWindow>,
 ) {
     let model = rt.model().expect("model read failed");
-    if let Some(selected) = &model.meta_details.selected {
-        let meta_path = selected.meta_path.clone();
-
-        // Find meta item to resolve videos list
-        let mut meta_item: Option<MetaItem> = None;
-        for resource in &model.meta_details.meta_items {
-            if let Some(Loadable::Ready(item)) = &resource.content {
-                if item.preview.id == meta_path.id {
-                    meta_item = Some(item.clone());
-                    break;
-                }
-            }
-        }
-
-        if let Some(meta) = meta_item {
-            let active_season = *get_active_season().lock().unwrap();
-            let active_episode_idx = *get_active_episode_idx().lock().unwrap();
-
-            // Filter episodes matching selected season
-            let episodes: Vec<&Video> = meta
+    let selection =
+        model.meta_details.selected.as_ref().and_then(|selected| {
+            let meta =
+                model.meta_details.meta_items.iter().find_map(|resource| {
+                    match &resource.content {
+                        Some(Loadable::Ready(item)) if item.preview.id == selected.meta_path.id => {
+                            Some(item)
+                        }
+                        _ => None,
+                    }
+                })?;
+            let active_season = *get_active_season()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let active_episode_idx = *get_active_episode_idx()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let video_id = meta
                 .videos
                 .iter()
-                .filter(|v| {
-                    v.series_info
+                .filter(|video| {
+                    video
+                        .series_info
                         .as_ref()
-                        .map(|info| info.season as i32 == active_season)
-                        .unwrap_or(false)
+                        .is_some_and(|info| info.season as i32 == active_season)
                 })
-                .collect();
+                .nth(active_episode_idx)?
+                .id
+                .clone();
+            Some((selected.meta_path.clone(), video_id))
+        });
+    drop(model);
 
-            if let Some(video) = episodes.get(active_episode_idx) {
-                let video_id = video.id.clone();
-                drop(model);
-
-                // Dispatch load details with specific episode ID for stream resolution
-                rt.dispatch(RuntimeAction {
-                    field: None,
-                    action: Action::Load(ActionLoad::MetaDetails(DetailsSelected {
-                        meta_path,
-                        stream_path: Some(ResourcePath {
-                            resource: "stream".to_string(),
-                            r#type: "series".to_string(),
-                            id: video_id,
-                            extra: vec![],
-                        }),
-                        guess_stream: false,
-                    })),
-                });
-                return;
-            }
-        }
+    if let Some((meta_path, video_id)) = selection {
+        rt.dispatch(RuntimeAction {
+            field: None,
+            action: Action::Load(ActionLoad::MetaDetails(DetailsSelected {
+                meta_path,
+                stream_path: Some(ResourcePath {
+                    resource: "stream".to_owned(),
+                    r#type: "series".to_owned(),
+                    id: video_id,
+                    extra: vec![],
+                }),
+                guess_stream: false,
+            })),
+        });
     }
 }
 
-fn sync_series_details(ui: &MainWindow, meta_item: Option<MetaItem>) {
+fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>) {
     let is_series = ui.get_detail_is_series();
     if is_series {
         if let Some(meta) = meta_item {
@@ -467,107 +471,241 @@ fn projected_links(meta: &MetaItem, categories: &[&str]) -> Vec<slint::SharedStr
         .collect()
 }
 
+/// Fingerprint only the details state projected by `sync()`. Stream addon
+/// results are deliberately excluded: they update the stream selector, but do
+/// not require cloning and rebuilding all metadata, chips, seasons, and
+/// episodes for every individual addon response.
+pub(crate) fn projection_fingerprint(
+    meta_details: &MetaDetails,
+    is_in_library: bool,
+    presentation: DetailsPresentation,
+) -> SyncFingerprint {
+    let mut fingerprint = Fingerprint::new();
+    fingerprint.bool(is_in_library);
+    fingerprint.u64(match presentation {
+        DetailsPresentation::Preview => 0,
+        DetailsPresentation::Full => 1,
+    });
+
+    if let Some(selected) = &meta_details.selected {
+        fingerprint.bool(true);
+        fingerprint.str(&selected.meta_path.r#type);
+        fingerprint.str(&selected.meta_path.id);
+        fingerprint.optional_str(selected.stream_path.as_ref().map(|path| path.id.as_str()));
+    } else {
+        fingerprint.bool(false);
+    }
+
+    fingerprint.bool(
+        meta_details
+            .library_item
+            .as_ref()
+            .is_some_and(|item| item.watched()),
+    );
+    fingerprint.usize(meta_details.meta_items.len());
+    for resource in &meta_details.meta_items {
+        fingerprint.str(resource.request.base.as_str());
+        fingerprint.str(&resource.request.path.r#type);
+        fingerprint.str(&resource.request.path.id);
+        match &resource.content {
+            None => fingerprint.u64(0),
+            Some(Loadable::Loading) => fingerprint.u64(1),
+            Some(Loadable::Err(_)) => fingerprint.u64(2),
+            Some(Loadable::Ready(meta)) => {
+                fingerprint.u64(3);
+                fingerprint.str(&meta.preview.id);
+                fingerprint.str(&meta.preview.name);
+                fingerprint.optional_str(meta.preview.description.as_deref());
+                fingerprint.optional_str(meta.preview.release_info.as_deref());
+                fingerprint.optional_str(meta.preview.runtime.as_deref());
+                fingerprint.optional_str(meta.preview.poster.as_ref().map(url::Url::as_str));
+                fingerprint.optional_str(meta.preview.background.as_ref().map(url::Url::as_str));
+                fingerprint.bool(!meta.preview.trailer_streams.is_empty());
+                if let Some(released) = meta.preview.released {
+                    fingerprint.bool(true);
+                    fingerprint.u64(released.timestamp_millis() as u64);
+                } else {
+                    fingerprint.bool(false);
+                }
+                for link in &meta.preview.links {
+                    fingerprint.str(&link.category);
+                    fingerprint.str(&link.name);
+                }
+                fingerprint.usize(meta.videos.len());
+                for video in &meta.videos {
+                    fingerprint.str(&video.id);
+                    fingerprint.str(&video.title);
+                    fingerprint.optional_str(video.thumbnail.as_deref());
+                    if let Some(released) = video.released {
+                        fingerprint.bool(true);
+                        fingerprint.u64(released.timestamp_millis() as u64);
+                    } else {
+                        fingerprint.bool(false);
+                    }
+                    if let Some(series_info) = &video.series_info {
+                        fingerprint.bool(true);
+                        fingerprint.u64(u64::from(series_info.season));
+                        fingerprint.u64(u64::from(series_info.episode));
+                    } else {
+                        fingerprint.bool(false);
+                    }
+                    fingerprint.bool(
+                        meta_details
+                            .watched
+                            .as_ref()
+                            .is_some_and(|watched| watched.get_video(&video.id)),
+                    );
+                }
+            }
+        }
+    }
+
+    fingerprint.u64(
+        *get_active_season()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) as u64,
+    );
+    fingerprint.usize(
+        *get_active_episode_idx()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()),
+    );
+    let query = get_search_query()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    fingerprint.str(&query);
+    fingerprint.finish()
+}
+
 #[tracing::instrument(skip_all)]
 pub fn sync(
     ui: &MainWindow,
     meta_details: &MetaDetails,
-    library: &LibraryBucket,
+    is_in_library: bool,
     ui_weak: &slint::Weak<MainWindow>,
     _runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    navigation: &NavigationController,
 ) {
-    let mut detail_title = String::new();
-    let mut detail_description = String::new();
-    let mut detail_released_date = String::new();
-    let mut detail_runtime = String::new();
-    let mut detail_rating = String::new();
-    let mut meta_item: Option<MetaItem> = None;
-
-    for resource in &meta_details.meta_items {
-        if let Some(Loadable::Ready(item)) = &resource.content {
-            detail_title = item.preview.name.clone();
-            detail_description = item.preview.description.clone().unwrap_or_default();
-            detail_released_date = item
-                .preview
-                .release_info
-                .clone()
-                .or_else(|| item.preview.released.map(|dt| dt.format("%Y").to_string()))
-                .unwrap_or_default();
-            detail_runtime = item.preview.runtime.clone().unwrap_or_default();
-            detail_rating = item
-                .preview
-                .links
-                .iter()
-                .find(|link| category_matches(&link.category, &["imdb"]))
-                .map(|link| link.name.clone())
-                .unwrap_or_default();
-            meta_item = Some(item.clone());
-            break;
-        }
-    }
-
-    if meta_item.is_none() {
+    let Some(selected_id) = meta_details
+        .selected
+        .as_ref()
+        .map(|selected| selected.meta_path.id.as_str())
+    else {
         return;
-    }
+    };
+    let Some(presentation) = navigation.details_presentation(selected_id) else {
+        tracing::debug!(%selected_id, "discarding metadata for an inactive route");
+        return;
+    };
+
+    let _span = tracing::info_span!("extract_meta_resource").entered();
+    let Some(meta_item) =
+        meta_details
+            .meta_items
+            .iter()
+            .find_map(|resource| match &resource.content {
+                Some(Loadable::Ready(item)) if item.preview.id == selected_id => Some(item),
+                _ => None,
+            })
+    else {
+        return;
+    };
+    let detail_title = meta_item.preview.name.as_str();
+    let detail_description = meta_item.preview.description.as_deref().unwrap_or_default();
+    let detail_released_date = meta_item
+        .preview
+        .release_info
+        .as_deref()
+        .map(Cow::Borrowed)
+        .or_else(|| {
+            meta_item
+                .preview
+                .released
+                .map(|date| Cow::Owned(date.format("%Y").to_string()))
+        })
+        .unwrap_or(Cow::Borrowed(""));
+    let detail_runtime = meta_item.preview.runtime.as_deref().unwrap_or_default();
+    let detail_rating = meta_item
+        .preview
+        .links
+        .iter()
+        .find(|link| category_matches(&link.category, &["imdb"]))
+        .map(|link| link.name.as_str())
+        .unwrap_or_default();
+    drop(_span);
+    ui.set_details_loading(false);
 
     // Keep the underlying details state current even while Discover renders
     // the compact preview. Trailer playback and the Show action both reuse
     // these bindings without forcing a second metadata request.
-    ui.set_detail_title(detail_title.clone().into());
-    ui.set_detail_description(detail_description.clone().into());
-    ui.set_detail_year(detail_released_date.clone().into());
-    ui.set_detail_runtime(detail_runtime.clone().into());
-    ui.set_detail_rating(detail_rating.clone().into());
-    if let Some(meta) = &meta_item {
-        ui.set_detail_poster(crate::image_cache::get_poster_image(
-            &meta.preview.poster,
-            ui_weak,
-        ));
-        ui.set_detail_has_trailer(!meta.preview.trailer_streams.is_empty());
-    }
+    ui.set_detail_title(detail_title.into());
+    ui.set_detail_description(detail_description.into());
+    ui.set_detail_year(detail_released_date.as_ref().into());
+    ui.set_detail_runtime(detail_runtime.into());
+    ui.set_detail_rating(detail_rating.into());
+    ui.set_detail_poster_url(
+        meta_item
+            .preview
+            .poster
+            .as_ref()
+            .map(url::Url::as_str)
+            .unwrap_or_default()
+            .into(),
+    );
+    ui.set_detail_poster(crate::image_cache::get_poster_image(
+        &meta_item.preview.poster,
+        ui_weak,
+    ));
+    let background = meta_item
+        .preview
+        .background
+        .as_ref()
+        .or(meta_item.preview.poster.as_ref());
+    ui.set_detail_background_url(background.map(url::Url::as_str).unwrap_or_default().into());
+    ui.set_detail_background(crate::image_cache::get_poster_image_ref(
+        background, ui_weak,
+    ));
+    ui.set_detail_has_trailer(!meta_item.preview.trailer_streams.is_empty());
 
-    let active_tab = ui.get_active_tab();
-    let user_wants_full_details = ui.get_show_details();
-
-    if active_tab == 1 && !user_wants_full_details {
+    if presentation == DetailsPresentation::Preview {
+        let _span = tracing::info_span!("sync_preview_panel").entered();
         // User is browsing Discover page and has not clicked Play/Show yet:
         // Update the right-side split screen preview panel instead of navigating!
         ui.set_discover_preview_title(detail_title.into());
         ui.set_discover_preview_description(detail_description.into());
-        ui.set_discover_preview_year(detail_released_date.into());
+        ui.set_discover_preview_year(detail_released_date.as_ref().into());
         ui.set_discover_preview_rating(detail_rating.into());
         ui.set_discover_preview_runtime(detail_runtime.into());
         ui.set_discover_has_preview(true);
 
-        if let Some(meta) = &meta_item {
-            let poster = crate::image_cache::get_poster_image(&meta.preview.poster, ui_weak);
-            ui.set_discover_preview_poster(poster);
+        ui.set_discover_preview_poster_url(
+            meta_item
+                .preview
+                .poster
+                .as_ref()
+                .map(url::Url::as_str)
+                .unwrap_or_default()
+                .into(),
+        );
+        let poster = crate::image_cache::get_poster_image(&meta_item.preview.poster, ui_weak);
+        ui.set_discover_preview_poster(poster);
 
-            // Sync genres from links
-            let slint_genres = projected_links(meta, &["genre", "genres"]);
-            let genres_model = slint::VecModel::from(slint_genres);
-            ui.set_discover_preview_genres(slint::ModelRc::new(genres_model));
+        // Sync genres from links
+        let slint_genres = projected_links(meta_item, &["genre", "genres"]);
+        let genres_model = slint::VecModel::from(slint_genres);
+        ui.set_discover_preview_genres(slint::ModelRc::new(genres_model));
 
-            // Sync cast from links
-            let cast_names = projected_links(meta, &["actor", "actors", "cast"]);
-            let cast_model = slint::VecModel::from(cast_names);
-            ui.set_discover_preview_cast(slint::ModelRc::new(cast_model));
+        // Sync cast from links
+        let cast_names = projected_links(meta_item, &["actor", "actors", "cast"]);
+        let cast_model = slint::VecModel::from(cast_names);
+        ui.set_discover_preview_cast(slint::ModelRc::new(cast_model));
 
-            let directors = projected_links(meta, &["director", "directors"]);
-            ui.set_discover_preview_directors(slint::ModelRc::new(slint::VecModel::from(
-                directors,
-            )));
-            ui.set_discover_preview_has_trailer(!meta.preview.trailer_streams.is_empty());
-        }
+        let directors = projected_links(meta_item, &["director", "directors"]);
+        ui.set_discover_preview_directors(slint::ModelRc::new(slint::VecModel::from(directors)));
+        ui.set_discover_preview_has_trailer(!meta_item.preview.trailer_streams.is_empty());
 
         // Sync Library State for discover preview
-        if let Some(selected) = &meta_details.selected {
-            let is_in_library = library
-                .items
-                .get(&selected.meta_path.id)
-                .map(|item| !item.removed)
-                .unwrap_or(false);
-            ui.set_discover_preview_is_in_library(is_in_library);
-        }
+        ui.set_discover_preview_is_in_library(is_in_library);
         ui.set_discover_preview_is_watched(
             meta_details
                 .library_item
@@ -576,38 +714,29 @@ pub fn sync(
                 .unwrap_or(false),
         );
     } else {
+        let _span = tracing::info_span!("sync_full_details").entered();
         // Otherwise (Board, Library, or if user clicked play):
         // Navigate to full details view overlay
         ui.set_detail_title(detail_title.into());
         ui.set_detail_description(detail_description.into());
-        ui.set_detail_year(detail_released_date.into());
+        ui.set_detail_year(detail_released_date.as_ref().into());
         ui.set_detail_runtime(detail_runtime.into());
         ui.set_detail_rating(detail_rating.into());
-        ui.set_show_details(true);
 
-        if let Some(meta) = &meta_item {
-            let poster = crate::image_cache::get_poster_image(&meta.preview.poster, ui_weak);
-            ui.set_detail_poster(poster);
+        let poster = crate::image_cache::get_poster_image(&meta_item.preview.poster, ui_weak);
+        ui.set_detail_poster(poster);
 
-            let genres = projected_links(meta, &["genre", "genres"]);
-            ui.set_detail_genres(slint::ModelRc::new(slint::VecModel::from(genres)));
+        let genres = projected_links(meta_item, &["genre", "genres"]);
+        ui.set_detail_genres(slint::ModelRc::new(slint::VecModel::from(genres)));
 
-            let cast = projected_links(meta, &["actor", "actors", "cast"]);
-            ui.set_detail_cast(slint::ModelRc::new(slint::VecModel::from(cast)));
-            let directors = projected_links(meta, &["director", "directors"]);
-            ui.set_detail_directors(slint::ModelRc::new(slint::VecModel::from(directors)));
-            ui.set_detail_has_trailer(!meta.preview.trailer_streams.is_empty());
-        }
+        let cast = projected_links(meta_item, &["actor", "actors", "cast"]);
+        ui.set_detail_cast(slint::ModelRc::new(slint::VecModel::from(cast)));
+        let directors = projected_links(meta_item, &["director", "directors"]);
+        ui.set_detail_directors(slint::ModelRc::new(slint::VecModel::from(directors)));
+        ui.set_detail_has_trailer(!meta_item.preview.trailer_streams.is_empty());
 
         // Sync library details
-        if let Some(selected) = &meta_details.selected {
-            let is_in_library = library
-                .items
-                .get(&selected.meta_path.id)
-                .map(|item| !item.removed)
-                .unwrap_or(false);
-            ui.set_detail_is_in_library(is_in_library);
-        }
+        ui.set_detail_is_in_library(is_in_library);
         ui.set_detail_is_watched(
             meta_details
                 .library_item
@@ -617,17 +746,13 @@ pub fn sync(
         );
 
         // Detect if loaded item has changed to reset in-stream-view/search query
-        let current_id = meta_details
-            .selected
-            .as_ref()
-            .map(|s| s.meta_path.id.clone());
         let id_changed = {
             let mut last_id_guard = LAST_LOADED_ID
                 .get_or_init(|| Mutex::new(None))
                 .lock()
                 .unwrap();
-            if *last_id_guard != current_id {
-                *last_id_guard = current_id.clone();
+            if last_id_guard.as_deref() != Some(selected_id) {
+                *last_id_guard = Some(selected_id.to_owned());
                 true
             } else {
                 false
@@ -638,6 +763,9 @@ pub fn sync(
             if let Ok(mut query) = get_search_query().lock() {
                 query.clear();
             }
+            LAST_SYNCED_EPISODES.with(|cache| {
+                cache.set(None);
+            });
             ui.set_detail_episode_search_query("".into());
             ui.set_detail_in_stream_view(false);
         }
@@ -646,84 +774,101 @@ pub fn sync(
         let is_series = meta_details
             .selected
             .as_ref()
-            .map(|s| s.meta_path.r#type == "series")
-            .unwrap_or(false);
+            .is_some_and(|selected| selected.meta_path.r#type == "series");
         ui.set_detail_is_series(is_series);
 
         let mut slint_episodes = Vec::new();
+        let mut episode_fingerprint = Fingerprint::new();
         if is_series {
-            if let Some(meta) = &meta_item {
-                let active_season = *get_active_season().lock().unwrap();
+            let active_season = *get_active_season().lock().unwrap();
 
-                // Filter episodes matching active season
-                let episodes: Vec<&Video> = meta
-                    .videos
-                    .iter()
-                    .filter(|v| {
-                        v.series_info
-                            .as_ref()
-                            .map(|info| info.season as i32 == active_season)
-                            .unwrap_or(false)
-                    })
-                    .collect();
+            let search_query = get_search_query().lock().unwrap().to_lowercase();
+            let now = chrono::Utc::now();
 
-                let search_query = get_search_query().lock().unwrap().to_lowercase();
+            for video in meta_item.videos.iter().filter(|video| {
+                video
+                    .series_info
+                    .as_ref()
+                    .is_some_and(|info| info.season as i32 == active_season)
+            }) {
+                let ep_num = video
+                    .series_info
+                    .as_ref()
+                    .map(|info| info.episode)
+                    .unwrap_or(0);
+                let title = &video.title;
+                let released_str = video
+                    .released
+                    .map(|dt| dt.format("%b %d, %Y").to_string())
+                    .unwrap_or_else(|| "Upcoming".to_string());
 
-                for video in &episodes {
-                    let ep_num = video
-                        .series_info
-                        .as_ref()
-                        .map(|info| info.episode)
-                        .unwrap_or(0);
-                    let title = &video.title;
-                    let released_str = video
-                        .released
-                        .map(|dt| dt.format("%b %d, %Y").to_string())
-                        .unwrap_or_else(|| "Upcoming".to_string());
-
-                    if !search_query.is_empty() {
-                        let matches_title = title.to_lowercase().contains(&search_query);
-                        let matches_num = ep_num.to_string().contains(&search_query);
-                        let matches_released = released_str.to_lowercase().contains(&search_query);
-                        if !matches_title && !matches_num && !matches_released {
-                            continue;
-                        }
+                if !search_query.is_empty() {
+                    let matches_title = title.to_lowercase().contains(&search_query);
+                    let matches_num = ep_num.to_string().contains(&search_query);
+                    let matches_released = released_str.to_lowercase().contains(&search_query);
+                    if !matches_title && !matches_num && !matches_released {
+                        continue;
                     }
-
-                    let is_watched = meta_details
-                        .watched
-                        .as_ref()
-                        .map(|watched| watched.get_video(&video.id))
-                        .unwrap_or(false);
-
-                    let is_upcoming = video
-                        .released
-                        .map(|dt| dt > chrono::Utc::now())
-                        .unwrap_or(false);
-
-                    let thumb_url = video
-                        .thumbnail
-                        .as_ref()
-                        .and_then(|url_str| url::Url::parse(url_str).ok());
-                    let thumb_img = crate::image_cache::get_poster_image(&thumb_url, ui_weak);
-
-                    slint_episodes.push(EpisodeItem {
-                        id: video.id.clone().into(),
-                        title: video.title.clone().into(),
-                        released: released_str.into(),
-                        thumbnail: thumb_img,
-                        season: active_season,
-                        episode_num: ep_num as i32,
-                        is_upcoming,
-                        is_watched,
-                    });
                 }
+
+                let is_watched = meta_details
+                    .watched
+                    .as_ref()
+                    .map(|watched| watched.get_video(&video.id))
+                    .unwrap_or(false);
+
+                let is_upcoming = video
+                    .released
+                    .map(|released| released > now)
+                    .unwrap_or(false);
+
+                let thumb_url = video
+                    .thumbnail
+                    .as_ref()
+                    .and_then(|url_str| url::Url::parse(url_str).ok());
+                let thumb_img = crate::image_cache::get_poster_image(&thumb_url, ui_weak);
+
+                episode_fingerprint.str(&video.id);
+                episode_fingerprint.str(&video.title);
+                episode_fingerprint.str(&released_str);
+                episode_fingerprint.optional_str(thumb_url.as_ref().map(url::Url::as_str));
+                episode_fingerprint.u64(active_season as u64);
+                episode_fingerprint.u64(u64::from(ep_num));
+                episode_fingerprint.bool(is_upcoming);
+                episode_fingerprint.bool(is_watched);
+
+                slint_episodes.push(EpisodeItem {
+                    id: video.id.as_str().into(),
+                    title: video.title.as_str().into(),
+                    released: released_str.into(),
+                    thumbnail_url: thumb_url
+                        .as_ref()
+                        .map(url::Url::as_str)
+                        .unwrap_or_default()
+                        .into(),
+                    thumbnail: thumb_img,
+                    season: active_season,
+                    episode_num: ep_num as i32,
+                    is_upcoming,
+                    is_watched,
+                });
             }
         }
 
-        let episodes_model = slint::VecModel::from(slint_episodes);
-        ui.set_detail_episodes(slint::ModelRc::new(episodes_model));
+        let episode_fingerprint = episode_fingerprint.finish();
+        let episodes_changed = LAST_SYNCED_EPISODES.with(|cache| {
+            let changed = cache.get() != Some(episode_fingerprint);
+            if changed {
+                cache.set(Some(episode_fingerprint));
+            }
+            changed
+        });
 
-        sync_series_details(ui, meta_item);
+        if episodes_changed {
+            let episodes_model = slint::VecModel::from(slint_episodes);
+            ui.set_detail_episodes(slint::ModelRc::new(episodes_model));
+        }
+
+        sync_series_details(ui, Some(meta_item));
     }
 }

@@ -1,0 +1,139 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ButtonSurface, MenuButton } from "button.slint";
+
+export struct DebugPageOption {
+    label: string,
+    page: int,
+}
+
+export struct DebugStateOption {
+    label: string,
+    value: string,
+}
+
+// Opt-in runtime harness for the real MainWindow. It only selects public page
+// inputs and never duplicates page layout or routing markup.
+export component AppDebugMenu inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[DebugPageOption]> pages: [];
+    in property <[DebugStateOption]> states: [];
+    in property <int> selected-page: 0;
+    in property <string> selected-state: "";
+    in-out property <bool> open: false;
+    callback page-selected(int);
+    callback state-selected(string);
+
+    width: root.open ? 36 * root.unit : 3.25 * root.unit;
+    height: root.open ? 31 * root.unit : 3.25 * root.unit;
+    border-radius: Theme.border-radius;
+    border-width: 1px;
+    border-color: Theme.surface-light-30;
+    background: Theme.modal-color;
+    clip: true;
+    z: 100000;
+
+    header := ButtonSurface {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 3.25 * root.unit;
+        accessible-name: root.open ? "Hide debug states" : "Show debug states";
+        background: self.has-hover ? Theme.overlay-hover : transparent;
+        clicked => { root.open = !root.open; }
+
+        if (root.open) : Text {
+            x: 1.25 * root.unit;
+            width: parent.width - 4 * root.unit;
+            height: parent.height;
+            text: "UI debug states";
+            color: Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+
+        if (root.open) : Image {
+            x: parent.width - self.width - 1.25 * root.unit;
+            y: (parent.height - self.height) / 2;
+            width: root.unit;
+            height: root.unit;
+            source: @image-url("../assets/images/icons/caret-down.svg");
+            colorize: Theme.primary-foreground;
+            opacity: 0.6;
+            image-fit: contain;
+        }
+
+        if (!root.open) : Image {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 1.5 * root.unit;
+            height: 1.5 * root.unit;
+            source: @image-url("../assets/images/icons/settings.svg");
+            colorize: Theme.primary-accent;
+            image-fit: contain;
+        }
+    }
+
+    if (root.open) : HorizontalLayout {
+        x: 0px;
+        y: 3.25 * root.unit;
+        width: parent.width;
+        height: parent.height - self.y;
+        spacing: 0px;
+
+        Rectangle {
+            width: 13 * root.unit;
+            background: Theme.overlay-color;
+
+            ScrollView {
+                width: parent.width;
+                height: parent.height;
+                viewport-width: self.width;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+                VerticalLayout {
+                    width: parent.width;
+                    padding: 0.5 * root.unit;
+                    spacing: 0px;
+
+                    for page in root.pages : MenuButton {
+                        horizontal-stretch: 1;
+                        height: 2.5 * root.unit;
+                        unit: root.unit;
+                        label: page.label;
+                        label-font-size: 0.85 * root.unit;
+                        horizontal-padding: root.unit;
+                        selected: page.page == root.selected-page;
+                        clicked => { root.page-selected(page.page); }
+                    }
+                }
+            }
+        }
+
+        Rectangle { width: 1px; background: Theme.divider; }
+
+        ScrollView {
+            horizontal-stretch: 1;
+            viewport-width: self.width;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+            VerticalLayout {
+                width: parent.width;
+                padding: 0.5 * root.unit;
+                spacing: 0px;
+
+                for state in root.states : MenuButton {
+                    horizontal-stretch: 1;
+                    height: 2.5 * root.unit;
+                    unit: root.unit;
+                    label: state.label;
+                    label-font-size: 0.85 * root.unit;
+                    horizontal-padding: root.unit;
+                    selected: state.value == root.selected-state;
+                    clicked => { root.state-selected(state.value); }
+                }
+            }
+        }
+    }
+}

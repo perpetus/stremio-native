@@ -8,6 +8,8 @@ Welcome to **Stremio Rust** — the ultimate high-performance, battery-friendly,
 
 If you are looking for a fast Stremio desktop client that starts instantly, runs smoothly, and uses minimal system memory, Stremio Rust is the perfect alternative.
 
+See the [detailed changelog](CHANGELOG.md) for the current build's implementation notes and known limitations.
+
 ---
 
 ## ✨ Features and Functionality
@@ -48,20 +50,21 @@ The native values are the refreshed readings from the current minimized, no-play
 
 ## 🚀 How to Build and Run the App
 
-This application is designed to be easily built from source on Windows, macOS, and Linux:
+The current release target is **Windows x64** because the repository bundles a Windows x64 static libmpv SDK. The platform abstractions are portable, but Linux and macOS playback packages are not included yet.
 
 ### 1. Prerequisites
-You need the standard Rust toolchain installed. If you don't have it, get it instantly from [rustup.rs](https://rustup.rs/).
+Install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK.
 
 ### 2. Launching the Media Center
 1. Open your terminal or shell command prompt.
 2. Navigate to the cloned repository directory:
    ```bash
-   cd stremio-rust
+   cd stremio-native
    ```
-3. Run the optimized release build:
-   ```bash
-   cargo run --release
+3. Build and run the optimized release:
+   ```powershell
+   cargo build --release --package stremio-native
+   .\target\release\stremio-native.exe
    ```
 
 *All settings, log consoles, and image databases are stored in the local `./storage/` folder inside the project directory.*

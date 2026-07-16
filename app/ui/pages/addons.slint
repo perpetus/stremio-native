@@ -1,12 +1,17 @@
-import { ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
-import { SelectField, PillButton, NativeTextField } from "../components/form_controls.slint";
+import { IconAction, PillButton } from "../components/button.slint";
+import { EmptyState, SkeletonBlock } from "../components/feedback.slint";
+import { AddonCardPlaceholder } from "../components/loading_placeholders.slint";
+import { SelectField } from "../components/select.slint";
+import { NativeTextField, SearchBar } from "../components/text_input.slint";
 
 export struct AddonItem {
     id: string,
     name: string,
     version: string,
     description: string,
+    logo-url: string,
     logo: image,
     is_installed: bool,
     transport-url: string,
@@ -17,63 +22,6 @@ export struct AddonItem {
     supports-series: bool,
     supports-anime: bool,
     supports-tv: bool,
-}
-
-component AddonAction inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <string> label;
-    in property <image> icon-source;
-    in property <bool> primary: false;
-    in property <bool> outlined: false;
-    in property <bool> subdued: false;
-    in property <bool> show-icon: true;
-    callback clicked;
-
-    height: 3.5 * root.unit;
-    border-radius: root.height / 2;
-    border-width: root.primary || root.outlined || action.has-hover ? Theme.focus-outline-size : 0px;
-    border-color: root.primary ? Theme.success : Theme.text-primary;
-    background: root.primary && !action.has-hover ? Theme.success :
-        (action.has-hover ? Theme.overlay : transparent);
-    opacity: root.subdued && !action.has-hover ? 0.35 : 1;
-
-    action := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: parent.height;
-        alignment: center;
-        spacing: root.unit;
-        padding-left: root.unit;
-        padding-right: root.unit;
-
-        if (root.show-icon) : Rectangle {
-            width: 1.5 * root.unit;
-            height: parent.height;
-            background: transparent;
-
-            Image {
-                y: (parent.height - self.height) / 2;
-                width: 1.5 * root.unit;
-                height: 1.5 * root.unit;
-                source: root.icon-source;
-                colorize: Theme.text-primary;
-                image-fit: contain;
-            }
-        }
-        Text {
-            height: parent.height;
-            text: root.label;
-            color: Theme.text-primary;
-            font-size: 1.05 * root.unit;
-            font-weight: 700;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
 }
 
 component AddonCard inherits Rectangle {
@@ -177,52 +125,54 @@ component AddonCard inherits Rectangle {
         }
     }
 
-    VerticalLayout {
+    // The web app reserves an exact 17rem action column. Absolute positions
+    // here keep the 3.5rem controls and 1.5rem share icon stable at every card
+    // width instead of allowing the layout engine to content-size them.
+    Rectangle {
         x: root.width - root.card-padding - root.actions-width;
         y: root.card-padding;
         width: root.actions-width;
         height: root.height - 2 * root.card-padding;
-        spacing: root.unit;
-        alignment: start;
+        background: transparent;
 
-        HorizontalLayout {
+        Rectangle {
+            x: 0px;
+            y: 0px;
             width: root.actions-width;
             height: 3.5 * root.unit;
-            spacing: root.unit;
-            alignment: start;
+            background: transparent;
 
-            if (root.addon.configurable && !root.addon.configuration-required) : Rectangle {
+            if (root.addon.configurable && !root.addon.configuration-required) : IconAction {
+                x: 0px;
+                y: 0px;
                 width: 3.5 * root.unit;
                 height: 3.5 * root.unit;
-                border-radius: self.height / 2;
-                background: configure-area.has-hover ? transparent : Theme.success;
-                border-width: configure-area.has-hover ? Theme.focus-outline-size : 0px;
-                border-color: Theme.success;
-
-                Image {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    width: 1.7 * root.unit;
-                    height: 1.7 * root.unit;
-                    source: @image-url("../assets/images/icons/settings.svg");
-                    colorize: Theme.text-primary;
-                    image-fit: contain;
-                }
-                configure-area := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.configure(); }
-                }
+                unit: root.unit;
+                label: "Configure addon";
+                icon-size: 1.7 * root.unit;
+                icon-source: @image-url("../assets/images/icons/settings.svg");
+                surface-color: Theme.success;
+                clicked => { root.configure(); }
             }
 
-            AddonAction {
-                horizontal-stretch: 1;
+            PillButton {
+                x: root.addon.configurable && !root.addon.configuration-required
+                    ? 4.5 * root.unit : 0px;
+                y: 0px;
+                width: root.addon.configurable && !root.addon.configuration-required
+                    ? root.actions-width - 4.5 * root.unit : root.actions-width;
+                height: 3.5 * root.unit;
                 unit: root.unit;
                 label: root.addon.is-installed ? "Uninstall" :
                     (root.addon.configuration-required ? "Configure" : "Install");
-                show-icon: false;
                 outlined: root.addon.is-installed;
                 primary: !root.addon.is-installed;
-                subdued: root.addon.is-installed;
+                accent-color: Theme.success;
+                surface-color: transparent;
+                hover-color: Theme.overlay;
+                outline-color: root.addon.is-installed ? Theme.text-primary : Theme.success;
+                hover-outline-color: root.addon.is-installed ? Theme.text-primary : Theme.success;
+                idle-opacity: root.addon.is-installed ? 0.35 : 1;
                 clicked => {
                     if (root.addon.is-installed) { root.uninstall(); }
                     else if (root.addon.configuration-required) { root.configure(); }
@@ -231,18 +181,28 @@ component AddonCard inherits Rectangle {
             }
         }
 
-        AddonAction {
+        PillButton {
+            x: 0px;
+            y: 4.5 * root.unit;
             width: root.actions-width;
+            height: 3.5 * root.unit;
             unit: root.unit;
             label: "Share addon";
+            show-icon: true;
+            use-svg-icon: true;
             icon-source: @image-url("../assets/images/icons/share.svg");
-            subdued: true;
+            icon-size: 1.5 * root.unit;
+            label-font-size: 1.1 * root.unit;
+            surface-color: transparent;
+            idle-opacity: 0.9;
             clicked => { root.share(); }
         }
     }
 }
 
 export component AddonsPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in property <[AddonItem]> addons: [];
     in property <bool> loading: false;
     callback install-addon(string);
@@ -260,13 +220,12 @@ export component AddonsPage inherits Rectangle {
     in property <bool> details-configurable: false;
     in property <bool> details-configuration-required: false;
 
-    property <length> unit: root.width > 2700px ? 18px :
-        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
-    property <string> active-filter: "Installed";
-    property <string> active-type: "All";
-    property <bool> filter-open: false;
-    property <bool> type-open: false;
-    property <bool> add-modal-open: false;
+    in property <length> unit: Theme.root-font-size;
+    in-out property <string> active-filter: "Installed";
+    in-out property <string> active-type: "All";
+    in-out property <bool> filter-open: false;
+    in-out property <bool> type-open: false;
+    in-out property <bool> add-modal-open: false;
     property <string> manifest-url: "";
     in-out property <string> search-query: "";
 
@@ -319,98 +278,84 @@ export component AddonsPage inherits Rectangle {
 
                 Rectangle { horizontal-stretch: 1; }
 
-                Rectangle {
+                PillButton {
                     width: 10.5 * root.unit;
                     height: 3 * root.unit;
-                    border-radius: self.height / 2;
-                    background: add-area.has-hover ? transparent : Theme.success;
-                    border-width: add-area.has-hover ? Theme.focus-outline-size : 0px;
-                    border-color: Theme.success;
-
-                    add-area := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.add-modal-open = true; }
-                    }
-
-                    HorizontalLayout {
-                        alignment: center;
-                        spacing: 0.5 * root.unit;
-                        Image {
-                            width: 1.2 * root.unit;
-                            height: 1.2 * root.unit;
-                            source: @image-url("../assets/images/icons/add.svg");
-                            colorize: Theme.text-primary;
-                            image-fit: contain;
-                        }
-                        Text {
-                            text: "Add addon";
-                            color: Theme.text-primary;
-                            font-size: root.unit;
-                            font-weight: 700;
-                            vertical-alignment: center;
-                        }
-                    }
+                    unit: root.unit;
+                    label: "Add addon";
+                    show-icon: true;
+                    use-svg-icon: true;
+                    icon-source: @image-url("../assets/images/icons/add.svg");
+                    icon-size: 1.2 * root.unit;
+                    label-font-size: root.unit;
+                    primary: true;
+                    accent-color: Theme.success;
+                    hover-color: transparent;
+                    hover-outline-color: Theme.success;
+                    clicked => { root.add-modal-open = true; }
                 }
 
-                Rectangle {
+                SearchBar {
                     width: 18 * root.unit;
                     height: 3 * root.unit;
-                    background: transparent;
-
-                    NativeTextField {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.unit;
-                        text <=> root.search-query;
-                        placeholder-text: "Search addons";
-                        edited => { root.search-changed(root.search-query); }
-                    }
-
-                    Image {
-                        x: parent.width - 2.4 * root.unit;
-                        y: 0.75 * root.unit;
-                        width: 1.5 * root.unit;
-                        height: 1.5 * root.unit;
-                        source: @image-url("../assets/images/icons/search.svg");
-                        colorize: Theme.text-primary;
-                        opacity: 0.55;
-                        image-fit: contain;
-                    }
+                    unit: root.unit;
+                    title: "Search addons";
+                    text <=> root.search-query;
+                    edited => { root.search-changed(root.search-query); }
                 }
             }
         }
 
-        if (root.loading) : Rectangle {
-            vertical-stretch: 1;
-            Text {
-                text: "Loading addons…";
-                color: Theme.text-primary;
-                opacity: 0.6;
-                font-size: 1.2 * root.unit;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-
-        if (!root.loading) : ScrollView {
+        if (root.loading) : ScrollView {
             vertical-stretch: 1;
             viewport-width: root.width;
-            mouse-drag-pan-enabled: true;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
             VerticalLayout {
                 width: root.width;
                 padding-left: 1.5 * root.unit;
                 padding-right: 1.5 * root.unit;
+                padding-bottom: 1.5 * root.unit;
                 spacing: 1.5 * root.unit;
 
-                for item in root.addons : AddonCard {
-                    visible: ((root.active-filter == "Installed") == item.is-installed)
+                for _placeholder in [0, 1, 2, 3] : AddonCardPlaceholder {
+                    horizontal-stretch: 1;
+                    unit: root.unit;
+                }
+            }
+        }
+
+        if (!root.loading && root.addons.length == 0) : EmptyState {
+            vertical-stretch: 1;
+            unit: root.unit;
+            icon-source: @image-url("../assets/images/icons/addons.svg");
+            title: "No addons found";
+            message: "Try another filter or install an addon by manifest URL.";
+        }
+
+        if (!root.loading && root.addons.length > 0) : ListView {
+            vertical-stretch: 1;
+            mouse-drag-pan-enabled: true;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+
+            for item in root.addons : Rectangle {
+                private property <bool> matches-filter:
+                    ((root.active-filter == "Installed") == item.is-installed)
                         && (root.active-type == "All"
                             || (root.active-type == "Movie" && item.supports-movie)
                             || (root.active-type == "Series" && item.supports-series)
                             || (root.active-type == "Anime" && item.supports-anime)
                             || (root.active-type == "TV Channel" && item.supports-tv));
-                    height: self.visible ? 11 * root.unit : 0px;
+                width: parent.width;
+                height: self.matches-filter ? 12.5 * root.unit : 0px;
+                clip: true;
+                background: transparent;
+
+                AddonCard {
+                    visible: parent.matches-filter;
+                    x: 1.5 * root.unit;
+                    width: max(0px, parent.width - 3 * root.unit);
+                    height: 11 * root.unit;
                     unit: root.unit;
                     addon: item;
                     install => { root.install-addon(item.transport-url); }
@@ -523,13 +468,19 @@ export component AddonsPage inherits Rectangle {
 
                 if (root.details-loading) : Rectangle {
                     vertical-stretch: 1;
-                    Text {
-                        text: "Loading manifest…";
-                        color: Theme.text-secondary;
-                        font-size: root.unit;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+
+                    SkeletonBlock {
+                        x: 0px;
+                        y: root.unit;
+                        width: 9 * root.unit;
+                        height: 9 * root.unit;
+                        radius: self.width / 2;
                     }
+                    SkeletonBlock { x: 11 * root.unit; y: 1.5 * root.unit; width: 18 * root.unit; height: 1.8 * root.unit; }
+                    SkeletonBlock { x: 11 * root.unit; y: 4 * root.unit; width: 10 * root.unit; height: root.unit; }
+                    SkeletonBlock { x: 11 * root.unit; y: 6 * root.unit; width: min(24 * root.unit, parent.width - 11 * root.unit); height: root.unit; }
+                    SkeletonBlock { x: 0px; y: 12 * root.unit; width: parent.width; height: 1.2 * root.unit; }
+                    SkeletonBlock { x: 0px; y: 14 * root.unit; width: parent.width * 0.8; height: 1.2 * root.unit; }
                 }
 
                 if (!root.details-loading && root.details-error != "") : Rectangle {
@@ -621,25 +572,32 @@ export component AddonsPage inherits Rectangle {
                         clicked => { root.close-addon-details(); }
                     }
 
-                    if (root.details-configurable) : AddonAction {
+                    if (root.details-configurable) : PillButton {
                         width: 12 * root.unit;
                         unit: root.unit;
                         label: "Configure";
+                        show-icon: true;
+                        use-svg-icon: true;
                         icon-source: @image-url("../assets/images/icons/settings.svg");
-                        subdued: true;
+                        surface-color: transparent;
+                        idle-opacity: 0.35;
                         clicked => { root.configure-addon(root.details-addon.transport-url); }
                     }
 
                     if (!root.details-loading && root.details-error == "" &&
-                        (root.details-addon.is-installed || !root.details-configuration-required)) : AddonAction {
+                        (root.details-addon.is-installed || !root.details-configuration-required)) : PillButton {
                         width: 12 * root.unit;
                         unit: root.unit;
                         label: root.details-addon.is-installed ? "Uninstall" : "Install";
+                        show-icon: true;
+                        use-svg-icon: true;
                         icon-source: root.details-addon.is-installed
                             ? @image-url("../assets/images/icons/delete.svg")
                             : @image-url("../assets/images/icons/add.svg");
                         primary: !root.details-addon.is-installed;
-                        subdued: root.details-addon.is-installed;
+                        accent-color: Theme.success;
+                        surface-color: transparent;
+                        idle-opacity: root.details-addon.is-installed ? 0.35 : 1;
                         clicked => {
                             if (root.details-addon.is-installed) {
                                 root.uninstall-addon(root.details-addon.transport-url);

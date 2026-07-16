@@ -1,71 +1,240 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::sync::{OnceLock, RwLock};
+
+static APP_CONFIG: OnceLock<RwLock<AppConfig>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
+    pub config_version: u32,
     pub server_url: String,
     pub active_tab: i32,
     pub auto_launch_player: bool,
     pub torrent_port: u16,
     pub hardware_acceleration: bool,
     pub theme: ThemeConfig,
+    pub tidb_api_key: String,
+    pub tidb_show_intro: bool,
+    pub tidb_show_recap: bool,
+    pub tidb_show_credits: bool,
+    pub tidb_show_preview: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ThemeConfig {
     pub background: String,
+    pub secondary_background: String,
     pub sidebar_background: String,
+    pub modal_background: String,
+    pub drawer_background: String,
+    pub control_background: String,
+    pub overlay: String,
+    pub overlay_hover: String,
+    pub overlay_pressed: String,
+    pub divider: String,
+    pub scrim: String,
     pub accent: String,
+    pub accent_hover: String,
+    pub success: String,
+    pub warning: String,
+    pub info: String,
+    pub danger: String,
+    pub focus: String,
+    pub title_bar: String,
     pub card_background: String,
     pub card_border: String,
     pub text_primary: String,
     pub text_secondary: String,
+    pub text_muted: String,
+    pub skeleton_base: String,
+    pub skeleton_shimmer: String,
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            background: "#0c0b11".to_string(),
+            secondary_background: "#1a173e".to_string(),
+            sidebar_background: "#0f0d2099".to_string(),
+            modal_background: "#0f0d20".to_string(),
+            drawer_background: "#00000066".to_string(),
+            control_background: "#ffffff0d".to_string(),
+            overlay: "#ffffff0d".to_string(),
+            overlay_hover: "#ffffff14".to_string(),
+            overlay_pressed: "#ffffff20".to_string(),
+            divider: "#ffffff14".to_string(),
+            scrim: "#00000066".to_string(),
+            accent: "#7b5bf5".to_string(),
+            accent_hover: "#9275f7".to_string(),
+            success: "#22b365".to_string(),
+            warning: "#f6c700".to_string(),
+            info: "#1245a6".to_string(),
+            danger: "#dc2626".to_string(),
+            focus: "#ffffffe6".to_string(),
+            title_bar: "#15122b".to_string(),
+            card_background: "#151320".to_string(),
+            card_border: "#201e2f".to_string(),
+            text_primary: "#ffffffe6".to_string(),
+            text_secondary: "#ffffff99".to_string(),
+            text_muted: "#ffffff66".to_string(),
+            skeleton_base: "#1a1828".to_string(),
+            skeleton_shimmer: "#2a2838".to_string(),
+        }
+    }
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            config_version: 1,
             server_url: "http://127.0.0.1:11470".to_string(),
             active_tab: 0,
             auto_launch_player: true,
             torrent_port: 11470,
             hardware_acceleration: true,
-            theme: ThemeConfig {
-                background: "#08070d".to_string(),
-                sidebar_background: "#13111f".to_string(),
-                accent: "#7B5BF5".to_string(),
-                card_background: "#1a1829".to_string(),
-                card_border: "#2c2842".to_string(),
-                text_primary: "#ffffff".to_string(),
-                text_secondary: "#8d8a9f".to_string(),
-            },
+            theme: ThemeConfig::default(),
+            tidb_api_key: String::new(),
+            tidb_show_intro: true,
+            tidb_show_recap: true,
+            tidb_show_credits: true,
+            tidb_show_preview: true,
         }
     }
 }
 
-pub fn load_config() -> AppConfig {
-    let config_path = Path::new("config.json");
-    if config_path.exists() {
-        if let Ok(content) = fs::read_to_string(config_path) {
-            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                return config;
+impl AppConfig {
+    fn migrate(&mut self) -> bool {
+        if self.config_version >= 1 {
+            return false;
+        }
+
+        // Version zero was generated with a palette that predates the
+        // official stremio-web tokens. Only replace it when all legacy values
+        // still match, preserving any genuinely customized theme.
+        let legacy_theme = self.theme.background.eq_ignore_ascii_case("#08070d")
+            && self
+                .theme
+                .sidebar_background
+                .eq_ignore_ascii_case("#13111f")
+            && self.theme.accent.eq_ignore_ascii_case("#7b5bf5")
+            && self.theme.card_background.eq_ignore_ascii_case("#1a1829")
+            && self.theme.card_border.eq_ignore_ascii_case("#2c2842")
+            && self.theme.text_primary.eq_ignore_ascii_case("#ffffff")
+            && self.theme.text_secondary.eq_ignore_ascii_case("#8d8a9f");
+
+        if legacy_theme {
+            self.theme = ThemeConfig::default();
+        }
+        self.config_version = 1;
+        true
+    }
+}
+
+pub async fn init_config() {
+    let mut config = AppConfig::default();
+
+    // 1. Try to load from database settings table
+    let mut loaded_from_db = false;
+    if let Ok(conn) = crate::db::get_conn() {
+        if let Ok(mut rows) = conn
+            .query("SELECT value FROM settings WHERE key = 'app_config'", ())
+            .await
+        {
+            if let Ok(Some(row)) = rows.next().await {
+                if let Ok(val_str) = row.get::<String>(0) {
+                    if let Ok(parsed) = serde_json::from_str::<AppConfig>(&val_str) {
+                        config = parsed;
+                        loaded_from_db = true;
+                    }
+                }
             }
         }
     }
 
-    let default_config = AppConfig::default();
-    if let Ok(content) = serde_json::to_string_pretty(&default_config) {
-        let _ = fs::write(config_path, content);
+    // 2. If not found in database, check for legacy config.json file
+    if !loaded_from_db {
+        let config_path = Path::new("config.json");
+        if config_path.exists() {
+            if let Ok(content) = fs::read_to_string(config_path) {
+                if let Ok(mut legacy_config) = serde_json::from_str::<AppConfig>(&content) {
+                    legacy_config.migrate();
+                    config = legacy_config;
+
+                    // Save legacy config to database
+                    if let Ok(conn) = crate::db::get_conn() {
+                        if let Ok(serialized) = serde_json::to_string(&config) {
+                            let _ = conn.execute(
+                                "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                                [serialized],
+                            )
+                            .await;
+                        }
+                    }
+
+                    // Rename legacy config.json to config.json.bak
+                    let backup_path = Path::new("config.json.bak");
+                    let _ = fs::rename(config_path, backup_path);
+                }
+            }
+        } else {
+            // First run, populate default config in database
+            if let Ok(conn) = crate::db::get_conn() {
+                if let Ok(serialized) = serde_json::to_string(&config) {
+                    let _ = conn
+                        .execute(
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                            [serialized],
+                        )
+                        .await;
+                }
+            }
+        }
     }
-    default_config
+
+    let _ = APP_CONFIG.set(RwLock::new(config));
+}
+
+pub fn load_config() -> AppConfig {
+    if let Some(lock) = APP_CONFIG.get() {
+        if let Ok(guard) = lock.read() {
+            return guard.clone();
+        }
+    }
+    AppConfig::default()
+}
+
+pub fn with_config<R>(read: impl FnOnce(&AppConfig) -> R) -> R {
+    if let Some(lock) = APP_CONFIG.get()
+        && let Ok(config) = lock.read()
+    {
+        return read(&config);
+    }
+    read(&AppConfig::default())
 }
 
 pub fn save_config(config: &AppConfig) {
-    let config_path = Path::new("config.json");
-    if let Ok(content) = serde_json::to_string_pretty(config) {
-        let _ = fs::write(config_path, content);
+    if let Some(lock) = APP_CONFIG.get() {
+        if let Ok(mut guard) = lock.write() {
+            *guard = config.clone();
+        }
     }
+
+    let config_cloned = config.clone();
+    tokio::spawn(async move {
+        if let Ok(conn) = crate::db::get_conn() {
+            if let Ok(serialized) = serde_json::to_string(&config_cloned) {
+                let _ = conn
+                    .execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                        [serialized],
+                    )
+                    .await;
+            }
+        }
+    });
 }
 
 pub fn parse_color(hex: &str) -> Option<slint::Color> {
@@ -83,5 +252,64 @@ pub fn parse_color(hex: &str) -> Option<slint::Color> {
         Some(slint::Color::from_argb_u8(a, r, g, b))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_config() -> AppConfig {
+        let mut config = AppConfig::default();
+        config.config_version = 0;
+        config.theme.background = "#08070d".to_string();
+        config.theme.sidebar_background = "#13111f".to_string();
+        config.theme.accent = "#7B5BF5".to_string();
+        config.theme.card_background = "#1a1829".to_string();
+        config.theme.card_border = "#2c2842".to_string();
+        config.theme.text_primary = "#ffffff".to_string();
+        config.theme.text_secondary = "#8d8a9f".to_string();
+        config
+    }
+
+    #[test]
+    fn migrates_generated_legacy_theme_to_official_defaults() {
+        let mut config = legacy_config();
+
+        assert!(config.migrate());
+        assert_eq!(config.config_version, 1);
+        assert_eq!(config.theme.background, "#0c0b11");
+        assert_eq!(config.theme.secondary_background, "#1a173e");
+        assert_eq!(config.theme.success, "#22b365");
+    }
+
+    #[test]
+    fn preserves_custom_theme_during_version_migration() {
+        let mut config = legacy_config();
+        config.theme.accent = "#ff3366".to_string();
+
+        assert!(config.migrate());
+        assert_eq!(config.config_version, 1);
+        assert_eq!(config.theme.background, "#08070d");
+        assert_eq!(config.theme.accent, "#ff3366");
+    }
+
+    #[test]
+    fn fills_new_semantic_theme_slots_when_reading_old_json() {
+        let config: AppConfig = serde_json::from_str(
+            r##"{
+                "server_url": "http://127.0.0.1:11470",
+                "theme": {
+                    "background": "#111111",
+                    "accent": "#abcdef"
+                }
+            }"##,
+        )
+        .expect("old config should deserialize with semantic defaults");
+
+        assert_eq!(config.theme.background, "#111111");
+        assert_eq!(config.theme.accent, "#abcdef");
+        assert_eq!(config.theme.drawer_background, "#00000066");
+        assert_eq!(config.theme.text_muted, "#ffffff66");
     }
 }

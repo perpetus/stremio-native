@@ -198,7 +198,7 @@ impl PlaybackRuntime {
         client.set_option("vo", "libmpv")?;
         client.set_option("idle", "yes")?;
         client.set_option("keep-open", "no")?;
-        client.set_option("cache", "yes")?;
+        client.set_option("cache", "no")?;
         client.set_option("cache-pause", "yes")?;
         client.set_option("cache-pause-initial", "no")?;
         client.set_option("cache-pause-wait", "0.5")?;

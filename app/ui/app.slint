@@ -1,6 +1,24 @@
 import { Theme, IconData } from "theme.slint";
 import { Sidebar } from "components/sidebar.slint";
 import { MediaCardItem } from "components/media_card.slint";
+import { SearchBox, SearchSuggestion } from "components/search.slint";
+import { ButtonSurface, MenuButton, PillButton, IconAction, IconActionPair } from "components/button.slint";
+import { Checkbox } from "components/checkbox.slint";
+import { RadioButton } from "components/radio_button.slint";
+import { NumberInput } from "components/number_input.slint";
+import { StremioTextInput, NativeTextField, SearchBar, SearchField } from "components/text_input.slint";
+import { Slider } from "components/slider.slint";
+import { PopupMenuSurface, ModalDialog, BottomSheet, ContextMenuSurface } from "components/overlays.slint";
+import { ActionsGroup } from "components/action_group.slint";
+import { HorizontalScroll } from "components/horizontal_scroll.slint";
+import { FallbackImage } from "components/fallback_image.slint";
+import { DelayedRenderer, VisibilityTransition } from "components/transition.slint";
+import { HorizontalNavBar, HorizontalNavButton, NavMenuPanel } from "components/horizontal_nav.slint";
+import { KeyCap, ShortcutComboView, ShortcutCombosView, ShortcutsGroup } from "components/shortcuts.slint";
+import { SharePrompt } from "components/share_prompt.slint";
+import { ColorInput, ColorPicker } from "components/color_input.slint";
+import { SeeAllButton, MetaRow, MetaRowPlaceholder } from "components/meta_row.slint";
+import { MetaActionButton, MetaLinkChip, MetaLinks, MetaPreview, MetaPreviewPlaceholder } from "components/meta_preview.slint";
 import { AuthPage } from "pages/auth.slint";
 import { BoardPage, BoardSection } from "pages/board.slint";
 import { DiscoverPage, DiscoverRow } from "pages/discover.slint";
@@ -10,64 +28,166 @@ import { DetailsPage, StreamLink, EpisodeItem } from "pages/details.slint";
 import { SettingsPage } from "pages/settings.slint";
 import { PlayerPage } from "pages/player.slint";
 import { CalendarPage, CalendarRow, CalendarCell, CalendarMediaItem } from "pages/calendar.slint";
-import { SearchPage, SearchSuggestion } from "pages/search.slint";
+import { SearchPage } from "pages/search.slint";
+import { AppDebugMenu, DebugPageOption, DebugStateOption } from "components/app_debug_menu.slint";
 
 import { Fonts } from "imported_fonts.slint";
 import "./assets/fonts/PlusJakartaSans.ttf";
-import { LineEdit } from "std-widgets.slint";
 
 export { Theme, IconData, MediaCardItem, StreamLink, EpisodeItem, BoardSection, DiscoverRow, LibraryRow, AddonItem, CalendarRow, CalendarCell, CalendarMediaItem, SearchSuggestion }
-
-component NavMenuItem inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <string> label;
-    in property <image> icon;
-    in property <bool> show-icon: true;
-    callback clicked;
-
-    height: 4 * root.unit;
-    background: area.has-hover ? Theme.overlay : transparent;
-    area := TouchArea { clicked => { root.clicked(); } }
-
-    HorizontalLayout {
-        padding-left: 1.5 * root.unit;
-        padding-right: 1.5 * root.unit;
-        spacing: 1.25 * root.unit;
-        alignment: start;
-
-        if (root.show-icon) : Image {
-            width: 1.5 * root.unit;
-            height: 1.5 * root.unit;
-            source: root.icon;
-            colorize: Theme.text-primary;
-            opacity: 0.6;
-            image-fit: contain;
-            y: (parent.height - self.height) / 2;
-        }
-        Text {
-            text: root.label;
-            color: Theme.text-primary;
-            font-size: root.unit;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
-}
 
 export component MainWindow inherits Window {
     title: "Stremio";
     preferred-width: 1280px;
     preferred-height: 720px;
-    min-width: 960px;
-    min-height: 540px;
+    min-width: 1000px;
+    min-height: 600px;
     background: Theme.background;
     default-font-family: "Plus Jakarta Sans";
-    property <length> ui-unit: root.width > 2800px ? 18px :
-        (root.width > 2200px ? 16px : (root.width > 1600px ? 15px : 14px));
-    property <bool> profile-menu-open: false;
+    forward-focus: app-shortcuts;
+    property <length> ui-unit: root.width >= 2800px ? 18px :
+        (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
+    in-out property <bool> profile-menu-open: false;
+
+    // Disabled by default. `slint-viewer --load-data` can enable this harness
+    // without replacing MainWindow, so every state uses the production shell,
+    // routing bounds, overlays, and page components.
+    in-out property <bool> debug-preview-enabled: false;
+    in-out property <bool> debug-menu-open: false;
+    in-out property <int> debug-preview-page: 0;
+    in-out property <string> debug-preview-state: "loaded";
+
+    private property <[DebugPageOption]> debug-pages: [
+        { label: "Auth", page: -1 },
+        { label: "Board", page: 0 },
+        { label: "Discover", page: 1 },
+        { label: "Library", page: 2 },
+        { label: "Addons", page: 3 },
+        { label: "Settings", page: 4 },
+        { label: "Calendar", page: 5 },
+        { label: "Search", page: 6 },
+        { label: "Details", page: 7 },
+        { label: "Player", page: 8 }
+    ];
+    private property <[DebugStateOption]> debug-auth-states: [
+        { label: "Login", value: "login" },
+        { label: "Register", value: "register" },
+        { label: "Loading", value: "auth-loading" },
+        { label: "Invalid credentials", value: "auth-error" }
+    ];
+    private property <[DebugStateOption]> debug-board-states: [
+        { label: "Loaded", value: "loaded" },
+        { label: "Loading", value: "loading" },
+        { label: "Empty", value: "empty" },
+        { label: "Continue watching only", value: "continue-only" },
+        { label: "Catalogs only", value: "catalogs-only" },
+        { label: "Profile menu", value: "profile-menu" }
+    ];
+    private property <[DebugStateOption]> debug-discover-states: [
+        { label: "Catalog", value: "catalog" },
+        { label: "Loading", value: "loading" },
+        { label: "Empty", value: "empty" },
+        { label: "Movie selected", value: "movie-selected" },
+        { label: "Series selected", value: "series-selected" },
+        { label: "Type dropdown", value: "type-dropdown" },
+        { label: "Catalog dropdown", value: "catalog-dropdown" },
+        { label: "Genre dropdown", value: "genre-dropdown" }
+    ];
+    private property <[DebugStateOption]> debug-library-states: [
+        { label: "Loaded", value: "loaded" },
+        { label: "Loading", value: "loading" },
+        { label: "Empty", value: "empty" },
+        { label: "Type dropdown", value: "type-dropdown" },
+        { label: "Sort dropdown", value: "sort-dropdown" }
+    ];
+    private property <[DebugStateOption]> debug-addons-states: [
+        { label: "Loaded", value: "loaded" },
+        { label: "Loading", value: "loading" },
+        { label: "Empty", value: "empty" },
+        { label: "Addon details", value: "addon-details" },
+        { label: "Details loading", value: "addon-details-loading" },
+        { label: "Details error", value: "addon-details-error" },
+        { label: "Filter dropdown", value: "filter-dropdown" },
+        { label: "Type dropdown", value: "type-dropdown" },
+        { label: "Add addon dialog", value: "add-addon" }
+    ];
+    private property <[DebugStateOption]> debug-settings-states: [
+        { label: "General", value: "general" },
+        { label: "Interface", value: "interface" },
+        { label: "Player", value: "player-settings" },
+        { label: "Streaming", value: "streaming" },
+        { label: "Shortcuts", value: "shortcuts" },
+        { label: "Diagnostics", value: "diagnostics" },
+        { label: "Exporting", value: "exporting" }
+    ];
+    private property <[DebugStateOption]> debug-calendar-states: [
+        { label: "Month loaded", value: "loaded" },
+        { label: "Loading", value: "loading" },
+        { label: "Signed out", value: "signed-out" },
+        { label: "Empty month", value: "empty" }
+    ];
+    private property <[DebugStateOption]> debug-search-states: [
+        { label: "Results", value: "results" },
+        { label: "Loading", value: "loading" },
+        { label: "No results", value: "empty" },
+        { label: "No query", value: "idle" }
+    ];
+    private property <[DebugStateOption]> debug-details-states: [
+        { label: "Loading title", value: "details-loading" },
+        { label: "Movie streams", value: "movie-streams" },
+        { label: "Movie no streams", value: "movie-no-streams" },
+        { label: "Movie filter open", value: "movie-filter" },
+        { label: "Series episodes", value: "series-episodes" },
+        { label: "Season dropdown", value: "series-season-menu" },
+        { label: "Selected episode streams", value: "series-streams" },
+        { label: "Streams still loading", value: "series-stream-loading" },
+        { label: "Episode no streams", value: "series-no-streams" }
+    ];
+    private property <[DebugStateOption]> debug-player-states: [
+        { label: "Loading", value: "player-loading" },
+        { label: "Buffering", value: "buffering" },
+        { label: "Paused controls", value: "paused" },
+        { label: "Playing controls", value: "playing" },
+        { label: "Skip intro", value: "skip-intro" },
+        { label: "Subtitle menu", value: "subtitles" },
+        { label: "Audio menu", value: "audio" },
+        { label: "Speed menu", value: "speed" },
+        { label: "Playback info", value: "stats" },
+        { label: "More options", value: "options" },
+        { label: "Context menu", value: "context-menu" },
+        { label: "Episode drawer", value: "episodes" },
+        { label: "Playback error", value: "player-error" },
+        { label: "Controls hidden", value: "controls-hidden" }
+    ];
+    private property <[DebugStateOption]> debug-state-options:
+        root.debug-preview-page == -1 ? root.debug-auth-states :
+        (root.debug-preview-page == 0 ? root.debug-board-states :
+        (root.debug-preview-page == 1 ? root.debug-discover-states :
+        (root.debug-preview-page == 2 ? root.debug-library-states :
+        (root.debug-preview-page == 3 ? root.debug-addons-states :
+        (root.debug-preview-page == 4 ? root.debug-settings-states :
+        (root.debug-preview-page == 5 ? root.debug-calendar-states :
+        (root.debug-preview-page == 6 ? root.debug-search-states :
+        (root.debug-preview-page == 7 ? root.debug-details-states : root.debug-player-states))))))));
+
+    private property <int> effective-active-tab: root.debug-preview-enabled
+        ? (root.debug-preview-page >= 0 && root.debug-preview-page <= 6 ? root.debug-preview-page : 0)
+        : root.active-tab;
+    private property <bool> effective-show-details: root.debug-preview-enabled
+        ? root.debug-preview-page == 7
+        : root.show-details;
+    private property <bool> effective-show-player: root.debug-preview-enabled
+        ? root.debug-preview-page == 8
+        : root.show-player;
+    private property <bool> show-auth-page: root.debug-preview-enabled
+        ? root.debug-preview-page == -1
+        : root.username == "";
+    private property <bool> show-main-shell: root.debug-preview-enabled
+        ? root.debug-preview-page >= 0 && root.debug-preview-page <= 6
+        : root.username != "";
 
     // Bindings / API exposed to Rust code
-    in-out property <int> active-tab: 0; // 0: Board, 1: Discover, 2: Library, 3: Addons, 4: Settings
+    in property <int> active-tab: 0; // 0: Board, 1: Discover, 2: Library, 3: Addons, 4: Settings, 5: Calendar, 6: Search
     in-out property <string> username: "";
     in-out property <string> avatar-letter: "U";
     in-out property <image> avatar-image;
@@ -98,7 +218,7 @@ export component MainWindow inherits Window {
     in-out property <string> library-active-sort: "Last Watched";
     in-out property <[AddonItem]> addons-list: [];
     in-out property <string> addons-search-query: "";
-    in-out property <bool> addon-details-open: false;
+    in property <bool> addon-details-open: false;
     in-out property <AddonItem> addon-details-addon;
     in-out property <bool> addon-details-loading: false;
     in-out property <string> addon-details-error: "";
@@ -137,11 +257,13 @@ export component MainWindow inherits Window {
     in-out property <bool> discover-preview-is-watched: false;
     in-out property <bool> discover-preview-has-trailer: false;
     in-out property <image> discover-preview-poster;
+    in-out property <string> discover-preview-poster-url: "";
 
     // Detailed view parameters
     in-out property <string> detail-title: "";
     in-out property <string> detail-description: "";
     in-out property <image> detail-poster;
+    in-out property <string> detail-poster-url: "";
     in-out property <string> detail-year: "";
     in-out property <string> detail-runtime: "";
     in-out property <string> detail-rating: "";
@@ -151,7 +273,8 @@ export component MainWindow inherits Window {
     in-out property <bool> detail-is-watched: false;
     in-out property <bool> detail-has-trailer: false;
     in-out property <string> detail-trailer-selection-id: "";
-    in-out property <bool> show-details: false;
+    in property <bool> show-details: false;
+    in-out property <bool> details-loading: false;
     
     // Details Series View bindings
     in-out property <bool> detail-is-series: false;
@@ -161,6 +284,7 @@ export component MainWindow inherits Window {
     in-out property <int> detail-active-episode-idx: 0;
     in-out property <bool> detail-is-in-library: false;
     in-out property <image> detail-background;
+    in-out property <string> detail-background-url: "";
     in-out property <[EpisodeItem]> detail-episodes: [];
     in-out property <bool> detail-in-stream-view: false;
     in-out property <string> detail-episode-search-query: "";
@@ -173,7 +297,7 @@ export component MainWindow inherits Window {
     callback details-toggle-season-watched(int);
 
     // Player Page parameters
-    in-out property <bool> show-player: false;
+    in property <bool> show-player: false;
     in-out property <string> player-title: "";
     in-out property <string> player-stream-name: "";
     in-out property <image> player-poster-image;
@@ -217,6 +341,26 @@ export component MainWindow inherits Window {
     in-out property <int> player-peer-count: 0;
     in-out property <float> player-stream-progress: 0.0;
     in-out property <float> player-seek-step-seconds: 10.0;
+    in-out property <float> player-short-seek-step-seconds: 3.0;
+    in-out property <bool> player-show-skip-button: false;
+    in-out property <string> player-skip-button-label: "Skip Intro";
+    in-out property <bool> player-controls-visible: true;
+    in-out property <bool> player-show-subtitles-menu: false;
+    in-out property <bool> player-show-audio-menu: false;
+    in-out property <bool> player-show-speed-menu: false;
+    in-out property <bool> player-show-stats-menu: false;
+    in-out property <bool> player-show-options-menu: false;
+    in-out property <bool> player-show-playlist-drawer: false;
+    in-out property <bool> player-show-context-menu: false;
+    private property <int> player-last-subtitle-idx: 0;
+    private property <bool> player-menu-open: player-show-subtitles-menu
+        || player-show-audio-menu
+        || player-show-speed-menu
+        || player-show-stats-menu
+        || player-show-options-menu
+        || player-show-playlist-drawer
+        || player-show-context-menu;
+    private property <int> settings-active-category: 0;
 
     // Player Icons
     in property <IconData> icon-play;
@@ -241,6 +385,12 @@ export component MainWindow inherits Window {
     in-out property <string> settings-torrent-profile: "Default";
     in-out property <bool> settings-hardware-acceleration: true;
     in-out property <bool> settings-binge-watching: true;
+    in-out property <bool> settings-discord-rpc-enabled: false;
+    in-out property <string> settings-tidb-api-key: "";
+    in-out property <bool> settings-tidb-show-intro: true;
+    in-out property <bool> settings-tidb-show-recap: true;
+    in-out property <bool> settings-tidb-show-credits: true;
+    in-out property <bool> settings-tidb-show-preview: true;
     in-out property <bool> settings-hide-spoilers: false;
     in-out property <bool> settings-gamepad-support: false;
     in-out property <bool> settings-play-in-background: true;
@@ -271,6 +421,12 @@ export component MainWindow inherits Window {
     callback settings-open-logs-folder();
     callback settings-export-data();
     callback settings-change-binge-watching(bool);
+    callback settings-change-discord-rpc-enabled(bool);
+    callback settings-change-tidb-api-key(string);
+    callback settings-change-tidb-show-intro(bool);
+    callback settings-change-tidb-show-recap(bool);
+    callback settings-change-tidb-show-credits(bool);
+    callback settings-change-tidb-show-preview(bool);
     callback settings-change-hide-spoilers(bool);
     callback settings-change-gamepad-support(bool);
     callback settings-change-play-in-background(bool);
@@ -343,7 +499,7 @@ export component MainWindow inherits Window {
     callback library-type-changed(string);
     callback library-sort-changed(string);
     callback library-search-changed(string);
-    callback library-item-selected(string);
+    callback library-item-selected(string, string);
 
     // Addons page callbacks
     callback install-addon(string);
@@ -370,9 +526,11 @@ export component MainWindow inherits Window {
     callback settings-clear-search-history();
     callback shutdown-server();
     callback tab-changed(int);
+    callback navigation-back();
+    callback navigation-forward();
     callback calendar-previous();
     callback calendar-next();
-    callback calendar-item-selected(string);
+    callback calendar-item-selected(string, string);
 
     // Player Callbacks
     callback player-toggle-pause();
@@ -382,6 +540,7 @@ export component MainWindow inherits Window {
     callback player-toggle-mute();
     callback player-change-subtitle(int);
     callback player-change-audio(int);
+    callback player-skip-segment();
     callback player-change-subtitle-delay(float);
     callback player-change-subtitle-size(float);
     callback player-change-subtitle-offset(float);
@@ -392,24 +551,270 @@ export component MainWindow inherits Window {
     callback player-play-episode(int);
     callback player-toggle-fullscreen();
     callback player-close();
+    callback player-activity();
+
+    function close-player-menus() {
+        root.player-show-subtitles-menu = false;
+        root.player-show-audio-menu = false;
+        root.player-show-speed-menu = false;
+        root.player-show-stats-menu = false;
+        root.player-show-options-menu = false;
+        root.player-show-playlist-drawer = false;
+        root.player-show-context-menu = false;
+    }
+
+    function toggle-player-menu(menu: string) {
+        let was-open = (menu == "subtitles" && root.player-show-subtitles-menu)
+            || (menu == "audio" && root.player-show-audio-menu)
+            || (menu == "speed" && root.player-show-speed-menu)
+            || (menu == "stats" && root.player-show-stats-menu)
+            || (menu == "info" && root.player-show-playlist-drawer);
+        root.close-player-menus();
+        if (!was-open) {
+            root.player-show-subtitles-menu = menu == "subtitles";
+            root.player-show-audio-menu = menu == "audio";
+            root.player-show-speed-menu = menu == "speed";
+            root.player-show-stats-menu = menu == "stats";
+            root.player-show-playlist-drawer = menu == "info";
+        }
+        root.player-controls-visible = true;
+        root.player-activity();
+    }
+
+    function adjust-player-subtitle-size(direction: int) {
+        let current = root.player-subtitle-size-percent;
+        let next = direction > 0
+            ? (current < 75 ? 75 : (current < 100 ? 100 : (current < 125 ? 125
+                : (current < 150 ? 150 : (current < 175 ? 175 : (current < 200 ? 200 : 250))))))
+            : (current > 200 ? 200 : (current > 175 ? 175 : (current > 150 ? 150
+                : (current > 125 ? 125 : (current > 100 ? 100 : 75)))));
+        root.player-subtitle-size-percent = next;
+        root.player-change-subtitle-size(next);
+        root.player-activity();
+    }
+
+    changed effective-show-player => {
+        if (root.effective-show-player) {
+            app-shortcuts.focus();
+        }
+    }
+
+    app-shortcuts := FocusScope {
+        property <bool> space-held: false;
+        property <bool> space-long-press: false;
+        property <float> space-restore-speed: 1.0;
+
+        key-pressed(event) => {
+            if (root.effective-show-player && !root.player-menu-open
+                && event.text == Key.Space && !event.repeat) {
+                self.space-held = true;
+                self.space-long-press = false;
+                self.space-restore-speed = root.player-playback-speed;
+                space-hold-timer.start();
+                root.player-controls-visible = true;
+                root.player-activity();
+                return accept;
+            }
+            reject
+        }
+
+        key-released(event) => {
+            if (event.text == Key.Space && self.space-held) {
+                space-hold-timer.stop();
+                self.space-held = false;
+                if (self.space-long-press) {
+                    root.player-playback-speed = self.space-restore-speed;
+                    root.player-change-speed(self.space-restore-speed);
+                } else {
+                    root.player-toggle-pause();
+                }
+                return accept;
+            }
+            reject
+        }
+
+        space-hold-timer := Timer {
+            interval: 400ms;
+            triggered => {
+                self.stop();
+                if (app-shortcuts.space-held && root.effective-show-player
+                    && !root.player-menu-open) {
+                    app-shortcuts.space-long-press = true;
+                    root.player-playback-speed = 2.0;
+                    root.player-change-speed(2.0);
+                }
+            }
+        }
+
+        KeyBinding { keys: @keys("1"); enabled: !root.effective-show-player; activated => { root.tab-changed(0); } }
+        KeyBinding { keys: @keys("2"); enabled: !root.effective-show-player; activated => { root.tab-changed(1); } }
+        KeyBinding { keys: @keys("3"); enabled: !root.effective-show-player; activated => { root.tab-changed(2); } }
+        KeyBinding { keys: @keys("4"); enabled: !root.effective-show-player; activated => { root.tab-changed(5); } }
+        KeyBinding { keys: @keys("5"); enabled: !root.effective-show-player; activated => { root.tab-changed(3); } }
+        KeyBinding { keys: @keys("6"); enabled: !root.effective-show-player; activated => { root.tab-changed(4); } }
+        KeyBinding { keys: @keys("0"); enabled: !root.effective-show-player; activated => { root.tab-changed(6); } }
+        KeyBinding { keys: @keys(Backspace); enabled: !root.effective-show-player; activated => { root.navigation-back(); } }
+        KeyBinding { keys: @keys(Control + Backspace); enabled: !root.effective-show-player; activated => { root.navigation-forward(); } }
+        KeyBinding {
+            keys: @keys(Control + "/");
+            enabled: !root.effective-show-player;
+            activated => {
+                root.settings-active-category = 4;
+                root.tab-changed(4);
+            }
+        }
+        KeyBinding { keys: @keys(F); activated => { root.toggle-fullscreen(); } }
+
+        KeyBinding {
+            keys: @keys(K);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => { root.player-toggle-pause(); root.player-activity(); }
+        }
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => { root.player-seek-relative(-root.player-seek-step-seconds); root.player-activity(); }
+        }
+        KeyBinding {
+            keys: @keys(Shift + LeftArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => { root.player-seek-relative(-root.player-short-seek-step-seconds); root.player-activity(); }
+        }
+        KeyBinding {
+            keys: @keys(RightArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => { root.player-seek-relative(root.player-seek-step-seconds); root.player-activity(); }
+        }
+        KeyBinding {
+            keys: @keys(Shift + RightArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => { root.player-seek-relative(root.player-short-seek-step-seconds); root.player-activity(); }
+        }
+        KeyBinding {
+            keys: @keys(UpArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-volume = min(1.0, root.player-volume + 0.05);
+                root.player-change-volume(root.player-volume);
+                root.player-activity();
+            }
+        }
+        KeyBinding {
+            keys: @keys(DownArrow);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-volume = max(0.0, root.player-volume - 0.05);
+                root.player-change-volume(root.player-volume);
+                root.player-activity();
+            }
+        }
+        KeyBinding { keys: @keys(M); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.player-toggle-mute(); root.player-activity(); } }
+        KeyBinding { keys: @keys("-"); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.adjust-player-subtitle-size(-1); } }
+        KeyBinding { keys: @keys("="); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.adjust-player-subtitle-size(1); } }
+        KeyBinding {
+            keys: @keys(G);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-subtitle-delay-seconds -= 0.25;
+                root.player-change-subtitle-delay(root.player-subtitle-delay-seconds);
+                root.player-activity();
+            }
+        }
+        KeyBinding {
+            keys: @keys(H);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-subtitle-delay-seconds += 0.25;
+                root.player-change-subtitle-delay(root.player-subtitle-delay-seconds);
+                root.player-activity();
+            }
+        }
+        KeyBinding {
+            keys: @keys("[");
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-playback-speed = max(0.25, root.player-playback-speed - 0.25);
+                root.player-change-speed(root.player-playback-speed);
+                root.player-activity();
+            }
+        }
+        KeyBinding {
+            keys: @keys("]");
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                root.player-playback-speed = min(2.0, root.player-playback-speed + 0.25);
+                root.player-change-speed(root.player-playback-speed);
+                root.player-activity();
+            }
+        }
+        KeyBinding {
+            keys: @keys(C);
+            enabled: root.effective-show-player && !root.player-menu-open;
+            activated => {
+                if (root.player-active-subtitle-idx >= 0) {
+                    root.player-last-subtitle-idx = root.player-active-subtitle-idx;
+                    root.player-change-subtitle(-1);
+                } else if (root.player-subtitles-tracks.length > 0) {
+                    root.player-change-subtitle(root.player-last-subtitle-idx);
+                }
+                root.player-activity();
+            }
+        }
+        KeyBinding { keys: @keys(S); enabled: root.effective-show-player; activated => { if (root.player-subtitles-tracks.length > 0) { root.toggle-player-menu("subtitles"); } } }
+        KeyBinding { keys: @keys(A); enabled: root.effective-show-player; activated => { if (root.player-audio-tracks.length > 0) { root.toggle-player-menu("audio"); } } }
+        KeyBinding { keys: @keys(I); enabled: root.effective-show-player && root.player-is-series; activated => { root.toggle-player-menu("info"); } }
+        KeyBinding { keys: @keys(R); enabled: root.effective-show-player; activated => { root.toggle-player-menu("speed"); } }
+        KeyBinding { keys: @keys(D); enabled: root.effective-show-player; activated => { root.toggle-player-menu("stats"); } }
+        KeyBinding {
+            keys: @keys(Shift + N);
+            enabled: root.effective-show-player && root.player-is-series;
+            activated => { root.close-player-menus(); root.player-play-episode(root.player-active-episode-idx + 1); }
+        }
+        KeyBinding {
+            keys: @keys(Escape);
+            enabled: root.effective-show-player;
+            activated => {
+                if (root.player-menu-open) {
+                    root.close-player-menus();
+                    root.player-activity();
+                } else {
+                    root.player-close();
+                }
+            }
+        }
+    }
 
     // Visual layout routing
     Rectangle {
+        x: 0px;
+        y: 0px;
         width: 100%;
         height: 100%;
 
-        if (!show-player) : Rectangle {
+        app-shell := Rectangle {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
-            background: username == "" ? Theme.background : Theme.main-gradient;
+            visible: !root.effective-show-player;
+            background: root.show-auth-page ? Theme.background : Theme.main-gradient;
 
-            HorizontalLayout {
-                spacing: 0;
-                padding: 0;
+            Rectangle {
+                width: 100%;
+                height: 100%;
 
-        if (username == "") : AuthPage {
-            error-message: error-message;
-            loading: loading;
+        if (root.show-auth-page) : AuthPage {
+            width: 100%;
+            height: 100%;
+            unit: root.ui-unit;
+            error-message: root.debug-preview-enabled && root.debug-preview-page == -1
+                ? (root.debug-preview-state == "auth-error" ? "The email or password is incorrect." : "")
+                : error-message;
+            loading: root.debug-preview-enabled && root.debug-preview-page == -1
+                ? root.debug-preview-state == "auth-loading"
+                : loading;
+            register-mode: root.debug-preview-enabled && root.debug-preview-page == -1
+                && root.debug-preview-state == "register";
             mail-icon: mail-icon;
             lock-icon: lock-icon;
             facebook-icon: facebook-icon;
@@ -423,13 +828,17 @@ export component MainWindow inherits Window {
             guest-login => { guest-login(); }
         }
 
-        if (username != "") : VerticalLayout {
+        if (root.show-main-shell) : VerticalLayout {
+            width: 100%;
+            height: 100%;
+            visible: !root.effective-show-details;
             spacing: 0;
             padding: 0;
 
             // Official horizontal navigation bar.
-            if (!root.show-details) : Rectangle {
+            Rectangle {
                 height: 5.5 * root.ui-unit;
+                visible: !root.effective-show-details;
                 background: transparent;
                 z: 100;
 
@@ -456,130 +865,29 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         alignment: center;
                         
-                        search-bar := Rectangle {
+                        search-input := SearchBox {
                             width: 30 * root.ui-unit;
                             height: 3.25 * root.ui-unit;
-                            background: Theme.overlay;
-                            border-radius: self.height / 2;
-
-                            if (search-input.text == "") : Text {
-                                x: 2 * root.ui-unit;
-                                width: parent.width - 6 * root.ui-unit;
-                                height: parent.height;
-                                text: "Search or paste link";
-                                color: Theme.text-primary;
-                                opacity: 0.6;
-                                font-size: root.ui-unit;
-                                font-weight: 500;
-                                vertical-alignment: center;
-                            }
-
-                            search-input := TextInput {
-                                x: 2 * root.ui-unit;
-                                width: parent.width - 6 * root.ui-unit;
-                                height: parent.height;
-                                font-size: root.ui-unit;
-                                font-weight: 500;
-                                color: Theme.text-primary;
-                                vertical-alignment: center;
-                                single-line: true;
-                                text <=> root.search-query;
-                                edited => {
-                                    global-search-edited(self.text);
-                                    if (active-tab == 1) {
-                                        discover-search-changed(self.text);
-                                    } else if (active-tab == 2) {
-                                        library-search-changed(self.text);
-                                    }
-                                }
-                                accepted => {
-                                    if (self.text != "") {
-                                        global-search-submitted(self.text);
-                                    }
+                            unit: root.ui-unit;
+                            text <=> root.search-query;
+                            suggestions: root.search-suggestions;
+                            edited(value) => {
+                                global-search-edited(value);
+                                if (root.effective-active-tab == 1) {
+                                    discover-search-changed(value);
+                                } else if (root.effective-active-tab == 2) {
+                                    library-search-changed(value);
                                 }
                             }
-
-                            Image {
-                                x: parent.width - 2.975 * root.ui-unit;
-                                y: (parent.height - self.height) / 2;
-                                width: 1.7 * root.ui-unit;
-                                height: 1.7 * root.ui-unit;
-                                source: @image-url("assets/images/icons/search.svg");
-                                colorize: Theme.text-primary;
-                                opacity: 0.6;
-                                image-fit: contain;
-                            }
-
-                            if (search-input.has-focus && root.search-query != "" && root.search-suggestions.length > 0) : Rectangle {
-                                x: 0px;
-                                y: parent.height + 0.5 * root.ui-unit;
-                                width: parent.width;
-                                height: root.search-suggestions.length * 3.75 * root.ui-unit;
-                                background: Theme.modal-background;
-                                border-radius: root.ui-unit;
-                                border-width: 1px;
-                                border-color: Theme.card-border;
-                                clip: true;
-                                z: 300;
-
-                                VerticalLayout {
-                                    width: 100%;
-                                    height: 100%;
-                                    spacing: 0px;
-
-                                    for suggestion in root.search-suggestions : Rectangle {
-                                        height: 3.75 * root.ui-unit;
-                                        background: suggestion-area.has-hover ? Theme.overlay : transparent;
-
-                                        HorizontalLayout {
-                                            padding-left: root.ui-unit;
-                                            padding-right: root.ui-unit;
-                                            spacing: root.ui-unit;
-
-                                            Rectangle {
-                                                width: 2.4 * root.ui-unit;
-                                                height: parent.height;
-                                                Image {
-                                                    x: (parent.width - self.width) / 2;
-                                                    y: (parent.height - self.height) / 2;
-                                                    width: 2 * root.ui-unit;
-                                                    height: 2.8 * root.ui-unit;
-                                                    source: suggestion.poster;
-                                                    image-fit: cover;
-                                                }
-                                            }
-                                            VerticalLayout {
-                                                horizontal-stretch: 1;
-                                                alignment: center;
-                                                Text {
-                                                    text: suggestion.title;
-                                                    color: Theme.text-primary;
-                                                    font-size: root.ui-unit;
-                                                    font-weight: 600;
-                                                    overflow: elide;
-                                                }
-                                                Text {
-                                                    text: suggestion.release-info == ""
-                                                        ? suggestion.media-type
-                                                        : suggestion.media-type + " · " + suggestion.release-info;
-                                                    color: Theme.text-secondary;
-                                                    font-size: 0.8 * root.ui-unit;
-                                                    overflow: elide;
-                                                }
-                                            }
-                                        }
-
-                                        suggestion-area := TouchArea {
-                                            clicked => {
-                                                root.search-query = suggestion.title;
-                                                root.global-search-suggestion-selected(
-                                                    suggestion.id,
-                                                    suggestion.media-type
-                                                );
-                                            }
-                                        }
-                                    }
+                            accepted(value) => {
+                                if (value != "") {
+                                    global-search-submitted(value);
                                 }
+                            }
+                            cleared => { global-search-edited(""); }
+                            suggestion-selected(id, media-type, title) => {
+                                root.search-query = title;
+                                root.global-search-suggestion-selected(id, media-type);
                             }
                         }
                     }
@@ -609,7 +917,7 @@ export component MainWindow inherits Window {
                         }
 
                         Rectangle {
-                            width: 3.5 * root.ui-unit;
+                            width: 5.5 * root.ui-unit;
                             height: 3.5 * root.ui-unit;
                             border-radius: 0.75 * root.ui-unit;
                             background: profile-area.has-hover ? Theme.overlay : transparent;
@@ -650,20 +958,9 @@ export component MainWindow inherits Window {
                                     image-fit: cover;
                                 }
                             }
-                        }
-
-                        Rectangle {
-                            width: 1.5 * root.ui-unit;
-                            height: 3.5 * root.ui-unit;
-                            background: menu-caret-area.has-hover ? Theme.overlay : transparent;
-                            border-radius: 0.75 * root.ui-unit;
-
-                            menu-caret-area := TouchArea {
-                                clicked => { root.profile-menu-open = !root.profile-menu-open; }
-                            }
 
                             Image {
-                                x: (parent.width - self.width) / 2;
+                                x: parent.width - self.width - 0.55 * root.ui-unit;
                                 y: (parent.height - self.height) / 2;
                                 width: root.ui-unit;
                                 height: root.ui-unit;
@@ -673,6 +970,19 @@ export component MainWindow inherits Window {
                                 image-fit: contain;
                             }
                         }
+                    }
+                }
+
+                if (root.profile-menu-open) : Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: root.width;
+                    height: root.height;
+                    background: transparent;
+                    z: 190;
+
+                    TouchArea {
+                        clicked => { root.profile-menu-open = false; }
                     }
                 }
 
@@ -755,10 +1065,11 @@ export component MainWindow inherits Window {
 
                         Rectangle { height: 1px; background: Theme.overlay; }
 
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: root.is-fullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
-                            icon: root.is-fullscreen ? @image-url("assets/images/icons/minimize.svg") : @image-url("assets/images/icons/maximize.svg");
+                            show-icon: true;
+                            icon-source: root.is-fullscreen ? @image-url("assets/images/icons/minimize.svg") : @image-url("assets/images/icons/maximize.svg");
                             clicked => {
                                 root.profile-menu-open = false;
                                 root.toggle-fullscreen();
@@ -767,41 +1078,41 @@ export component MainWindow inherits Window {
 
                         Rectangle { height: 1px; background: Theme.overlay; }
 
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Settings";
-                            icon: @image-url("assets/images/icons/settings.svg");
+                            show-icon: true;
+                            icon-source: @image-url("assets/images/icons/settings.svg");
                             clicked => {
                                 root.profile-menu-open = false;
-                                root.active-tab = 4;
-                                root.show-details = false;
                                 root.tab-changed(4);
                             }
                         }
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Addons";
-                            icon: @image-url("assets/images/icons/addons.svg");
+                            show-icon: true;
+                            icon-source: @image-url("assets/images/icons/addons.svg");
                             clicked => {
                                 root.profile-menu-open = false;
-                                root.active-tab = 3;
-                                root.show-details = false;
                                 root.tab-changed(3);
                             }
                         }
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Play URL or magnet link";
-                            icon: @image-url("assets/images/icons/magnet-link.svg");
+                            show-icon: true;
+                            icon-source: @image-url("assets/images/icons/magnet-link.svg");
                             clicked => {
                                 root.profile-menu-open = false;
-                                search-input.focus();
+                                search-input.focus-input();
                             }
                         }
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Help & Feedback";
-                            icon: @image-url("assets/images/icons/help.svg");
+                            show-icon: true;
+                            icon-source: @image-url("assets/images/icons/help.svg");
                             clicked => {
                                 root.profile-menu-open = false;
                                 root.open-external-url("https://stremio.zendesk.com/");
@@ -810,7 +1121,7 @@ export component MainWindow inherits Window {
 
                         Rectangle { height: 1px; background: Theme.overlay; }
 
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Terms of Service";
                             show-icon: false;
@@ -819,7 +1130,7 @@ export component MainWindow inherits Window {
                                 root.open-external-url("https://www.stremio.com/tos");
                             }
                         }
-                        NavMenuItem {
+                        MenuButton {
                             unit: root.ui-unit;
                             label: "Privacy Policy";
                             show-icon: false;
@@ -828,7 +1139,7 @@ export component MainWindow inherits Window {
                                 root.open-external-url("https://www.stremio.com/privacy");
                             }
                         }
-                        if (username != "" && username != "Guest") : NavMenuItem {
+                        if (username != "" && username != "Guest") : MenuButton {
                             unit: root.ui-unit;
                             label: "User Panel";
                             show-icon: false;
@@ -847,9 +1158,10 @@ export component MainWindow inherits Window {
                 padding: 0;
                 vertical-stretch: 1;
 
-                if (!root.show-details) : Sidebar {
+                Sidebar {
                     unit: root.ui-unit;
-                    active-tab: active-tab;
+                    visible: !root.effective-show-details;
+                    active-tab: root.effective-active-tab;
                     server-status: server-status;
                     username: username;
                     avatar-letter: avatar-letter;
@@ -863,8 +1175,6 @@ export component MainWindow inherits Window {
                     logout-icon: logout-icon;
 
                     change-tab(tab) => {
-                        active-tab = tab;
-                        show-details = false;
                         root.tab-changed(tab);
                     }
                     logout => { logout(); }
@@ -878,75 +1188,23 @@ export component MainWindow inherits Window {
                     background: transparent;
                     clip: true;
                     
-                    if (show-details) : DetailsPage {
-                        item-title: detail-title;
-                        description: detail-description;
-                        poster: detail-poster;
-                        background-image: detail-background;
-                        release-year: detail-year;
-                        runtime: detail-runtime;
-                        rating: detail-rating;
-                        genres: detail-genres;
-                        cast: detail-cast;
-                        directors: detail-directors;
-                        streams: stream-links;
-                        stream-providers: detail-stream-providers;
-                        stream-loading-count: detail-stream-loading-count;
-                        loading: loading;
-                        username: root.username;
-                        avatar-image: root.avatar-image;
-                        has-avatar-image: root.has-avatar-image;
-                        default-avatar-icon: root.default-avatar-icon;
-                        anonymous-icon: root.anonymous-icon;
-                        
-                        is-in-library: detail-is-in-library;
-                        is-watched: detail-is-watched;
-                        has-trailer: detail-has-trailer;
-                        trailer-selection-id: detail-trailer-selection-id;
-                        toggle-library => { details-toggle-library(); }
-                        toggle-watched => { details-toggle-watched(); }
-                        play-trailer(selection-id) => { play-stream(selection-id); }
-
-                        is-series: detail-is-series;
-                        available-seasons: detail-seasons;
-                        active-season: detail-active-season;
-                        episode-names: detail-episode-names;
-                        active-episode-idx: detail-active-episode-idx;
-
-                        episodes: detail-episodes;
-                        in-stream-view: detail-in-stream-view;
-                        episode-search-query: detail-episode-search-query;
-
-                        icon-play: root.icon-play;
-                        icon-link: root.icon-link;
-                        icon-magnet: root.icon-magnet;
-                        icon-download: root.icon-download;
-                        icon-eye: root.icon-eye;
-                        icon-eye-off: root.icon-eye-off;
-                        icon-clapperboard: root.icon-clapperboard;
-
-                        season-changed(s) => { details-season-changed(s); }
-                        episode-changed(idx) => { details-episode-changed(idx); }
-                        toggle-episode-watched(id) => { details-toggle-episode-watched(id); }
-                        episode-search-changed(q) => {
-                            detail-episode-search-query = q;
-                            details-episode-search-changed(q);
-                        }
-
-                        copy-stream-link(id) => { details-copy-stream-link(id); }
-                        copy-magnet-link(id) => { details-copy-magnet-link(id); }
-                        copy-download-link(id) => { details-copy-download-link(id); }
-                        toggle-season-watched(s) => { details-toggle-season-watched(s); }
-
-                        play-stream(selection-id) => { play-stream(selection-id); }
-                        toggle-fullscreen => { root.player-toggle-fullscreen(); }
-                        close => { show-details = false; }
-                    }
-
-                    if (!show-details && active-tab == 0) : BoardPage {
-                        continue-watching: board-continue-watching;
-                        sections: board-sections;
-                        loading: loading;
+                    if (root.effective-active-tab == 0) : BoardPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        continue-watching: root.debug-preview-enabled && root.debug-preview-page == 0
+                            && (root.debug-preview-state == "empty"
+                                || root.debug-preview-state == "loading"
+                                || root.debug-preview-state == "catalogs-only")
+                            ? [] : board-continue-watching;
+                        sections: root.debug-preview-enabled && root.debug-preview-page == 0
+                            && (root.debug-preview-state == "empty"
+                                || root.debug-preview-state == "loading"
+                                || root.debug-preview-state == "continue-only")
+                            ? [] : board-sections;
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 0
+                            ? root.debug-preview-state == "loading"
+                            : loading;
                         item-selected(id, media-type, video-id) => {
                             board-item-selected(id, media-type, video-id);
                         }
@@ -956,10 +1214,17 @@ export component MainWindow inherits Window {
                         poster-requested(url) => { request-poster(url); }
                     }
 
-                    if (!show-details && active-tab == 1) : DiscoverPage {
-                        rows: discover-rows;
+                    if (root.effective-active-tab == 1) : DiscoverPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        rows: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
+                            ? [] : discover-rows;
                         column-count: discover-column-count;
-                        loading: loading;
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 1
+                            ? root.debug-preview-state == "loading"
+                            : loading;
 
                         available-types: discover-types;
                         active-type: discover-active-type;
@@ -968,20 +1233,43 @@ export component MainWindow inherits Window {
                         available-genres: discover-genres;
                         active-genre: discover-active-genre;
 
-                        has-preview: discover-has-preview;
-                        preview-title: discover-preview-title;
-                        preview-description: discover-preview-description;
-                        preview-rating: discover-preview-rating;
-                        preview-year: discover-preview-year;
-                        preview-runtime: discover-preview-runtime;
-                        preview-genres: discover-preview-genres;
-                        preview-cast: discover-preview-cast;
-                        preview-directors: discover-preview-directors;
+                        has-preview: root.debug-preview-enabled && root.debug-preview-page == 1
+                            ? (root.debug-preview-state == "movie-selected"
+                                || root.debug-preview-state == "series-selected")
+                            : discover-has-preview;
+                        preview-title: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected"
+                            ? "Dune: Part Two" : discover-preview-title;
+                        preview-description: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected"
+                            ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+                            : discover-preview-description;
+                        preview-rating: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected" ? "8.5" : discover-preview-rating;
+                        preview-year: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected" ? "2024" : discover-preview-year;
+                        preview-runtime: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected" ? "166 min" : discover-preview-runtime;
+                        preview-genres: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected"
+                            ? ["Science Fiction", "Adventure", "Drama"] : discover-preview-genres;
+                        preview-cast: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected"
+                            ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : discover-preview-cast;
+                        preview-directors: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "movie-selected"
+                            ? ["Denis Villeneuve"] : discover-preview-directors;
                         preview-is-in-library: discover-preview-is-in-library;
                         preview-is-watched: discover-preview-is-watched;
                         preview-has-trailer: discover-preview-has-trailer;
                         preview-trailer-selection-id: detail-trailer-selection-id;
                         preview-poster: discover-preview-poster;
+                        type-open: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "type-dropdown";
+                        catalog-open: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "catalog-dropdown";
+                        genre-open: root.debug-preview-enabled && root.debug-preview-page == 1
+                            && root.debug-preview-state == "genre-dropdown";
 
                         type-changed(t) => { discover-type-changed(t); }
                         catalog-changed(c) => { discover-catalog-changed(c); }
@@ -995,30 +1283,62 @@ export component MainWindow inherits Window {
                         scroll-y: discover-scroll-y;
                     }
 
-                    if (!show-details && active-tab == 2) : LibraryPage {
-                        rows: library-rows;
+                    if (root.effective-active-tab == 2) : LibraryPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        rows: root.debug-preview-enabled && root.debug-preview-page == 2
+                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
+                            ? [] : library-rows;
                         column-count: library-column-count;
-                        loading: loading;
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 2
+                            ? root.debug-preview-state == "loading"
+                            : loading;
                         active-type: library-active-type;
                         active-sort: library-active-sort;
+                        type-open: root.debug-preview-enabled && root.debug-preview-page == 2
+                            && root.debug-preview-state == "type-dropdown";
+                        sort-open: root.debug-preview-enabled && root.debug-preview-page == 2
+                            && root.debug-preview-state == "sort-dropdown";
 
                         type-changed(t) => { library-type-changed(t); }
                         sort-changed(s) => { library-sort-changed(s); }
-                        item-selected(id) => { library-item-selected(id); }
+                        item-selected(id, media-type) => { library-item-selected(id, media-type); }
                         poster-requested(url) => { request-poster(url); }
                         scroll-y: library-scroll-y;
                     }
 
-                    if (!show-details && active-tab == 3) : AddonsPage {
-                        addons: addons-list;
+                    if (root.effective-active-tab == 3) : AddonsPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        addons: root.debug-preview-enabled && root.debug-preview-page == 3
+                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
+                            ? [] : addons-list;
                         search-query: addons-search-query;
-                        loading: loading;
-                        details-open: addon-details-open;
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 3
+                            ? root.debug-preview-state == "loading"
+                            : loading;
+                        details-open: root.debug-preview-enabled && root.debug-preview-page == 3
+                            ? (root.debug-preview-state == "addon-details"
+                                || root.debug-preview-state == "addon-details-loading"
+                                || root.debug-preview-state == "addon-details-error")
+                            : addon-details-open;
                         details-addon: addon-details-addon;
-                        details-loading: addon-details-loading;
-                        details-error: addon-details-error;
+                        details-loading: root.debug-preview-enabled && root.debug-preview-page == 3
+                            ? root.debug-preview-state == "addon-details-loading"
+                            : addon-details-loading;
+                        details-error: root.debug-preview-enabled && root.debug-preview-page == 3
+                            ? (root.debug-preview-state == "addon-details-error" ? "Unable to load the addon manifest." : "")
+                            : addon-details-error;
                         details-configurable: addon-details-configurable;
                         details-configuration-required: addon-details-configuration-required;
+                        filter-open: root.debug-preview-enabled && root.debug-preview-page == 3
+                            && root.debug-preview-state == "filter-dropdown";
+                        type-open: root.debug-preview-enabled && root.debug-preview-page == 3
+                            && root.debug-preview-state == "type-dropdown";
+                        add-modal-open: root.debug-preview-enabled && root.debug-preview-page == 3
+                            && root.debug-preview-state == "add-addon";
                         install-addon(url) => { install-addon(url); }
                         uninstall-addon(url) => { uninstall-addon(url); }
                         open-addon-details(url) => { open-addon-details(url); }
@@ -1028,7 +1348,22 @@ export component MainWindow inherits Window {
                         search-changed(query) => { addons-search-changed(query); }
                     }
 
-                    if (!show-details && active-tab == 4) : SettingsPage {
+                    if (root.effective-active-tab == 4) : SettingsPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        active-category: root.debug-preview-enabled && root.debug-preview-page == 4
+                            ? (root.debug-preview-state == "interface" ? 1
+                                : (root.debug-preview-state == "player-settings" ? 2
+                                : (root.debug-preview-state == "streaming" ? 3
+                                : (root.debug-preview-state == "shortcuts" ? 4
+                                : (root.debug-preview-state == "diagnostics" ? 5 : 0)))))
+                            : root.settings-active-category;
+                        changed active-category => {
+                            if (!root.debug-preview-enabled) {
+                                root.settings-active-category = self.active-category;
+                            }
+                        }
                         torrent-cache-size: torrent-cache-size;
                         server-url: server-url;
                         interface-language: settings-interface-language;
@@ -1036,6 +1371,12 @@ export component MainWindow inherits Window {
                         torrent-profile: settings-torrent-profile;
                         hardware-acceleration: settings-hardware-acceleration;
                         binge-watching: settings-binge-watching;
+                        discord-rpc-enabled: settings-discord-rpc-enabled;
+                        tidb-api-key: settings-tidb-api-key;
+                        tidb-show-intro: settings-tidb-show-intro;
+                        tidb-show-recap: settings-tidb-show-recap;
+                        tidb-show-credits: settings-tidb-show-credits;
+                        tidb-show-preview: settings-tidb-show-preview;
                         hide-spoilers: settings-hide-spoilers;
                         gamepad-support: settings-gamepad-support;
                         play-in-background: settings-play-in-background;
@@ -1047,8 +1388,13 @@ export component MainWindow inherits Window {
                         seek-duration: settings-seek-duration;
                         pause-on-minimize: settings-pause-on-minimize;
                         quit-on-close: settings-quit-on-close;
-                        export-loading: settings-export-loading;
-                        export-status: settings-export-status;
+                        export-loading: root.debug-preview-enabled && root.debug-preview-page == 4
+                            ? root.debug-preview-state == "exporting"
+                            : settings-export-loading;
+                        export-status: root.debug-preview-enabled && root.debug-preview-page == 4
+                            && root.debug-preview-state == "exporting"
+                            ? "Exporting profile data…"
+                            : settings-export-status;
 
                         streaming-seeding: settings-streaming-seeding;
                         streaming-dht: settings-streaming-dht;
@@ -1075,6 +1421,12 @@ export component MainWindow inherits Window {
                         open-logs-folder => { settings-open-logs-folder(); }
                         export-data => { settings-export-data(); }
                         change-binge-watching(val) => { settings-change-binge-watching(val); }
+                        change-discord-rpc-enabled(val) => { settings-change-discord-rpc-enabled(val); }
+                        change-tidb-api-key(val) => { settings-change-tidb-api-key(val); }
+                        change-tidb-show-intro(val) => { settings-change-tidb-show-intro(val); }
+                        change-tidb-show-recap(val) => { settings-change-tidb-show-recap(val); }
+                        change-tidb-show-credits(val) => { settings-change-tidb-show-credits(val); }
+                        change-tidb-show-preview(val) => { settings-change-tidb-show-preview(val); }
                         change-hide-spoilers(val) => { settings-change-hide-spoilers(val); }
                         change-gamepad-support(val) => { settings-change-gamepad-support(val); }
                         change-play-in-background(val) => { settings-change-play-in-background(val); }
@@ -1086,26 +1438,47 @@ export component MainWindow inherits Window {
                         change-seek-duration(val) => { settings-change-seek-duration(val); }
                         change-pause-on-minimize(val) => { settings-change-pause-on-minimize(val); }
                         change-quit-on-close(val) => { settings-change-quit-on-close(val); }
+                        open-external-url(url) => { root.open-external-url(url); }
                     }
 
-                    if (!show-details && active-tab == 5) : CalendarPage {
-                        authenticated: username != "" && username != "Guest";
-                        loading: calendar-loading;
+                    if (root.effective-active-tab == 5) : CalendarPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        authenticated: root.debug-preview-enabled && root.debug-preview-page == 5
+                            ? root.debug-preview-state != "signed-out"
+                            : username != "" && username != "Guest";
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 5
+                            ? root.debug-preview-state == "loading"
+                            : calendar-loading;
                         selected-year: calendar-selected-year;
                         selected-month: calendar-selected-month;
                         previous-month: calendar-previous-month;
                         next-month: calendar-next-month;
-                        rows: calendar-rows;
+                        rows: root.debug-preview-enabled && root.debug-preview-page == 5
+                            && root.debug-preview-state == "empty" ? [] : calendar-rows;
                         previous => { calendar-previous(); }
                         next => { calendar-next(); }
-                        item-selected(id) => { calendar-item-selected(id); }
+                        item-selected(id, media-type) => { calendar-item-selected(id, media-type); }
                     }
 
-                    if (!show-details && active-tab == 6) : SearchPage {
-                        query: search-query;
-                        sections: search-sections;
-                        loading: search-loading;
-                        catalog-count: search-catalog-count;
+                    if (root.effective-active-tab == 6) : SearchPage {
+                        width: parent.width;
+                        height: parent.height;
+                        unit: root.ui-unit;
+                        query: root.debug-preview-enabled && root.debug-preview-page == 6
+                            && root.debug-preview-state == "idle" ? "" : search-query;
+                        sections: root.debug-preview-enabled && root.debug-preview-page == 6
+                            && (root.debug-preview-state == "empty"
+                                || root.debug-preview-state == "loading"
+                                || root.debug-preview-state == "idle")
+                            ? [] : search-sections;
+                        loading: root.debug-preview-enabled && root.debug-preview-page == 6
+                            ? root.debug-preview-state == "loading"
+                            : search-loading;
+                        catalog-count: root.debug-preview-enabled && root.debug-preview-page == 6
+                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "idle")
+                            ? 0 : search-catalog-count;
                         item-selected(id, media-type, video-id) => {
                             search-item-selected(id, media-type, video-id);
                         }
@@ -1114,10 +1487,156 @@ export component MainWindow inherits Window {
                 }
             }
         }
+
+        if (root.effective-show-details) : DetailsPage {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+            z: 500;
+            unit: root.ui-unit;
+            item-title: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? "Dune: Part Two" : detail-title;
+            description: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+                : detail-description;
+            poster: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? @image-url("assets/images/background_1.svg") : detail-poster;
+            background-image: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? @image-url("assets/images/background_1.svg") : detail-background;
+            release-year: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter") ? "2024" : detail-year;
+            runtime: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter") ? "166 min" : detail-runtime;
+            rating: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter") ? "8.5" : detail-rating;
+            genres: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? ["Science Fiction", "Adventure", "Drama"] : detail-genres;
+            cast: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : detail-cast;
+            directors: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-streams"
+                    || root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "movie-filter")
+                ? ["Denis Villeneuve"] : detail-directors;
+            streams: root.debug-preview-enabled && root.debug-preview-page == 7
+                && (root.debug-preview-state == "movie-no-streams"
+                    || root.debug-preview-state == "series-no-streams"
+                    || root.debug-preview-state == "details-loading")
+                ? [] : stream-links;
+            stream-providers: detail-stream-providers;
+            stream-loading-count: root.debug-preview-enabled && root.debug-preview-page == 7
+                ? (root.debug-preview-state == "series-stream-loading" ? 2 : 0)
+                : detail-stream-loading-count;
+            stream-filter-open: root.debug-preview-enabled && root.debug-preview-page == 7
+                && root.debug-preview-state == "movie-filter";
+            loading: root.debug-preview-enabled && root.debug-preview-page == 7
+                ? root.debug-preview-state == "details-loading"
+                : details-loading;
+            username: root.username;
+            avatar-image: root.avatar-image;
+            has-avatar-image: root.has-avatar-image;
+            default-avatar-icon: root.default-avatar-icon;
+            anonymous-icon: root.anonymous-icon;
+
+            is-in-library: detail-is-in-library;
+            is-watched: detail-is-watched;
+            has-trailer: detail-has-trailer;
+            trailer-selection-id: detail-trailer-selection-id;
+            toggle-library => { details-toggle-library(); }
+            toggle-watched => { details-toggle-watched(); }
+            play-trailer(selection-id) => { play-stream(selection-id); }
+
+            is-series: root.debug-preview-enabled && root.debug-preview-page == 7
+                ? (root.debug-preview-state == "series-episodes"
+                    || root.debug-preview-state == "series-season-menu"
+                    || root.debug-preview-state == "series-streams"
+                    || root.debug-preview-state == "series-stream-loading"
+                    || root.debug-preview-state == "series-no-streams")
+                : detail-is-series;
+            available-seasons: detail-seasons;
+            active-season: detail-active-season;
+            season-menu-open: root.debug-preview-enabled && root.debug-preview-page == 7
+                && root.debug-preview-state == "series-season-menu";
+            episode-names: detail-episode-names;
+            active-episode-idx: detail-active-episode-idx;
+            episodes: detail-episodes;
+            in-stream-view: root.debug-preview-enabled && root.debug-preview-page == 7
+                ? (root.debug-preview-state == "series-streams"
+                    || root.debug-preview-state == "series-stream-loading"
+                    || root.debug-preview-state == "series-no-streams")
+                : detail-in-stream-view;
+            episode-search-query: detail-episode-search-query;
+
+            icon-play: root.icon-play;
+            icon-link: root.icon-link;
+            icon-magnet: root.icon-magnet;
+            icon-download: root.icon-download;
+            icon-eye: root.icon-eye;
+            icon-eye-off: root.icon-eye-off;
+            icon-clapperboard: root.icon-clapperboard;
+
+            season-changed(s) => { details-season-changed(s); }
+            episode-changed(idx) => {
+                if (root.debug-preview-enabled && root.debug-preview-page == 7) {
+                    root.detail-active-episode-idx = idx;
+                    root.debug-preview-state = "series-streams";
+                } else {
+                    details-episode-changed(idx);
+                }
+            }
+            toggle-episode-watched(id) => { details-toggle-episode-watched(id); }
+            episode-search-changed(q) => {
+                detail-episode-search-query = q;
+                details-episode-search-changed(q);
+            }
+            copy-stream-link(id) => { details-copy-stream-link(id); }
+            copy-magnet-link(id) => { details-copy-magnet-link(id); }
+            copy-download-link(id) => { details-copy-download-link(id); }
+            toggle-season-watched(s) => { details-toggle-season-watched(s); }
+            play-stream(selection-id) => { play-stream(selection-id); }
+            toggle-fullscreen => { root.player-toggle-fullscreen(); }
+            close => {
+                if (root.debug-preview-enabled && root.debug-preview-page == 7
+                    && (root.debug-preview-state == "series-streams"
+                        || root.debug-preview-state == "series-stream-loading"
+                        || root.debug-preview-state == "series-no-streams")) {
+                    root.debug-preview-state = "series-episodes";
+                } else if (detail-in-stream-view) {
+                    detail-in-stream-view = false;
+                } else {
+                    root.navigation-back();
+                }
+            }
+        }
         }
         }
 
-        if (show-player) : PlayerPage {
+        if (root.effective-show-player) : PlayerPage {
             width: 100%;
             height: 100%;
             z: 1000;
@@ -1126,11 +1645,19 @@ export component MainWindow inherits Window {
             stream-name: player-stream-name;
             poster-image: player-poster-image;
             video-frame: player-video-frame;
-            has-video-frame: player-has-video-frame;
-            loading: player-loading;
-            buffering: player-buffering;
+            has-video-frame: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? root.debug-preview-state != "player-loading"
+                : player-has-video-frame;
+            loading: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? root.debug-preview-state == "player-loading"
+                : player-loading;
+            buffering: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? root.debug-preview-state == "buffering"
+                : player-buffering;
             buffering-percent: player-buffering-percent;
-            paused: player-paused;
+            paused: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? (root.debug-preview-state == "paused" || root.debug-preview-state == "player-error")
+                : player-paused;
             volume: player-volume;
             muted: player-muted;
             progress: player-progress;
@@ -1149,12 +1676,17 @@ export component MainWindow inherits Window {
             subtitle-delay-seconds: player-subtitle-delay-seconds;
             subtitle-size-percent: player-subtitle-size-percent;
             subtitle-offset-percent: player-subtitle-offset-percent;
-            is-series: player-is-series;
+            is-series: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? true : player-is-series;
             episode-names: player-episode-names;
             active-episode-idx: player-active-episode-idx;
             playback-speed: player-playback-speed;
             video-scale-mode: player-video-scale-mode;
-            error-message: player-error;
+            error-message: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? (root.debug-preview-state == "player-error"
+                    ? "The stream stopped unexpectedly. Select another stream and try again."
+                    : "")
+                : player-error;
             video-format: player-video-format;
             audio-format: player-audio-format;
             file-format: player-file-format;
@@ -1165,6 +1697,18 @@ export component MainWindow inherits Window {
             peer-count: player-peer-count;
             stream-progress: player-stream-progress;
             seek-step-seconds: player-seek-step-seconds;
+            show-skip-button: root.debug-preview-enabled && root.debug-preview-page == 8
+                ? root.debug-preview-state == "skip-intro"
+                : player-show-skip-button;
+            skip-button-label: player-skip-button-label;
+            controls-visible <=> root.player-controls-visible;
+            show-subtitles-menu <=> root.player-show-subtitles-menu;
+            show-audio-menu <=> root.player-show-audio-menu;
+            show-speed-menu <=> root.player-show-speed-menu;
+            show-stats-menu <=> root.player-show-stats-menu;
+            show-options-menu <=> root.player-show-options-menu;
+            show-context-menu <=> root.player-show-context-menu;
+            show-playlist-drawer <=> root.player-show-playlist-drawer;
             
             icon-play: icon-play;
             icon-pause: icon-pause;
@@ -1193,11 +1737,51 @@ export component MainWindow inherits Window {
             change-subtitle-offset(value) => { player-change-subtitle-offset(value); }
             change-speed(val) => { player-change-speed(val); }
             change-video-scale(mode) => { player-change-video-scale(mode); }
+            skip-segment => { player-skip-segment(); }
             copy-stream-link => { player-copy-stream-link(); }
             download-video => { player-download-video(); }
             play-episode(idx) => { player-play-episode(idx); }
             toggle-fullscreen => { player-toggle-fullscreen(); }
             close => { player-close(); }
+            activity => { player-activity(); }
+        }
+
+        if (root.debug-preview-enabled) : AppDebugMenu {
+            x: root.ui-unit;
+            y: parent.height - self.height - root.ui-unit;
+            unit: root.ui-unit;
+            pages: root.debug-pages;
+            states: root.debug-state-options;
+            selected-page: root.debug-preview-page;
+            selected-state: root.debug-preview-state;
+            open <=> root.debug-menu-open;
+            page-selected(page) => {
+                root.profile-menu-open = false;
+                root.debug-preview-page = page;
+                root.debug-preview-state = page == -1 ? "login"
+                    : (page == 0 ? "loaded"
+                    : (page == 1 ? "catalog"
+                    : (page == 2 ? "loaded"
+                    : (page == 3 ? "loaded"
+                    : (page == 4 ? "general"
+                    : (page == 5 ? "loaded"
+                    : (page == 6 ? "results"
+                    : (page == 7 ? "series-episodes" : "paused"))))))));
+            }
+            state-selected(state) => {
+                root.profile-menu-open = root.debug-preview-page == 0 && state == "profile-menu";
+                root.debug-preview-state = state;
+                if (root.debug-preview-page == 8) {
+                    root.player-controls-visible = state != "controls-hidden";
+                    root.player-show-subtitles-menu = state == "subtitles";
+                    root.player-show-audio-menu = state == "audio";
+                    root.player-show-speed-menu = state == "speed";
+                    root.player-show-stats-menu = state == "stats";
+                    root.player-show-options-menu = state == "options";
+                    root.player-show-context-menu = state == "context-menu";
+                    root.player-show-playlist-drawer = state == "episodes";
+                }
+            }
         }
     }
 }

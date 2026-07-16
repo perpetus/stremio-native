@@ -4,32 +4,90 @@ export struct IconData {
 }
 
 export global Theme {
-    // Canonical stremio-web tokens. Keep these values synchronized with
-    // stremio-web/src/App/styles.less.
+    // Canonical stremio-web tokens. Reusable components consume only this
+    // contract so a custom palette can replace the official defaults at run time.
+    in-out property <length> root-font-size: 16px;
+    in-out property <string> font-family: "Plus Jakarta Sans";
+
+    // Official application palette.
     in-out property <color> background: #0c0b11;
-    in-out property <brush> main-gradient: @linear-gradient(41deg, #0c0b11 0%, #1a173e 100%);
-    in-out property <color> sidebar-background: #0f0d2099;
     in-out property <color> secondary-background: #1a173e;
-    in-out property <color> modal-background: #0f0d20;
-    in-out property <color> overlay: #ffffff0d;
-    in-out property <color> accent: #7b5bf5;
+    in-out property <color> primary-foreground: #ffffffe6;
+    in-out property <color> secondary-foreground: #0c0b11;
+    in-out property <color> primary-accent: #7b5bf5;
+    in-out property <color> secondary-accent: #22b365;
+    in-out property <color> tertiary-accent: #f6c700;
+    in-out property <color> quaternary-accent: #1245a6;
+    in-out property <color> overlay-color: #ffffff0d;
+    in-out property <color> modal-color: #0f0d20;
+    in-out property <color> placeholder-color: #60606080;
+
+    // Values used directly by official reusable components.
+    in-out property <color> surface-light: #ffffff;
+    in-out property <color> surface-light-30: #ffffff4d;
+    in-out property <color> surface-light-90: #ffffffe6;
+    in-out property <color> background-dark-20: #00000033;
+    in-out property <color> background-dark-40: #00000066;
+    in-out property <color> secondary-variant-light: #8fafff;
+    in-out property <color> secondary-variant-light-90: #8fafffe6;
+    in-out property <color> primary-light: #8152a3;
+
+    in-out property <brush> main-gradient: @linear-gradient(
+        41deg,
+        Theme.background 0%,
+        Theme.secondary-background 100%
+    );
+    in-out property <color> sidebar-background: Theme.modal-color.with-alpha(0.6);
+    in-out property <color> modal-background: Theme.modal-color;
+    in-out property <color> drawer-background: Theme.background-dark-40;
+    in-out property <color> control-background: Theme.overlay-color;
+    in-out property <color> overlay: Theme.overlay-color;
+    in-out property <color> overlay-hover: #ffffff14;
+    in-out property <color> overlay-pressed: #ffffff20;
+    in-out property <color> divider: #ffffff14;
+    in-out property <color> scrim: Theme.background-dark-40;
+    in-out property <color> accent: Theme.primary-accent;
     in-out property <color> accent-hover: #9275f7;
+    in-out property <color> info: Theme.quaternary-accent;
     in-out property <color> facebook: #1877f1;
+    in-out property <color> x-social: #000000;
+    in-out property <color> reddit: #ff4500;
+    in-out property <color> imdb: #f5c518;
     in-out property <color> card-background: #151320;
     in-out property <color> card-border: #201e2f;
-    in-out property <color> text-primary: #ffffffe6;
+    in-out property <color> text-primary: Theme.primary-foreground;
     in-out property <color> text-secondary: #ffffff99;
     in-out property <color> text-muted: #ffffff66;
     
     in-out property <color> danger: #dc2626;
-    in-out property <color> success: #22b365;
-    in-out property <color> warning: #f6c700;
+    in-out property <color> success: Theme.secondary-accent;
+    in-out property <color> warning: #ffa500;
+    in-out property <color> focus: Theme.surface-light;
+    in-out property <color> title-bar: #15122b;
 
-    in-out property <length> border-radius: 12px;
+    // Official geometry. rem based values follow root-font-size; focus and
+    // scrollbar widths intentionally remain device independent pixel values.
+    in-out property <length> border-radius: 0.75 * Theme.root-font-size;
+    in-out property <length> compact-radius: 0.5 * Theme.root-font-size;
     in-out property <length> focus-outline-size: 2px;
-    in-out property <length> horizontal-nav-bar-size: 88px;
-    in-out property <length> vertical-nav-bar-size: 96px;
+    in-out property <length> scrollbar-size: 6px;
+    in-out property <length> horizontal-nav-bar-size: 5.5 * Theme.root-font-size;
+    in-out property <length> vertical-nav-bar-size: 6 * Theme.root-font-size;
+    in-out property <float> landscape-shape-ratio: 0.5625;
+    in-out property <float> poster-shape-ratio: 1.464;
 
-    in-out property <color> skeleton-base: #1a1828;
-    in-out property <color> skeleton-shimmer: #2a2838;
+    // Shared timing values from the official component styles.
+    in-out property <duration> motion-fast: 100ms;
+    in-out property <duration> motion-control: 200ms;
+    in-out property <duration> motion-panel: 300ms;
+    in-out property <duration> motion-fade-in: 350ms;
+    in-out property <duration> long-press-threshold: 400ms;
+
+    in-out property <length> outer-glow-blur: 15px;
+    in-out property <color> outer-glow-color: #7b5bf55e;
+
+    // stremio-web placeholders are static 10% foreground surfaces. Keeping
+    // this semantic token separate preserves runtime theme customization.
+    in-out property <color> skeleton-base: #ffffff1a;
+    in-out property <color> skeleton-shimmer: #ffffff26;
 }

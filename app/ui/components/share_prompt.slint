@@ -1,0 +1,137 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { StremioTextInput } from "text_input.slint";
+
+component SocialShareButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> icon-source;
+    in property <color> social-color;
+
+    height: 3.5 * root.unit;
+    border-radius: Theme.border-radius;
+    background: root.social-color;
+    border-color: Theme.primary-foreground;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 1.5 * root.unit;
+        height: 1.5 * root.unit;
+        source: root.icon-source;
+        colorize: Theme.primary-foreground;
+        image-fit: contain;
+    }
+}
+
+export component SharePrompt inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> url: "";
+    callback share-requested(string, string);
+    callback copy-requested(string);
+
+    width: 30 * root.unit;
+    height: 8.5 * root.unit;
+    background: transparent;
+
+    HorizontalLayout {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 3.5 * root.unit;
+        spacing: root.unit;
+
+        SocialShareButton {
+            horizontal-stretch: 1;
+            unit: root.unit;
+            icon-source: @image-url("../assets/images/icons/facebook.svg");
+            social-color: Theme.facebook;
+            accessible-name: "Facebook";
+            clicked => { root.share-requested("facebook", root.url); }
+        }
+        SocialShareButton {
+            horizontal-stretch: 1;
+            unit: root.unit;
+            icon-source: @image-url("../assets/images/icons/x.svg");
+            social-color: Theme.x-social;
+            accessible-name: "X";
+            clicked => { root.share-requested("x", root.url); }
+        }
+        SocialShareButton {
+            horizontal-stretch: 1;
+            unit: root.unit;
+            icon-source: @image-url("../assets/images/icons/reddit.svg");
+            social-color: Theme.reddit;
+            accessible-name: "Reddit";
+            clicked => { root.share-requested("reddit", root.url); }
+        }
+    }
+
+    url-row := Rectangle {
+        x: 0px;
+        y: 4.5 * root.unit;
+        width: parent.width;
+        height: 4 * root.unit;
+        border-radius: Theme.border-radius;
+        background: Theme.overlay-color;
+        clip: true;
+
+        StremioTextInput {
+            x: 0px;
+            y: 0px;
+            width: parent.width - 8 * root.unit;
+            height: parent.height;
+            text: root.url;
+            read-only: true;
+            content-left: root.unit;
+            content-right: root.unit;
+            font-size: 1.1 * root.unit;
+            horizontal-alignment: TextHorizontalAlignment.center;
+        }
+
+        copy-button := ButtonSurface {
+            x: parent.width - self.width;
+            y: 0px;
+            width: 8 * root.unit;
+            height: parent.height;
+            border-top-left-radius: 0px;
+            border-bottom-left-radius: 0px;
+            border-top-right-radius: Theme.border-radius;
+            border-bottom-right-radius: Theme.border-radius;
+            background: self.has-hover ? transparent : Theme.secondary-accent;
+            border-width: self.has-hover || self.has-focus ? Theme.focus-outline-size : 0px;
+            border-color: self.has-hover ? Theme.secondary-accent : Theme.primary-foreground;
+            accessible-name: "Copy to clipboard";
+            clicked => { root.copy-requested(root.url); }
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 0px;
+                width: 5 * root.unit;
+                height: parent.height;
+                background: transparent;
+
+                Image {
+                    x: 0px;
+                    y: (parent.height - self.height) / 2;
+                    width: 1.2 * root.unit;
+                    height: 1.2 * root.unit;
+                    source: @image-url("../assets/images/icons/link.svg");
+                    colorize: Theme.primary-foreground;
+                    image-fit: contain;
+                }
+                Text {
+                    x: 1.7 * root.unit;
+                    y: 0px;
+                    width: parent.width - self.x;
+                    height: parent.height;
+                    text: "Copy";
+                    color: Theme.primary-foreground;
+                    font-size: 1.1 * root.unit;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

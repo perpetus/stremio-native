@@ -1,8 +1,13 @@
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "../components/button.slint";
+import { EmptyState } from "../components/feedback.slint";
+import { CalendarGridPlaceholder } from "../components/loading_placeholders.slint";
 
 export struct CalendarMediaItem {
     meta-id: string,
+    media-type: string,
     title: string,
+    poster-url: string,
     poster: image,
 }
 
@@ -17,18 +22,15 @@ export struct CalendarRow {
     cells: [CalendarCell],
 }
 
-component MonthButton inherits Rectangle {
+component MonthButton inherits ButtonSurface {
     in property <length> unit: 16px;
     in property <string> label;
     in property <bool> previous: false;
-    callback clicked;
-
     width: 6 * root.unit;
     height: 3 * root.unit;
     border-radius: 0.5 * root.unit;
-    background: area.has-hover ? Theme.overlay : transparent;
-
-    area := TouchArea { clicked => { root.clicked(); } }
+    background: root.has-hover ? Theme.overlay : transparent;
+    accessible-name: (root.previous ? "Previous month " : "Next month ") + root.label;
 
     HorizontalLayout {
         padding-left: 0.5 * root.unit;
@@ -39,14 +41,14 @@ component MonthButton inherits Rectangle {
         if (root.previous) : Text {
             text: "‹";
             color: Theme.text-primary;
-            opacity: area.has-hover ? 1 : 0.5;
+            opacity: root.has-hover ? 1 : 0.5;
             font-size: 1.5 * root.unit;
             vertical-alignment: center;
         }
         Text {
             text: root.label;
             color: Theme.text-primary;
-            opacity: area.has-hover ? 1 : 0.5;
+            opacity: root.has-hover ? 1 : 0.5;
             font-size: root.unit;
             font-weight: 500;
             overflow: elide;
@@ -55,7 +57,7 @@ component MonthButton inherits Rectangle {
         if (!root.previous) : Text {
             text: "›";
             color: Theme.text-primary;
-            opacity: area.has-hover ? 1 : 0.5;
+            opacity: root.has-hover ? 1 : 0.5;
             font-size: 1.5 * root.unit;
             vertical-alignment: center;
         }
@@ -65,7 +67,7 @@ component MonthButton inherits Rectangle {
 component DayCell inherits Rectangle {
     in property <length> unit: 16px;
     in property <CalendarCell> cell;
-    callback item-selected(string);
+    callback item-selected(string, string);
 
     border-width: 0.15 * root.unit;
     border-color: transparent;
@@ -101,12 +103,14 @@ component DayCell inherits Rectangle {
             spacing: 0.2 * root.unit;
             alignment: start;
 
-            for media in root.cell.items : Rectangle {
+            for media in root.cell.items : ButtonSurface {
                 width: self.height * 2 / 3;
                 height: parent.height;
                 border-radius: 0.375 * root.unit;
                 clip: true;
                 background: Theme.overlay;
+                accessible-name: media.title;
+                clicked => { root.item-selected(media.meta-id, media.media-type); }
 
                 Image {
                     source: media.poster;
@@ -115,13 +119,14 @@ component DayCell inherits Rectangle {
                     image-fit: cover;
                     opacity: media.poster.width > 0 ? 0.9 : 0;
                 }
-                TouchArea { clicked => { root.item-selected(media.meta-id); } }
             }
         }
     }
 }
 
 export component CalendarPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in property <bool> authenticated: false;
     in property <bool> loading: false;
     in property <int> selected-year: 0;
@@ -132,34 +137,17 @@ export component CalendarPage inherits Rectangle {
 
     callback previous;
     callback next;
-    callback item-selected(string);
+    callback item-selected(string, string);
 
-    property <length> unit: root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px);
+    in property <length> unit: Theme.root-font-size;
 
     background: Theme.main-gradient;
 
-    if (!root.authenticated) : VerticalLayout {
-        padding: 2 * root.unit;
-        alignment: center;
-        spacing: root.unit;
-
-        Text {
-            text: "Your personal episode calendar";
-            color: Theme.text-primary;
-            opacity: 0.5;
-            font-size: 1.75 * root.unit;
-            font-weight: 400;
-            horizontal-alignment: center;
-        }
-        Text {
-            width: 34 * root.unit;
-            text: "Log in to see release dates for series in your Library.";
-            color: Theme.text-primary;
-            opacity: 0.8;
-            font-size: 1.1 * root.unit;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
+    if (!root.authenticated) : EmptyState {
+        unit: root.unit;
+        icon-source: @image-url("../assets/images/icons/calendar.svg");
+        title: "Your personal episode calendar";
+        message: "Log in to see release dates for series in your Library.";
     }
 
     if (root.authenticated) : VerticalLayout {
@@ -225,15 +213,9 @@ export component CalendarPage inherits Rectangle {
             }
         }
 
-        if (root.loading) : Rectangle {
+        if (root.loading) : CalendarGridPlaceholder {
             vertical-stretch: 1;
-            Text {
-                text: "Loading calendar...";
-                color: Theme.text-secondary;
-                font-size: root.unit;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+            unit: root.unit;
         }
 
         if (!root.loading) : VerticalLayout {
@@ -248,7 +230,7 @@ export component CalendarPage inherits Rectangle {
                     horizontal-stretch: 1;
                     unit: root.unit;
                     cell: cell;
-                    item-selected(id) => { root.item-selected(id); }
+                    item-selected(id, media-type) => { root.item-selected(id, media-type); }
                 }
             }
         }

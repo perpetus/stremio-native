@@ -1,35 +1,9 @@
-import { Slider, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "../theme.slint";
-import { NativeTextField, PillButton, ToggleSwitch } from "../components/form_controls.slint";
-
-component SettingsMenuButton inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <string> label;
-    in property <bool> selected: false;
-    callback clicked;
-
-    height: 4 * root.unit;
-    border-radius: root.height / 2;
-    background: root.selected || area.has-hover ? Theme.overlay : transparent;
-    opacity: root.selected ? 1 : 0.4;
-
-    area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-
-    Text {
-        x: 2 * root.unit;
-        width: parent.width - 4 * root.unit;
-        height: parent.height;
-        text: root.label;
-        color: Theme.text-primary;
-        font-size: 1.1 * root.unit;
-        font-weight: root.selected ? 600 : 500;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
+import { MenuButton, PillButton } from "../components/button.slint";
+import { NativeTextField } from "../components/text_input.slint";
+import { ToggleSwitch } from "../components/toggle.slint";
+import { Slider } from "../components/slider.slint";
 
 component SettingsSection inherits VerticalLayout {
     in property <length> unit: 16px;
@@ -55,6 +29,30 @@ component SettingsSection inherits VerticalLayout {
     Rectangle {
         height: 1px;
         background: Theme.overlay;
+    }
+}
+
+component SettingsLink inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <string> label;
+    callback clicked;
+
+    height: 3.5 * root.unit;
+    background: transparent;
+
+    HorizontalLayout {
+        alignment: start;
+        Text {
+            text: root.label;
+            color: touch.has-hover ? Theme.accent.brighter(15%) : Theme.accent;
+            font-size: root.unit;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
     }
 }
 
@@ -90,52 +88,20 @@ component SettingsOption inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
+        VerticalLayout {
             width: 16 * root.unit;
             alignment: center;
-            @children
-        }
-    }
-}
-
-component IconPill inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <string> label;
-    in property <image> icon-source;
-    callback clicked;
-
-    height: 3.5 * root.unit;
-    border-radius: root.height / 2;
-    background: area.has-hover ? Theme.overlay : #ffffff12;
-
-    area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-
-    HorizontalLayout {
-        alignment: center;
-        spacing: 0.75 * root.unit;
-        padding-left: root.unit;
-        padding-right: root.unit;
-        Image {
-            width: 1.3 * root.unit;
-            height: 1.3 * root.unit;
-            source: root.icon-source;
-            colorize: Theme.text-primary;
-            image-fit: contain;
-        }
-        Text {
-            text: root.label;
-            color: Theme.text-primary;
-            font-size: root.unit;
-            font-weight: 600;
-            vertical-alignment: center;
+            HorizontalLayout {
+                alignment: end;
+                @children
+            }
         }
     }
 }
 
 export component SettingsPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in-out property <string> torrent-cache-size: "2.0 GB";
     in property <string> server-url: "";
     in-out property <string> interface-language: "English";
@@ -143,6 +109,12 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> torrent-profile: "Default";
     in-out property <bool> hardware-acceleration: true;
     in-out property <bool> binge-watching: true;
+    in-out property <bool> discord-rpc-enabled: false;
+    in-out property <string> tidb-api-key: "";
+    in-out property <bool> tidb-show-intro: true;
+    in-out property <bool> tidb-show-recap: true;
+    in-out property <bool> tidb-show-credits: true;
+    in-out property <bool> tidb-show-preview: true;
     in-out property <bool> hide-spoilers: false;
     in-out property <bool> gamepad-support: false;
     in-out property <bool> play-in-background: true;
@@ -164,7 +136,9 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> streaming-logs-text: "No logs loaded. Click Refresh.";
     in property <IconData> refresh-icon;
     in property <IconData> folder-icon;
+    in-out property <bool> esc-exit-fullscreen: true;
 
+    callback open-external-url(string);
     callback apply-cache-settings(float);
     callback change-interface-language(string);
     callback change-subtitles-language(string);
@@ -180,6 +154,12 @@ export component SettingsPage inherits Rectangle {
     callback open-logs-folder;
     callback export-data;
     callback change-binge-watching(bool);
+    callback change-discord-rpc-enabled(bool);
+    callback change-tidb-api-key(string);
+    callback change-tidb-show-intro(bool);
+    callback change-tidb-show-recap(bool);
+    callback change-tidb-show-credits(bool);
+    callback change-tidb-show-preview(bool);
     callback change-hide-spoilers(bool);
     callback change-gamepad-support(bool);
     callback change-play-in-background(bool);
@@ -192,10 +172,16 @@ export component SettingsPage inherits Rectangle {
     callback change-pause-on-minimize(bool);
     callback change-quit-on-close(bool);
 
-    property <length> unit: root.width > 2700px ? 18px :
-        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
-    property <int> active-category: 0;
+    in property <length> unit: Theme.root-font-size;
+    in-out property <int> active-category: 0;
     background: transparent;
+
+    function update-active-category(offset: length) {
+        root.active-category = (offset < 30 * root.unit) ? 0 :
+            ((offset < 65 * root.unit) ? 1 :
+            ((offset < 155 * root.unit) ? 2 :
+            ((offset < 205 * root.unit) ? 3 : 4)));
+    }
 
     HorizontalLayout {
         spacing: 0px;
@@ -208,17 +194,11 @@ export component SettingsPage inherits Rectangle {
             padding-right: 1.5 * root.unit;
             spacing: 0.5 * root.unit;
 
-            SettingsMenuButton { unit: root.unit; label: "General"; selected: root.active-category == 0; clicked => { root.active-category = 0; } }
-            SettingsMenuButton { unit: root.unit; label: "Interface"; selected: root.active-category == 1; clicked => { root.active-category = 1; } }
-            SettingsMenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { root.active-category = 2; } }
-            SettingsMenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { root.active-category = 3; } }
-            SettingsMenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { root.active-category = 4; } }
-            SettingsMenuButton {
-                unit: root.unit;
-                label: "Diagnostics logs";
-                selected: root.active-category == 5;
-                clicked => { root.active-category = 5; root.refresh-logs(); }
-            }
+            MenuButton { unit: root.unit; label: "General"; selected: root.active-category == 0; clicked => { scroll.viewport-y = 0px; root.active-category = 0; } }
+            MenuButton { unit: root.unit; label: "Interface"; selected: root.active-category == 1; clicked => { scroll.viewport-y = -35 * root.unit; root.active-category = 1; } }
+            MenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { scroll.viewport-y = -70 * root.unit; root.active-category = 2; } }
+            MenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { scroll.viewport-y = -165 * root.unit; root.active-category = 3; } }
+            MenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { scroll.viewport-y = -215 * root.unit; root.active-category = 4; } }
             Rectangle { vertical-stretch: 1; }
             Text {
                 height: 2 * root.unit;
@@ -230,8 +210,11 @@ export component SettingsPage inherits Rectangle {
             }
         }
 
-        ScrollView {
+        scroll := ScrollView {
             horizontal-stretch: 1;
+            scrolled => {
+                root.update-active-category(-self.viewport-y);
+            }
 
             VerticalLayout {
                 padding-left: 3 * root.unit;
@@ -239,9 +222,20 @@ export component SettingsPage inherits Rectangle {
                 spacing: 0px;
                 alignment: start;
 
-                if (root.active-category == 0) : SettingsSection {
+                general-sec := SettingsSection {
                     unit: root.unit;
                     title: "General";
+
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Discord Rich Presence";
+                        description: "Show what you are watching in your Discord profile.";
+                        ToggleSwitch {
+                            unit: root.unit;
+                            checked: root.discord-rpc-enabled;
+                            toggled => { root.change-discord-rpc-enabled(self.checked); }
+                        }
+                    }
 
                     SettingsOption {
                         unit: root.unit;
@@ -250,7 +244,7 @@ export component SettingsPage inherits Rectangle {
                             ? "Download a backup of your library and settings."
                             : root.export-status;
                         PillButton {
-                            width: 12 * root.unit;
+                            width: 16 * root.unit;
                             unit: root.unit;
                             label: root.export-loading ? "Preparing…" : "Export";
                             outlined: true;
@@ -263,13 +257,87 @@ export component SettingsPage inherits Rectangle {
                         label: "Clear search history";
                         description: "Delete all recent search queries stored locally.";
                         PillButton {
-                            width: 12 * root.unit;
+                            width: 16 * root.unit;
                             unit: root.unit;
                             label: "Clear history";
                             outlined: true;
                             clicked => { root.clear-search-history(); }
                         }
                     }
+
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Data export";
+                        clicked => { root.export-data(); }
+                    }
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Support";
+                        clicked => { root.open-external-url("https://stremio.zendesk.com/hc/en-us"); }
+                    }
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Source code";
+                        clicked => { root.open-external-url("https://github.com/stremio/stremio-native"); }
+                    }
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Terms of Service";
+                        clicked => { root.open-external-url("https://www.stremio.com/tos"); }
+                    }
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Privacy Policy";
+                        clicked => { root.open-external-url("https://www.stremio.com/privacy"); }
+                    }
+                    SettingsLink {
+                        unit: root.unit;
+                        label: "Delete account";
+                        clicked => { root.open-external-url("https://stremio.zendesk.com/hc/en-us/articles/360021428911-How-to-delete-my-account"); }
+                    }
+                }
+
+                interface-sec := SettingsSection {
+                    unit: root.unit;
+                    title: "Interface";
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Interface language";
+                        NativeTextField {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            text: root.interface-language;
+                            placeholder-text: "English";
+                            accepted => { root.change-interface-language(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Gamepad support";
+                        ToggleSwitch { unit: root.unit; checked: root.gamepad-support; toggled => { root.change-gamepad-support(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Hide spoilers";
+                        ToggleSwitch { unit: root.unit; checked: root.hide-spoilers; toggled => { root.change-hide-spoilers(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Quit when closing the window";
+                        ToggleSwitch { unit: root.unit; checked: root.quit-on-close; toggled => { root.change-quit-on-close(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Esc exits fullscreen";
+                        ToggleSwitch { unit: root.unit; checked: root.esc-exit-fullscreen; toggled => { root.esc-exit-fullscreen = self.checked; } }
+                    }
+                }
+
+                player-sec := SettingsSection {
+                    unit: root.unit;
+                    title: "Player";
+
+                    // Subtitles Settings
                     SettingsOption {
                         unit: root.unit;
                         label: "Default subtitles language";
@@ -302,7 +370,7 @@ export component SettingsPage inherits Rectangle {
                         label: "Subtitle size";
                         description: "Percentage from 50 to 200.";
                         NativeTextField {
-                            width: 8 * root.unit;
+                            width: 16 * root.unit;
                             unit: root.unit;
                             text: root.subtitles-size;
                             placeholder-text: "100";
@@ -319,54 +387,15 @@ export component SettingsPage inherits Rectangle {
                         label: "Subtitle vertical offset";
                         description: "Percentage from the bottom edge.";
                         NativeTextField {
-                            width: 8 * root.unit;
+                            width: 16 * root.unit;
                             unit: root.unit;
                             text: root.subtitles-offset;
                             placeholder-text: "5";
                             accepted => { root.change-subtitles-offset(self.text); }
                         }
                     }
-                }
 
-                if (root.active-category == 1) : SettingsSection {
-                    unit: root.unit;
-                    title: "Interface";
-                    SettingsOption {
-                        unit: root.unit;
-                        label: "Interface language";
-                        NativeTextField {
-                            width: 16 * root.unit;
-                            unit: root.unit;
-                            text: root.interface-language;
-                            placeholder-text: "English";
-                            accepted => { root.change-interface-language(self.text); }
-                        }
-                    }
-                    SettingsOption {
-                        unit: root.unit;
-                        label: "Hardware-accelerated decoding";
-                        description: "Use the GPU for video decoding. A restart may be required.";
-                        ToggleSwitch {
-                            unit: root.unit;
-                            checked: root.hardware-acceleration;
-                            toggled => { root.change-hardware-acceleration(self.checked); }
-                        }
-                    }
-                    SettingsOption {
-                        unit: root.unit;
-                        label: "Hide spoilers";
-                        ToggleSwitch { unit: root.unit; checked: root.hide-spoilers; toggled => { root.change-hide-spoilers(self.checked); } }
-                    }
-                    SettingsOption {
-                        unit: root.unit;
-                        label: "Gamepad support";
-                        ToggleSwitch { unit: root.unit; checked: root.gamepad-support; toggled => { root.change-gamepad-support(self.checked); } }
-                    }
-                }
-
-                if (root.active-category == 2) : SettingsSection {
-                    unit: root.unit;
-                    title: "Player";
+                    // Advanced Settings
                     SettingsOption {
                         unit: root.unit;
                         label: "Play next episode automatically";
@@ -382,7 +411,7 @@ export component SettingsPage inherits Rectangle {
                         label: "Seek duration";
                         description: "Seconds skipped by the forward and back shortcuts.";
                         NativeTextField {
-                            width: 8 * root.unit;
+                            width: 16 * root.unit;
                             unit: root.unit;
                             text <=> root.seek-duration;
                             placeholder-text: "10";
@@ -396,12 +425,49 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Quit when closing the window";
-                        ToggleSwitch { unit: root.unit; checked: root.quit-on-close; toggled => { root.change-quit-on-close(self.checked); } }
+                        label: "Hardware-accelerated decoding";
+                        description: "Use the GPU for video decoding. A restart may be required.";
+                        ToggleSwitch {
+                            unit: root.unit;
+                            checked: root.hardware-acceleration;
+                            toggled => { root.change-hardware-acceleration(self.checked); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "TheIntroDB API Key";
+                        description: "Optional API Key for TheIntroDB Premium.";
+                        NativeTextField {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            text: root.tidb-api-key;
+                            placeholder-text: "Leave empty for free tier";
+                            accepted => { root.change-tidb-api-key(self.text); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Show Skip Intro Button";
+                        ToggleSwitch { unit: root.unit; checked: root.tidb-show-intro; toggled => { root.change-tidb-show-intro(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Show Skip Recap Button";
+                        ToggleSwitch { unit: root.unit; checked: root.tidb-show-recap; toggled => { root.change-tidb-show-recap(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Show Skip Credits Button";
+                        ToggleSwitch { unit: root.unit; checked: root.tidb-show-credits; toggled => { root.change-tidb-show-credits(self.checked); } }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: "Show Skip Preview Button";
+                        ToggleSwitch { unit: root.unit; checked: root.tidb-show-preview; toggled => { root.change-tidb-show-preview(self.checked); } }
                     }
                 }
 
-                if (root.active-category == 3) : SettingsSection {
+                streaming-sec := SettingsSection {
                     unit: root.unit;
                     title: "Streaming";
                     SettingsOption {
@@ -452,28 +518,22 @@ export component SettingsPage inherits Rectangle {
                         HorizontalLayout {
                             width: 16 * root.unit;
                             spacing: 0.5 * root.unit;
-                            for profile in ["Default", "Fast", "Ultra Fast"] : Rectangle {
+                            for profile in ["Default", "Fast", "Ultra Fast"] : PillButton {
                                 horizontal-stretch: 1;
                                 height: 3.5 * root.unit;
-                                border-radius: self.height / 2;
-                                background: root.torrent-profile == profile ? Theme.accent : Theme.overlay;
-                                Text {
-                                    text: profile;
-                                    color: Theme.text-primary;
-                                    font-size: 0.8 * root.unit;
-                                    font-weight: 600;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
-                                TouchArea {
-                                    clicked => {
-                                        root.torrent-profile = profile;
-                                        root.change-torrent-profile(
-                                            profile == "Ultra Fast" ? "ultrafast" :
-                                            (profile == "Fast" ? "fast" : "default")
-                                        );
-                                    }
+                                unit: root.unit;
+                                label: profile;
+                                label-font-size: 0.8 * root.unit;
+                                label-font-weight: 600;
+                                primary: root.torrent-profile == profile;
+                                accent-color: Theme.accent;
+                                surface-color: Theme.overlay;
+                                clicked => {
+                                    root.torrent-profile = profile;
+                                    root.change-torrent-profile(
+                                        profile == "Ultra Fast" ? "ultrafast" :
+                                        (profile == "Fast" ? "fast" : "default")
+                                    );
                                 }
                             }
                         }
@@ -496,56 +556,13 @@ export component SettingsPage inherits Rectangle {
                     }
                 }
 
-                if (root.active-category == 4) : SettingsSection {
+                shortcuts-sec := SettingsSection {
                     unit: root.unit;
                     title: "Shortcuts";
                     SettingsOption { unit: root.unit; label: "Play / Pause"; Text { text: "Space"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
                     SettingsOption { unit: root.unit; label: "Fullscreen"; Text { text: "F"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
                     SettingsOption { unit: root.unit; label: "Volume"; Text { text: "Up / Down"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
                     SettingsOption { unit: root.unit; label: "Seek"; Text { text: "Left / Right"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
-                }
-
-                if (root.active-category == 5) : SettingsSection {
-                    unit: root.unit;
-                    title: "Diagnostics logs";
-                    HorizontalLayout {
-                        height: 3.5 * root.unit;
-                        spacing: root.unit;
-                        IconPill {
-                            width: 10 * root.unit;
-                            unit: root.unit;
-                            label: "Refresh";
-                            icon-source: @image-url("../assets/images/icons/reset.svg");
-                            clicked => { root.refresh-logs(); }
-                        }
-                        IconPill {
-                            width: 13 * root.unit;
-                            unit: root.unit;
-                            label: "Open folder";
-                            icon-source: @image-url("../assets/images/icons/open-in-browser.svg");
-                            clicked => { root.open-logs-folder(); }
-                        }
-                    }
-                    Rectangle { height: root.unit; }
-                    Rectangle {
-                        width: 35 * root.unit;
-                        height: 28 * root.unit;
-                        border-radius: 0.75 * root.unit;
-                        background: #09080d;
-                        clip: true;
-                        ScrollView {
-                            Text {
-                                x: root.unit;
-                                y: root.unit;
-                                width: parent.width - 2 * root.unit;
-                                text: root.streaming-logs-text;
-                                color: #a9a9b3;
-                                font-family: "Consolas";
-                                font-size: 0.8 * root.unit;
-                                wrap: word-wrap;
-                            }
-                        }
-                    }
                 }
             }
         }

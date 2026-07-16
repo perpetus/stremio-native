@@ -1,0 +1,75 @@
+// Data contracts shared by reusable controls. Page models remain with pages.
+export struct SelectOption {
+    label: string,
+    value: string,
+    disabled: bool,
+}
+
+export struct ChipOption {
+    label: string,
+    value: string,
+    active: bool,
+}
+
+export struct MenuOption {
+    label: string,
+    value: string,
+    description: string,
+    icon: image,
+    has-icon: bool,
+    disabled: bool,
+    selected: bool,
+    destructive: bool,
+    divider-before: bool,
+}
+
+export struct ToastItem {
+    id: string,
+    title: string,
+    message: string,
+    kind: string,
+    duration-ms: int,
+}
+
+export struct DialogAction {
+    id: string,
+    label: string,
+    icon: image,
+    has-icon: bool,
+    enabled: bool,
+    primary: bool,
+}
+
+export struct ActionItem {
+    id: string,
+    label: string,
+    icon: image,
+    disabled: bool,
+    active: bool,
+}
+
+export struct ShortcutKey {
+    label: string,
+    separator: string,
+}
+
+export struct ShortcutCombo {
+    keys: [ShortcutKey],
+    trailing-separator: string,
+}
+
+export struct ShortcutItem {
+    id: string,
+    label: string,
+    combos: [ShortcutCombo],
+}
+
+export struct MetaLinkItem {
+    label: string,
+    value: string,
+}
+
+export struct MetaLinkGroup {
+    label: string,
+    links: [MetaLinkItem],
+}

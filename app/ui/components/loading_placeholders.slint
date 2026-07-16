@@ -1,0 +1,104 @@
+import { Theme } from "../theme.slint";
+import { SkeletonBlock } from "feedback.slint";
+
+// Port of stremio-web's AddonPlaceholder. It preserves the final card's
+// logo, information, and action-column geometry to avoid layout shift.
+export component AddonCardPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+
+    private property <length> card-padding: 1.5 * root.unit;
+    private property <length> logo-size: 8 * root.unit;
+    private property <length> actions-width: 17 * root.unit;
+
+    height: 11 * root.unit;
+    border-radius: Theme.border-radius;
+    background: Theme.overlay-color;
+
+    SkeletonBlock {
+        x: root.card-padding;
+        y: root.card-padding;
+        width: root.logo-size;
+        height: root.logo-size;
+        radius: self.width / 2;
+    }
+
+    VerticalLayout {
+        x: root.card-padding + root.logo-size + 1.5 * root.unit;
+        y: root.card-padding;
+        width: max(0px, root.width - self.x - root.actions-width - 3 * root.unit);
+        height: root.height - 2 * root.card-padding;
+        spacing: 0.5 * root.unit;
+        alignment: center;
+
+        SkeletonBlock { width: parent.width * 0.4; height: 1.3 * root.unit; }
+        SkeletonBlock { width: parent.width * 0.6; height: 1.3 * root.unit; }
+        SkeletonBlock { width: parent.width * 0.8; height: 1.3 * root.unit; }
+    }
+
+    actions := Rectangle {
+        x: root.width - root.card-padding - root.actions-width;
+        y: root.card-padding;
+        width: root.actions-width;
+        height: root.height - 2 * root.card-padding;
+        background: transparent;
+
+        SkeletonBlock {
+            width: parent.width;
+            height: 3.5 * root.unit;
+            radius: self.height / 2;
+        }
+        SkeletonBlock {
+            y: 4.5 * root.unit;
+            width: parent.width;
+            height: 3.5 * root.unit;
+            radius: self.height / 2;
+        }
+    }
+}
+
+// Calendar loading keeps the final seven-column month geometry visible.
+// The repeated day and release bars mirror the web calendar item placeholder.
+export component CalendarGridPlaceholder inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[int]> rows: [0, 1, 2, 3, 4];
+    in property <[int]> columns: [0, 1, 2, 3, 4, 5, 6];
+
+    background: transparent;
+
+    VerticalLayout {
+        spacing: 1px;
+
+        for row in root.rows : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 1px;
+
+            for column in root.columns : Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.overlay-color;
+                clip: true;
+
+                SkeletonBlock {
+                    x: 0.45 * root.unit;
+                    y: 0.45 * root.unit;
+                    width: 1.5 * root.unit;
+                    height: 1.5 * root.unit;
+                    radius: self.width / 2;
+                }
+
+                if (Math.mod(row * 7 + column, 3) == 0) : SkeletonBlock {
+                    x: 0.5 * root.unit;
+                    y: 2.7 * root.unit;
+                    width: parent.width * 0.72;
+                    height: root.unit;
+                }
+
+                if (Math.mod(row * 7 + column, 4) == 0) : SkeletonBlock {
+                    x: 0.5 * root.unit;
+                    y: 4.1 * root.unit;
+                    width: parent.width * 0.46;
+                    height: 0.8 * root.unit;
+                }
+            }
+        }
+    }
+}

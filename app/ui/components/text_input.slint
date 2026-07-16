@@ -1,42 +1,229 @@
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
 
-export component TextInputField inherits Rectangle {
+// Slint equivalent of the official unstyled TextInput wrapper. Visual styles
+// belong to the reusable consumer, just as they do in stremio-web.
+export component StremioTextInput inherits Rectangle {
     in-out property <string> text;
-    in property <string> placeholder;
-    in property <length> unit: 16px;
+    in property <string> placeholder-text: "";
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    in property <InputType> input-type: InputType.text;
+    in property <brush> text-color: Theme.primary-foreground;
+    in property <brush> selection-background-color: Theme.primary-accent;
+    in property <brush> selection-foreground-color: Theme.primary-foreground;
+    in property <length> font-size: Theme.root-font-size;
+    in property <int> font-weight: 400;
+    in property <TextHorizontalAlignment> horizontal-alignment: TextHorizontalAlignment.left;
+    in property <length> content-left: 0px;
+    in property <length> content-right: 0px;
+    out property <bool> has-focus: editor.has-focus;
     callback accepted;
     callback edited;
 
-    height: 3.5 * root.unit;
-    border-radius: 0.75 * root.unit;
-    border-width: editor.has-focus ? Theme.focus-outline-size : 1px;
-    border-color: editor.has-focus ? Theme.accent : Theme.overlay;
-    background: Theme.overlay;
+    public function focus-input() { editor.focus(); }
 
-    animate border-color { duration: 120ms; }
+    background: transparent;
 
     if (root.text == "") : Text {
-        x: root.unit;
-        width: parent.width - 2 * root.unit;
+        x: root.content-left;
+        width: parent.width - root.content-left - root.content-right;
         height: parent.height;
-        text: root.placeholder;
-        color: Theme.text-primary;
-        opacity: 0.4;
-        font-size: root.unit;
+        text: root.placeholder-text;
+        color: root.text-color;
+        opacity: 0.6;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.horizontal-alignment;
         vertical-alignment: center;
         overflow: elide;
     }
 
     editor := TextInput {
-        x: root.unit;
-        width: parent.width - 2 * root.unit;
+        enabled: root.enabled;
+        read-only: root.read-only;
+        input-type: root.input-type;
+        x: root.content-left;
+        width: parent.width - root.content-left - root.content-right;
         height: parent.height;
         text <=> root.text;
-        color: Theme.text-primary;
-        font-size: root.unit;
+        color: root.text-color;
+        selection-background-color: root.selection-background-color;
+        selection-foreground-color: root.selection-foreground-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.horizontal-alignment;
         single-line: true;
         vertical-alignment: center;
         edited => { root.edited(); }
         accepted => { root.accepted(); }
+    }
+}
+
+// Configurable field retained for settings and forms. It composes the bare
+// text input rather than duplicating text-edit behavior in each page.
+export component NativeTextField inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <string> text;
+    in property <string> placeholder-text;
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    in property <InputType> input-type: InputType.text;
+    in property <brush> surface-color: Theme.overlay-color;
+    in property <brush> focus-color: Theme.primary-foreground;
+    out property <bool> has-focus: field.has-focus;
+    callback accepted;
+    callback edited;
+
+    public function focus-input() { field.focus-input(); }
+
+    height: 3.5 * root.unit;
+    border-radius: Theme.border-radius;
+    border-width: field.has-focus ? Theme.focus-outline-size : 0px;
+    border-color: root.focus-color;
+    background: root.surface-color;
+    opacity: root.enabled ? 1 : 0.5;
+
+    field := StremioTextInput {
+        width: parent.width;
+        height: parent.height;
+        text <=> root.text;
+        placeholder-text: root.placeholder-text;
+        enabled: root.enabled;
+        read-only: root.read-only;
+        input-type: root.input-type;
+        content-left: root.unit;
+        content-right: root.unit;
+        font-size: root.unit;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+}
+
+// Exact standalone stremio-web/SearchBar geometry.
+export component SearchBar inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <string> text;
+    in property <string> title: "Search";
+    in property <bool> enabled: true;
+    out property <bool> has-focus: search-input.has-focus;
+    callback edited;
+    callback accepted;
+
+    public function focus-input() { search-input.focus-input(); }
+
+    height: 3 * root.unit;
+    border-radius: root.height / 2;
+    border-width: Theme.focus-outline-size;
+    border-color: root.has-focus ? Theme.primary-foreground : transparent;
+    background: Theme.overlay-color;
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => { search-input.focus-input(); }
+    }
+
+    search-input := StremioTextInput {
+        x: 1.5 * root.unit;
+        width: parent.width - 5 * root.unit;
+        height: parent.height;
+        text <=> root.text;
+        placeholder-text: root.title;
+        enabled: root.enabled;
+        font-size: root.unit;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+
+    Image {
+        x: parent.width - 3 * root.unit;
+        y: (parent.height - self.height) / 2;
+        width: 1.5 * root.unit;
+        height: 1.5 * root.unit;
+        source: @image-url("../assets/images/icons/search.svg");
+        colorize: Theme.primary-foreground;
+        opacity: 0.6;
+        image-fit: contain;
+    }
+
+}
+
+// Exact reusable search field used by the official horizontal navigation bar.
+export component SearchField inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <string> text;
+    in property <string> placeholder-text: "Search or paste link";
+    in property <bool> active: true;
+    in property <bool> enabled: true;
+    in property <brush> surface-color: Theme.overlay-color;
+    out property <bool> has-focus: nav-input.has-focus;
+    callback accepted;
+    callback edited;
+    callback cleared;
+
+    public function focus-input() {
+        if (root.active) {
+            nav-input.focus-input();
+        }
+    }
+
+    height: 3.25 * root.unit;
+    border-radius: root.height / 2;
+    background: root.surface-color;
+
+    focus-area := TouchArea {
+        x: 0px;
+        width: parent.width - 4.7 * root.unit;
+        height: parent.height;
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => { root.focus-input(); }
+    }
+
+    nav-input := StremioTextInput {
+        x: 2 * root.unit;
+        width: parent.width - 6.7 * root.unit;
+        height: parent.height;
+        text <=> root.text;
+        placeholder-text: root.placeholder-text;
+        enabled: root.enabled && root.active;
+        read-only: !root.active;
+        font-size: root.unit;
+        font-weight: 500;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+
+    action := ButtonSurface {
+        x: parent.width - 4.7 * root.unit;
+        width: 4.7 * root.unit;
+        height: parent.height;
+        border-radius: root.height / 2;
+        enabled: root.enabled;
+        accessible-name: root.text == "" ? "Search" : "Clear search";
+        clicked => {
+            if (root.text != "") {
+                root.text = "";
+                root.edited();
+                root.cleared();
+                root.focus-input();
+            } else {
+                root.focus-input();
+            }
+        }
+
+        Image {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 1.7 * root.unit;
+            height: 1.7 * root.unit;
+            source: root.text == ""
+                ? @image-url("../assets/images/icons/search.svg")
+                : @image-url("../assets/images/icons/close.svg");
+            colorize: Theme.primary-foreground;
+            opacity: 0.6;
+            image-fit: contain;
+        }
     }
 }

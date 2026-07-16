@@ -1,59 +1,87 @@
 import { Theme, IconData } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
 
-component SidebarButton inherits Rectangle {
+export component NavTabButton inherits Rectangle {
     in property <string> label;
     in property <image> icon-source;
     in property <image> active-icon-source;
-    in property <bool> active: false;
-    in property <length> unit: 16px;
+    in property <image> logo-source;
+    in property <bool> has-logo: false;
+    in property <bool> selected: false;
+    in property <length> unit: Theme.root-font-size;
     callback clicked;
+    callback double-clicked;
 
-    width: 4.8 * root.unit;
-    height: 4.8 * root.unit;
-    border-radius: 0.75 * root.unit;
-    background: area.has-hover ? Theme.overlay : transparent;
+    property <length> item-size: max(3.5 * root.unit, 4.8 * root.unit);
+    // This component is explicitly positioned by Sidebar, so it needs concrete
+    // geometry. A Rectangle with only layout constraints fills its parent when
+    // it is used outside a layout, which turns the hover state into a sidebar-
+    // sized overlay.
+    width: root.item-size;
+    height: root.item-size;
+    border-radius: Theme.border-radius;
+    background: button.has-hover ? Theme.overlay-color : transparent;
 
-    animate background { duration: 100ms; }
+    animate background { duration: Theme.motion-fast; }
 
-    area := TouchArea { clicked => { root.clicked(); } }
+    button := ButtonSurface {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        accessible-name: root.label;
+        focus-on-tab-navigation: false;
+        clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
+    }
 
-    VerticalLayout {
-        alignment: center;
-        spacing: 0.5 * root.unit;
+    // A full-width slot avoids accumulating offsets from the rail, button,
+    // and SVG geometry. Every icon shares the exact rail centre line.
+    Rectangle {
+        x: 0px;
+        y: 0.45 * root.unit;
+        width: parent.width;
+        height: 2.4 * root.unit;
+        background: transparent;
 
-        Rectangle {
-            horizontal-stretch: 1;
+        Image {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 2.2 * root.unit;
             height: 2.2 * root.unit;
+            source: root.has-logo
+                ? root.logo-source
+                : (root.selected ? root.active-icon-source : root.icon-source);
+            colorize: root.has-logo
+                ? transparent
+                : (root.selected ? Theme.primary-accent : Theme.primary-foreground);
+            opacity: root.has-logo ? 1 : (root.selected ? 1 : 0.35);
+            image-fit: contain;
+        }
+    }
 
-            Image {
-                x: (parent.width - self.width) / 2;
-                width: 2.2 * root.unit;
-                height: 2.2 * root.unit;
-                source: root.active ? root.active-icon-source : root.icon-source;
-                colorize: root.active ? Theme.accent : Theme.text-primary;
-                opacity: root.active ? 1 : (area.has-hover ? 0.55 : 0.35);
-                image-fit: contain;
-                animate colorize, opacity { duration: 100ms; }
-            }
-        }
-        Text {
-            horizontal-stretch: 1;
-            text: root.label;
-            color: root.active ? Theme.accent : Theme.text-primary;
-            opacity: root.active ? 1 : (area.has-hover ? 0.6 : 0);
-            font-size: 0.8 * root.unit;
-            font-weight: 500;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: elide;
-            animate color, opacity { duration: 100ms; }
-        }
+    Text {
+        z: 10;
+        x: 0.5 * root.unit;
+        y: 3.05 * root.unit;
+        width: parent.width - root.unit;
+        height: 1.5 * root.unit;
+        text: root.label;
+        color: root.selected ? Theme.primary-accent : Theme.primary-foreground;
+        opacity: root.selected ? 1 : (button.has-hover ? 0.6 : 0);
+        font-size: 0.8 * root.unit;
+        font-weight: 500;
+        letter-spacing: 0.01 * root.unit;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
     }
 }
 
+// Compatibility shell for the native tab index model. Item rendering itself is
+// reusable and mirrors official VerticalNavBar/NavTabButton.
 export component Sidebar inherits Rectangle {
     in property <int> active-tab;
-    in property <length> unit: 16px;
+    in property <length> unit: Theme.root-font-size;
     in property <string> server-status: "Offline";
     in property <string> username: "";
     in property <string> avatar-letter: "U";
@@ -67,66 +95,79 @@ export component Sidebar inherits Rectangle {
     in property <IconData> logout-icon;
 
     callback change-tab(int);
+    callback tab-double-clicked(int);
     callback logout;
 
-    width: 6 * root.unit;
+    // Keep the navigation rail on the same canonical width used by the
+    // horizontal navbar. The preview unit intentionally changes by viewport,
+    // while this token remains the single source of truth for rail alignment.
+    width: Theme.vertical-nav-bar-size;
     background: transparent;
 
-    VerticalLayout {
-        padding-top: root.unit;
-        padding-bottom: root.unit;
-        padding-left: 0.6 * root.unit;
-        padding-right: 0.6 * root.unit;
-        spacing: root.unit;
-        alignment: start;
-
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 1 * root.unit;
             unit: root.unit;
             label: "Board";
-            icon-source: @image-url("../assets/images/icons/home.svg");
+            icon-source: @image-url("../assets/images/icons/home-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/home.svg");
-            active: root.active-tab == 0;
+            selected: root.active-tab == 0;
             clicked => { root.change-tab(0); }
+            double-clicked => { root.tab-double-clicked(0); }
         }
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 6.8 * root.unit;
             unit: root.unit;
             label: "Discover";
-            icon-source: @image-url("../assets/images/icons/discover.svg");
+            icon-source: @image-url("../assets/images/icons/discover-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/discover.svg");
-            active: root.active-tab == 1;
+            selected: root.active-tab == 1;
             clicked => { root.change-tab(1); }
+            double-clicked => { root.tab-double-clicked(1); }
         }
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 12.6 * root.unit;
             unit: root.unit;
             label: "Library";
-            icon-source: @image-url("../assets/images/icons/library.svg");
+            icon-source: @image-url("../assets/images/icons/library-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/library.svg");
-            active: root.active-tab == 2;
+            selected: root.active-tab == 2;
             clicked => { root.change-tab(2); }
+            double-clicked => { root.tab-double-clicked(2); }
         }
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 18.4 * root.unit;
             unit: root.unit;
             label: "Calendar";
-            icon-source: @image-url("../assets/images/icons/calendar.svg");
+            icon-source: @image-url("../assets/images/icons/calendar-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/calendar.svg");
-            active: root.active-tab == 5;
+            selected: root.active-tab == 5;
             clicked => { root.change-tab(5); }
+            double-clicked => { root.tab-double-clicked(5); }
         }
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 24.2 * root.unit;
             unit: root.unit;
             label: "Addons";
-            icon-source: @image-url("../assets/images/icons/addons.svg");
+            icon-source: @image-url("../assets/images/icons/addons-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/addons.svg");
-            active: root.active-tab == 3;
+            selected: root.active-tab == 3;
             clicked => { root.change-tab(3); }
+            double-clicked => { root.tab-double-clicked(3); }
         }
-        SidebarButton {
+    NavTabButton {
+            x: (parent.width - self.width) / 2;
+            y: 30 * root.unit;
             unit: root.unit;
             label: "Settings";
-            icon-source: @image-url("../assets/images/icons/settings.svg");
+            icon-source: @image-url("../assets/images/icons/settings-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/settings.svg");
-            active: root.active-tab == 4;
+            selected: root.active-tab == 4;
             clicked => { root.change-tab(4); }
-        }
+            double-clicked => { root.tab-double-clicked(4); }
     }
 }

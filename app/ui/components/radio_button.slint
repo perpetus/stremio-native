@@ -1,0 +1,79 @@
+import { Theme } from "../theme.slint";
+
+export component RadioButton inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> accessible-name: "";
+    in property <bool> enabled: true;
+    in property <bool> error: false;
+    in-out property <bool> selected: false;
+    out property <bool> has-focus: radio-focus.has-focus;
+    callback changed(bool);
+
+    width: 1.75 * root.unit;
+    height: 1.75 * root.unit;
+    border-radius: self.height / 2;
+    border-width: 3px;
+    border-color: root.error ? Theme.danger : Theme.placeholder-color;
+    background: transparent;
+    accessible-role: radio-button;
+    accessible-label: root.accessible-name;
+    accessible-enabled: root.enabled;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    forward-focus: radio-focus;
+    accessible-action-default => { root.toggle(); }
+
+    animate border-color { duration: Theme.motion-control; easing: ease-in-out; }
+
+    public function toggle() {
+        if (root.enabled) {
+            root.selected = !root.selected;
+            root.changed(root.selected);
+        }
+    }
+
+    inner := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 1.25 * root.unit;
+        height: 1.25 * root.unit;
+        border-radius: self.height / 2;
+        border-width: 2px;
+        border-color: Theme.secondary-background;
+        background: root.selected ? Theme.primary-accent : transparent;
+        opacity: root.selected ? 1 : 0;
+
+        animate opacity { duration: Theme.motion-control; easing: ease-in-out; }
+        animate background { duration: Theme.motion-control; easing: ease-in-out; }
+    }
+
+    if (root.has-focus) : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        border-width: Theme.focus-outline-size;
+        border-color: Theme.surface-light;
+        background: transparent;
+    }
+
+    radio-area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.not-allowed;
+        clicked => { root.toggle(); }
+    }
+
+    radio-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+}

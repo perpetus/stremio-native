@@ -1,76 +1,435 @@
-import { Theme } from "../theme.slint";
+import { Theme, IconData } from "../theme.slint";
 
-export component Button inherits Rectangle {
-    in property <string> label;
-    in property <image> icon;
-    in property <string> variant: "secondary"; // "primary" | "secondary" | "subdued" | "outline" | "transparent"
-    in property <bool> disabled: false;
-    in property <bool> wide: false;
-    in property <length> unit: 16px;
-    in property <length> icon-size: 1.5 * root.unit;
+// Behavior-equivalent port of stremio-web/Button. It owns interaction only;
+// consumers provide the visual treatment through normal Rectangle properties.
+export component ButtonSurface inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <bool> interaction-enabled: root.enabled;
+    in property <string> accessible-name: "";
+    in property <bool> focus-on-tab-navigation: true;
+    // Most buttons never use long-press. Keeping this opt-in avoids starting a
+    // timer for every click in dense repeated lists and card grids.
+    in property <bool> long-press-enabled: false;
+    in property <duration> long-press-delay: Theme.long-press-threshold;
+    out property <bool> has-hover: pointer-area.has-hover;
+    out property <bool> pressed: pointer-area.pressed;
+    out property <bool> has-focus: keyboard-focus.has-focus;
+    private property <bool> long-press-active: false;
+
     callback clicked;
+    callback double-clicked;
+    callback long-pressed;
+    callback pointer-down;
+    callback pointer-up;
+    callback pointer-cancelled;
+
+    opacity: root.enabled ? 1 : 0.5;
+    border-width: root.has-focus ? Theme.focus-outline-size : 0px;
+    border-color: Theme.surface-light;
+    background: transparent;
+    accessible-role: button;
+    accessible-label: root.accessible-name;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
+    forward-focus: keyboard-focus;
+
+    @children
+
+    pointer-area := TouchArea {
+        enabled: root.interaction-enabled;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
+        pointer-event(event) => {
+            if (event.button != PointerEventButton.left) {
+                return;
+            }
+
+            if (event.kind == PointerEventKind.down) {
+                root.long-press-active = false;
+                if (root.long-press-enabled) {
+                    long-press-timer.restart();
+                }
+                root.pointer-down();
+            } else if (event.kind == PointerEventKind.up) {
+                if (root.long-press-enabled) {
+                    long-press-timer.stop();
+                }
+                root.pointer-up();
+            } else if (event.kind == PointerEventKind.cancel) {
+                if (root.long-press-enabled) {
+                    long-press-timer.stop();
+                }
+                root.pointer-cancelled();
+            }
+        }
+    }
+
+    keyboard-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled && root.interaction-enabled;
+        focus-on-tab-navigation: root.focus-on-tab-navigation;
+        key-pressed(event) => {
+            // The official generic Button activates on Enter only. Controls
+            // that also accept Space add that behavior in their own scope.
+            if (event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    long-press-timer := Timer {
+        interval: root.long-press-delay;
+        running: false;
+        triggered => {
+            self.stop();
+            if (root.long-press-enabled && pointer-area.pressed && root.enabled) {
+                root.long-press-active = true;
+                root.long-pressed();
+            }
+        }
+    }
+}
+
+// Configurable visual button used throughout the native pages. This is an
+// owned primitive, not a page-specific style.
+export component PillButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label;
+    in property <IconData> icon;
+    in property <image> icon-source;
+    in property <bool> show-icon: false;
+    in property <bool> use-svg-icon: false;
+    in property <length> icon-size: 1.5 * root.unit;
+    in property <length> label-font-size: 1.05 * root.unit;
+    in property <int> label-font-weight: 700;
+    in property <bool> primary: false;
+    in property <bool> outlined: false;
+    in property <brush> accent-color: Theme.primary-accent;
+    in property <brush> surface-color: Theme.overlay-color;
+    in property <brush> hover-color: root.primary ? root.accent-color : Theme.overlay-hover;
+    in property <brush> foreground-color: Theme.primary-foreground;
+    in property <brush> hover-foreground-color: root.foreground-color;
+    in property <brush> outline-color: root.primary ? root.accent-color : Theme.surface-light;
+    in property <brush> hover-outline-color: root.outline-color;
+    in property <bool> show-hover-outline: true;
+    in property <float> idle-opacity: 1;
 
     height: 3.5 * root.unit;
-    border-radius: self.height / 2;
-    background: root.disabled ? transparent : (
-        root.variant == "primary" ? Theme.accent : (
-            root.variant == "secondary" ? Theme.secondary-background : (
-                root.variant == "subdued" ? Theme.overlay : transparent
-            )
-        )
-    );
-    border-width: (root.variant == "outline" && !root.disabled) ? 1.5px : 0px;
-    border-color: Theme.text-primary.with-alpha(touch-area.has-hover ? 0.8 : 0.45);
-    opacity: root.disabled ? 0.35 : 1.0;
+    border-radius: root.height / 2;
+    border-width: root.has-focus || root.outlined
+        || (root.has-hover && root.show-hover-outline)
+        ? Theme.focus-outline-size
+        : 0px;
+    border-color: root.has-hover ? root.hover-outline-color : root.outline-color;
+    background: root.has-hover
+        ? root.hover-color
+        : (root.primary ? root.accent-color : root.surface-color);
+    accessible-name: root.label;
+    opacity: root.enabled
+        ? ((root.has-hover || root.has-focus) ? 1 : root.idle-opacity)
+        : 0.5;
 
-    accessible-role: button;
-    accessible-label: root.label != "" ? root.label : "Button";
-    accessible-enabled: !root.disabled;
-    accessible-action-default => { if (!root.disabled) { root.clicked(); } }
-
-    states [
-        hover when touch-area.has-hover && !root.disabled: {
-            background: root.variant == "primary" ? Theme.accent-hover : (
-                root.variant == "secondary" ? Theme.secondary-background.with-alpha(0.85) : (
-                    root.variant == "subdued" ? Theme.text-primary.with-alpha(0.12) : Theme.text-primary.with-alpha(0.08)
-                )
-            );
-        }
-    ]
-
-    animate background { duration: 120ms; }
-    animate border-color { duration: 120ms; }
-
-    touch-area := TouchArea {
-        enabled: !root.disabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
+    animate background { duration: Theme.motion-fast; }
+    animate border-color { duration: Theme.motion-fast; }
 
     HorizontalLayout {
         alignment: center;
         spacing: 0.75 * root.unit;
-        padding-left: root.wide ? 2.5 * root.unit : 1.5 * root.unit;
-        padding-right: root.wide ? 2.5 * root.unit : 1.5 * root.unit;
+        padding-left: 1.25 * root.unit;
+        padding-right: 1.25 * root.unit;
 
-        if (root.icon.width > 0) : Image {
-            width: root.icon-size;
-            height: root.icon-size;
-            source: root.icon;
-            colorize: Theme.text-primary;
-            opacity: root.variant == "subdued" ? 0.65 : 0.9;
-            image-fit: contain;
-            y: (parent.height - self.height) / 2;
+        if (root.show-icon && root.use-svg-icon) : VerticalLayout {
+            alignment: center;
+            Image {
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon-source;
+                colorize: root.has-hover
+                    ? root.hover-foreground-color
+                    : root.foreground-color;
+                image-fit: contain;
+            }
         }
 
-        if (root.label != "") : Text {
+        if (root.show-icon && !root.use-svg-icon) : VerticalLayout {
+            alignment: center;
+            Text {
+                width: root.icon-size;
+                text: root.icon.glyph;
+                font-family: root.icon.font-family;
+                color: root.has-hover
+                    ? root.hover-foreground-color
+                    : root.foreground-color;
+                font-size: root.icon-size;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
             text: root.label;
-            color: Theme.text-primary;
-            font-size: 1.05 * root.unit;
-            font-weight: 700;
+            color: root.has-hover
+                ? root.hover-foreground-color
+                : root.foreground-color;
+            font-size: root.label-font-size;
+            font-weight: root.label-font-weight;
             horizontal-alignment: center;
             vertical-alignment: center;
             overflow: elide;
+        }
+    }
+}
+
+// Shared text/icon menu row used by settings navigation and shell popups.
+export component MenuButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label;
+    in property <image> icon-source;
+    in property <bool> show-icon: false;
+    in property <bool> selected: false;
+    in property <length> icon-size: 1.5 * root.unit;
+    in property <length> label-font-size: 1.1 * root.unit;
+    in property <length> horizontal-padding: 2 * root.unit;
+    in property <brush> selected-color: Theme.overlay-color;
+    in property <brush> hover-color: Theme.overlay-color;
+
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    border-width: root.has-focus ? Theme.focus-outline-size : 0px;
+    background: root.selected
+        ? root.selected-color
+        : (root.has-hover ? root.hover-color : transparent);
+    opacity: root.selected || root.has-hover || root.has-focus ? 1 : 0.4;
+    accessible-name: root.label;
+
+    animate background, opacity { duration: Theme.motion-fast; }
+
+    HorizontalLayout {
+        padding-left: root.horizontal-padding;
+        padding-right: root.horizontal-padding;
+        spacing: 1.25 * root.unit;
+        alignment: start;
+
+        if (root.show-icon) : Rectangle {
+            width: root.icon-size;
+            background: transparent;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon-source;
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: Theme.primary-foreground;
+            font-size: root.label-font-size;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// Compact previous/next control used by paged media navigation. The fixed
+// geometry mirrors the official 6.5rem x 3rem season navigation buttons.
+export component ChevronTextButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> label: "";
+    in property <bool> trailing-icon: false;
+    in property <image> icon-source;
+    in property <length> icon-size: 1.5 * root.unit;
+
+    width: 6.5 * root.unit;
+    height: 3 * root.unit;
+    border-radius: root.height / 2;
+    background: root.has-hover || root.has-focus ? Theme.overlay-color : transparent;
+    accessible-name: root.label;
+
+    HorizontalLayout {
+        padding: 0.5 * root.unit;
+        spacing: 0.5 * root.unit;
+        alignment: center;
+
+        if (!root.trailing-icon) : Rectangle {
+            width: root.icon-size;
+            background: transparent;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon-source;
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if (root.trailing-icon) : Rectangle {
+            width: root.icon-size;
+            background: transparent;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon-source;
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
+        }
+    }
+}
+
+export component IconAction inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> icon-source;
+    in property <string> label: "";
+    in property <bool> wide: false;
+    in property <bool> active: false;
+    in property <length> icon-size: 1.65 * root.unit;
+    in property <brush> active-color: Theme.primary-accent;
+    in property <brush> surface-color: Theme.modal-color.with-alpha(0.68);
+    in property <brush> hover-color: Theme.overlay-hover;
+    in property <brush> foreground-color: Theme.primary-foreground;
+    in property <brush> active-foreground-color: root.foreground-color;
+
+    width: root.wide ? 11.5 * root.unit : 4 * root.unit;
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    background: root.active ? root.active-color
+        : (root.has-hover ? root.hover-color : root.surface-color);
+    accessible-name: root.label == "" ? "Action" : root.label;
+
+    animate background { duration: Theme.motion-fast; }
+
+    HorizontalLayout {
+        padding-left: root.wide ? 1.5 * root.unit : root.unit;
+        padding-right: root.wide ? 1.5 * root.unit : root.unit;
+        spacing: 0.75 * root.unit;
+        alignment: center;
+
+        Rectangle {
+            width: root.icon-size;
+            background: transparent;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon-source;
+                colorize: root.active
+                    ? root.active-foreground-color
+                    : root.foreground-color;
+                image-fit: contain;
+                opacity: 0.88;
+            }
+        }
+
+        if (root.wide) : Text {
+            text: root.label;
+            color: root.foreground-color;
+            font-size: root.unit;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component IconActionPair inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> first-icon;
+    in property <image> second-icon;
+    in property <string> first-accessible-name: "First action";
+    in property <string> second-accessible-name: "Second action";
+    in property <bool> first-active: false;
+    in property <bool> second-active: false;
+    in property <bool> enabled: true;
+    in property <brush> active-color: Theme.primary-accent;
+    in property <brush> surface-color: Theme.modal-color.with-alpha(0.68);
+    callback first-clicked;
+    callback second-clicked;
+
+    width: 8 * root.unit;
+    height: 4 * root.unit;
+    border-radius: root.height / 2;
+    background: root.surface-color;
+    clip: true;
+    opacity: root.enabled ? 1 : 0.5;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        first := ButtonSurface {
+            horizontal-stretch: 1;
+            enabled: root.enabled;
+            accessible-name: root.first-accessible-name;
+            background: root.first-active ? root.active-color
+                : (self.has-hover ? Theme.overlay-hover : transparent);
+            clicked => { root.first-clicked(); }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.65 * root.unit;
+                height: 1.65 * root.unit;
+                source: root.first-icon;
+                colorize: Theme.primary-foreground;
+                opacity: 0.9;
+                image-fit: contain;
+            }
+        }
+
+        Rectangle { width: 1px; background: Theme.divider; }
+
+        second := ButtonSurface {
+            horizontal-stretch: 1;
+            enabled: root.enabled;
+            accessible-name: root.second-accessible-name;
+            background: root.second-active ? root.active-color
+                : (self.has-hover ? Theme.overlay-hover : transparent);
+            clicked => { root.second-clicked(); }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.65 * root.unit;
+                height: 1.65 * root.unit;
+                source: root.second-icon;
+                colorize: Theme.primary-foreground;
+                opacity: 0.9;
+                image-fit: contain;
+            }
         }
     }
 }

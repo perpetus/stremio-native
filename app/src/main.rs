@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 slint::include_modules!();
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 
 use stremio_core::{
     models::{
@@ -34,17 +36,21 @@ mod models;
 mod mpv_integration;
 mod performance;
 mod playback;
+mod shortcuts;
 
 // Modular sub-files
 mod app_model;
 mod callbacks;
+mod discord;
 mod event_loop;
 mod logger;
+mod navigation;
+mod theintrodb;
 
 // Re-exports/Usage
 pub use app_model::{AppModel, AppModelField, get_icon_data};
-
-pub static ACTIVE_TAB: AtomicUsize = AtomicUsize::new(0);
+pub use discord::DiscordRpc;
+pub use navigation::{DetailsPresentation, NavigationController, NavigationIntent, Tab};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -70,7 +76,13 @@ async fn main() -> anyhow::Result<()> {
 async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<()> {
     let _run_span = tracing::info_span!("run_app").entered();
 
-    // 2. Load Config File
+    // 1. Initialize local database
+    db::init_db(std::path::PathBuf::from("storage")).await?;
+
+    // 2. Initialize application configuration
+    config::init_config().await;
+
+    // 3. Load Config File
     let config = {
         let _span = tracing::info_span!("load_config").entered();
         config::load_config()
@@ -82,8 +94,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         std::env::set_var("SLINT_BACKEND", "winit-femtovg");
     }
 
-    // Initialize local storage and the embedded stream server concurrently;
-    // neither operation depends on the other.
+    // Initialize the embedded stream server
     let server_cfg = stream_server::ServerConfig {
         http_addr: std::net::SocketAddr::from(([127, 0, 0, 1], config.torrent_port)),
         print_startup: true,
@@ -92,11 +103,8 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     };
 
     tracing::info!("Launching stream-server engine...");
-    let database = db::init_db(std::path::PathBuf::from("storage"));
-    let server = tokio::task::spawn_blocking(move || stream_server::start(server_cfg));
-    let (database_result, server_result) = tokio::join!(database, server);
-    database_result?;
-    let server_handle = server_result
+    let server_handle = tokio::task::spawn_blocking(move || stream_server::start(server_cfg))
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))?
         .map_err(|e| anyhow::anyhow!("Failed to start streaming server: {}", e))?;
 
@@ -113,11 +121,59 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     if let Some(c) = config::parse_color(&config.theme.background) {
         theme.set_background(c);
     }
+    if let Some(c) = config::parse_color(&config.theme.secondary_background) {
+        theme.set_secondary_background(c);
+    }
     if let Some(c) = config::parse_color(&config.theme.sidebar_background) {
         theme.set_sidebar_background(c);
     }
+    if let Some(c) = config::parse_color(&config.theme.modal_background) {
+        theme.set_modal_background(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.drawer_background) {
+        theme.set_drawer_background(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.control_background) {
+        theme.set_control_background(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.overlay) {
+        theme.set_overlay(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.overlay_hover) {
+        theme.set_overlay_hover(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.overlay_pressed) {
+        theme.set_overlay_pressed(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.divider) {
+        theme.set_divider(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.scrim) {
+        theme.set_scrim(c);
+    }
     if let Some(c) = config::parse_color(&config.theme.accent) {
         theme.set_accent(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.accent_hover) {
+        theme.set_accent_hover(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.success) {
+        theme.set_success(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.warning) {
+        theme.set_warning(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.info) {
+        theme.set_info(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.danger) {
+        theme.set_danger(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.focus) {
+        theme.set_focus(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.title_bar) {
+        theme.set_title_bar(c);
     }
     if let Some(c) = config::parse_color(&config.theme.card_background) {
         theme.set_card_background(c);
@@ -130,6 +186,15 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     }
     if let Some(c) = config::parse_color(&config.theme.text_secondary) {
         theme.set_text_secondary(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.text_muted) {
+        theme.set_text_muted(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.skeleton_base) {
+        theme.set_skeleton_base(c);
+    }
+    if let Some(c) = config::parse_color(&config.theme.skeleton_shimmer) {
+        theme.set_skeleton_shimmer(c);
     }
 
     // Load and set UI icons
@@ -171,14 +236,16 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     ui.set_icon_clapperboard(get_icon_data(iconflow::Pack::Lucide, "clapperboard"));
 
     // Set initial configuration parameters
-    ui.set_active_tab(config.active_tab);
-    ACTIVE_TAB.store(
-        config.active_tab as usize,
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    let navigation = NavigationController::new(config.active_tab);
+    navigation.project(&ui);
     ui.set_server_url(format!("http://{}", server_handle.http_addr()).into());
     ui.set_server_status("Online".into());
     ui.set_settings_hardware_acceleration(config.hardware_acceleration);
+    ui.set_settings_tidb_api_key(config.tidb_api_key.clone().into());
+    ui.set_settings_tidb_show_intro(config.tidb_show_intro);
+    ui.set_settings_tidb_show_recap(config.tidb_show_recap);
+    ui.set_settings_tidb_show_credits(config.tidb_show_credits);
+    ui.set_settings_tidb_show_preview(config.tidb_show_preview);
 
     // 6. Initialize stremio-core Storage Buckets & Ctx
     let (
@@ -193,8 +260,12 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         let _span = tracing::info_span!("load_all_storage_buckets").entered();
 
         let profile_path = std::path::PathBuf::from("storage").join("profile.json");
+        let library_recent_path = std::path::PathBuf::from("storage").join("library_recent.json");
         let library_path = std::path::PathBuf::from("storage").join("library.json");
         let profile_size = std::fs::metadata(&profile_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let library_recent_size = std::fs::metadata(&library_recent_path)
             .map(|m| m.len())
             .unwrap_or(0);
         let library_size = std::fs::metadata(&library_path)
@@ -202,6 +273,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
             .unwrap_or(0);
         tracing::info!(
             profile_size_bytes = profile_size,
+            library_recent_size_bytes = library_recent_size,
             library_size_bytes = library_size,
             "Startup: loaded database file sizes from disk"
         );
@@ -214,6 +286,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         profile.settings.streaming_server_url =
             url::Url::parse(&format!("http://{}", server_handle.http_addr()))?;
         let (
+            library_recent_result,
             library_result,
             streams_result,
             server_urls_result,
@@ -221,6 +294,9 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
             search_history_result,
             dismissed_events_result,
         ) = tokio::join!(
+            DesktopEnv::get_storage::<stremio_core::types::library::LibraryBucket>(
+                "library_recent"
+            ),
             DesktopEnv::get_storage::<stremio_core::types::library::LibraryBucket>("library"),
             DesktopEnv::get_storage::<stremio_core::types::streams::StreamsBucket>("streams"),
             DesktopEnv::get_storage::<stremio_core::types::server_urls::ServerUrlsBucket>(
@@ -237,9 +313,13 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
             ),
         );
 
-        let library = library_result.unwrap_or_default().unwrap_or_else(|| {
-            stremio_core::types::library::LibraryBucket::new(profile.uid(), vec![])
-        });
+        let mut library = stremio_core::types::library::LibraryBucket::new(profile.uid(), vec![]);
+        if let Some(recent_bucket) = library_recent_result.unwrap_or_default() {
+            library.merge_bucket(recent_bucket);
+        }
+        if let Some(other_bucket) = library_result.unwrap_or_default() {
+            library.merge_bucket(other_bucket);
+        }
         let streams_bucket = streams_result
             .unwrap_or_default()
             .unwrap_or_else(|| stremio_core::types::streams::StreamsBucket::new(profile.uid()));
@@ -340,52 +420,12 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     let (runtime, rx) = Runtime::<DesktopEnv, _>::new(model, all_effects, 1000);
     let runtime = Arc::new(runtime);
 
-    // Patch completed posters into the existing models. Only pages with
-    // non-card images need a broader projection refresh.
+    // Patch completed images directly into the existing Slint models.
     {
-        let runtime_refresh = runtime.clone();
         let ui_weak_refresh = ui_weak.clone();
         image_cache::set_refresh_callback(move |completed_urls| {
             if let Some(ui) = ui_weak_refresh.upgrade() {
-                let active_tab = ui.get_active_tab();
-                let card_updates = models::refresh_cached_media_images(&ui, &completed_urls);
-                if let Ok(model) = runtime_refresh.model() {
-                    let ui_weak_sync = ui_weak_refresh.clone();
-                    let runtime_sync = runtime_refresh.clone();
-                    if ui.get_show_details() || ui.get_discover_has_preview() {
-                        models::details::sync(
-                            &ui,
-                            &model.meta_details,
-                            &model.ctx.library,
-                            &ui_weak_sync,
-                            &runtime_sync,
-                        );
-                    }
-                    match active_tab {
-                        3 => models::addons::sync(
-                            &ui,
-                            &model.remote_addons,
-                            &model.ctx.profile.addons,
-                            &ui_weak_sync,
-                            &runtime_sync,
-                        ),
-                        5 => models::calendar::sync(&ui, &model.calendar, &ui_weak_sync),
-                        6 if card_updates == 0 => {
-                            models::search::sync_local_search(
-                                &ui,
-                                &model.local_search,
-                                &ui_weak_sync,
-                            );
-                            models::search::sync_results(
-                                &ui,
-                                &model.search,
-                                &model.ctx.profile,
-                                &ui_weak_sync,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
+                models::refresh_cached_media_images(&ui, &completed_urls);
             }
         });
     }
@@ -396,65 +436,25 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     {
         let rt = runtime.clone();
         let ui_weak_tab = ui_weak.clone();
+        let navigation_tab = navigation.clone();
         ui.on_tab_changed(move |tab| {
             let _tab_span = tracing::info_span!("Tab_Changed", tab = tab).entered();
             tracing::info!(tab = tab, "Active tab changed by user");
-            ACTIVE_TAB.store(tab as usize, std::sync::atomic::Ordering::Relaxed);
+            let Ok(selected_tab) = Tab::try_from(tab) else {
+                tracing::warn!(tab, "ignoring invalid tab navigation");
+                return;
+            };
             if let Some(ui) = ui_weak_tab.upgrade() {
-                if tab != 6 {
-                    // Loading belongs to the operation that initiated it. A
-                    // completed navigation must not inherit a stale flag from
-                    // a details/search request and hide otherwise-ready data.
-                    ui.set_loading(false);
-                }
-                let lock_start = std::time::Instant::now();
-                if let Ok(model) = rt.model() {
-                    let lock_elapsed = lock_start.elapsed().as_millis();
-                    if lock_elapsed > 15 {
-                        tracing::warn!(
-                            elapsed_ms = lock_elapsed,
-                            "Model read lock acquisition took too long on tab changed"
-                        );
-                    }
-                    let ui_weak_sync = ui_weak_tab.clone();
-                    let runtime_sync = rt.clone();
-                    match tab {
-                        0 => models::board::sync(
-                            &ui,
-                            &model.continue_watching_preview,
-                            &model.board,
-                            &model.ctx.profile.addons,
-                            &ui_weak_sync,
-                            &runtime_sync,
-                        ),
-                        1 => models::discover::sync(
-                            &ui,
-                            &model.discover,
-                            &ui_weak_sync,
-                            &runtime_sync,
-                        ),
-                        2 => {
-                            models::library::sync(&ui, &model.library, &ui_weak_sync, &runtime_sync)
-                        }
-                        3 => models::addons::sync(
-                            &ui,
-                            &model.remote_addons,
-                            &model.ctx.profile.addons,
-                            &ui_weak_sync,
-                            &runtime_sync,
-                        ),
-                        5 => models::calendar::sync(&ui, &model.calendar, &ui_weak_sync),
-                        6 => models::search::sync_results(
-                            &ui,
-                            &model.search,
-                            &model.ctx.profile,
-                            &ui_weak_sync,
-                        ),
-                        _ => {}
-                    }
-                }
+                navigation_tab.dispatch_and_project(&ui, NavigationIntent::SelectTab(selected_tab));
+                ui.set_loading(false);
             }
-            if tab == 5 {
+            queue_tab_sync(
+                selected_tab,
+                rt.clone(),
+                ui_weak_tab.clone(),
+                navigation_tab.clone(),
+            );
+            if selected_tab == Tab::Calendar {
                 if let Some(ui) = ui_weak_tab.upgrade() {
                     // Calendar navigation has its own loading state. Reusing
                     // the global page flag could leave Board in its loading
@@ -469,20 +469,27 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         });
     }
 
+    let discord_rpc = Arc::new(discord::DiscordRpc::new());
     let playback_selections = Arc::new(playback::PlaybackSelections::default());
     let hardware_decoding = runtime
         .model()
         .ok()
         .map(|model| model.ctx.profile.settings.hardware_decoding)
         .unwrap_or(config.hardware_acceleration);
-    let mut native_playback =
-        match mpv_integration::NativePlayback::start(&ui, &runtime, hardware_decoding) {
-            Ok(playback) => Some(playback),
-            Err(error) => {
-                tracing::error!(%error, "native MPV playback is unavailable");
-                None
-            }
-        };
+    let mut native_playback = match mpv_integration::NativePlayback::start(
+        &ui,
+        &runtime,
+        hardware_decoding,
+        navigation.clone(),
+        discord_rpc.clone(),
+        tokio::runtime::Handle::current(),
+    ) {
+        Ok(playback) => Some(playback),
+        Err(error) => {
+            tracing::error!(%error, "native MPV playback is unavailable");
+            None
+        }
+    };
     let native_playback_bridge = native_playback
         .as_ref()
         .map(mpv_integration::NativePlayback::bridge);
@@ -494,6 +501,8 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         ui_weak.clone(),
         playback_selections.clone(),
         native_playback_bridge.clone(),
+        navigation.clone(),
+        discord_rpc.clone(),
     );
 
     // 8. Hook up Slint callbacks to Ctx and Action dispatches
@@ -504,17 +513,20 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         &native_playback_bridge,
         ui_weak.clone(),
         &config,
+        navigation.clone(),
     );
+    shortcuts::install_platform_shortcuts(&ui);
 
     // 10. Run the Slint main window event loop
     tracing::info!("Stremio-Rust GUI loop starting...");
     let performance_reporter = profile_config
         .mode
         .enabled()
-        .then(performance::spawn_reporter);
+        .then(performance::spawn_reporter)
+        .flatten();
 
     // Automatically load the catalogs upon startup
-    callbacks::trigger_initial_load(&runtime);
+    callbacks::trigger_initial_load(&runtime, &navigation);
 
     let ui_result = ui.run();
     if let Some(reporter) = performance_reporter {
@@ -541,4 +553,130 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         None => tracing::info!("stream-server stopped"),
     }
     Ok(())
+}
+
+fn queue_tab_sync(
+    tab: Tab,
+    runtime: Arc<Runtime<DesktopEnv, AppModel>>,
+    ui_weak: slint::Weak<MainWindow>,
+    navigation: NavigationController,
+) {
+    match tab {
+        Tab::Board => {
+            tokio::spawn(async move {
+                let snapshot = runtime.model().ok().map(|model| {
+                    (
+                        model.continue_watching_preview.clone(),
+                        model.board.clone(),
+                        model.ctx.profile.addons.clone(),
+                    )
+                });
+                let Some((continue_watching, board, addons)) = snapshot else {
+                    return;
+                };
+                let ui_weak_sync = ui_weak.clone();
+                let runtime_sync = runtime.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if navigation.active_tab_index() != Tab::Board.index() {
+                        return;
+                    }
+                    if let Some(ui) = ui_weak.upgrade() {
+                        models::board::sync(
+                            &ui,
+                            &continue_watching,
+                            &board,
+                            &addons,
+                            &ui_weak_sync,
+                            &runtime_sync,
+                        );
+                    }
+                });
+            });
+        }
+        Tab::Discover => {
+            crate::models::discover::clear_sync_state();
+            tokio::spawn(async move {
+                let snapshot = runtime.model().ok().map(|model| model.discover.clone());
+                let Some(discover) = snapshot else {
+                    return;
+                };
+                let ui_weak_sync = ui_weak.clone();
+                let runtime_sync = runtime.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if navigation.active_tab_index() != Tab::Discover.index() {
+                        return;
+                    }
+                    if let Some(ui) = ui_weak.upgrade() {
+                        models::discover::sync(&ui, &discover, &ui_weak_sync, &runtime_sync);
+                    }
+                });
+            });
+        }
+        Tab::Library => {
+            crate::models::library::clear_sync_state();
+            tokio::spawn(async move {
+                let snapshot = runtime.model().ok().map(|model| model.library.clone());
+                let Some(library) = snapshot else {
+                    return;
+                };
+                let ui_weak_sync = ui_weak.clone();
+                let runtime_sync = runtime.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if navigation.active_tab_index() != Tab::Library.index() {
+                        return;
+                    }
+                    if let Some(ui) = ui_weak.upgrade() {
+                        models::library::sync(&ui, &library, &ui_weak_sync, &runtime_sync);
+                    }
+                });
+            });
+        }
+        Tab::Addons => {
+            tokio::spawn(async move {
+                let snapshot = runtime.model().ok().map(|model| {
+                    (
+                        model.remote_addons.clone(),
+                        model.ctx.profile.addons.clone(),
+                    )
+                });
+                let Some((remote_addons, installed_addons)) = snapshot else {
+                    return;
+                };
+                let ui_weak_sync = ui_weak.clone();
+                let runtime_sync = runtime.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if navigation.active_tab_index() != Tab::Addons.index() {
+                        return;
+                    }
+                    if let Some(ui) = ui_weak.upgrade() {
+                        models::addons::sync(
+                            &ui,
+                            &remote_addons,
+                            &installed_addons,
+                            &ui_weak_sync,
+                            &runtime_sync,
+                        );
+                    }
+                });
+            });
+        }
+        Tab::Calendar => {
+            tokio::spawn(async move {
+                let snapshot = runtime.model().ok().map(|model| model.calendar.clone());
+                let Some(calendar) = snapshot else {
+                    return;
+                };
+                let ui_weak_sync = ui_weak.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if navigation.active_tab_index() != Tab::Calendar.index() {
+                        return;
+                    }
+                    if let Some(ui) = ui_weak.upgrade() {
+                        models::calendar::sync(&ui, &calendar, &ui_weak_sync);
+                    }
+                });
+            });
+        }
+        Tab::Settings => {}
+    }
 }

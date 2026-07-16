@@ -1,0 +1,103 @@
+import { Theme } from "../theme.slint";
+import { SearchField } from "text_input.slint";
+
+export struct SearchSuggestion {
+    id: string,
+    media-type: string,
+    title: string,
+    release-info: string,
+    poster-url: string,
+    poster: image,
+}
+
+export component SearchBox inherits Rectangle {
+    in property <length> unit: 16px;
+    in-out property <string> text;
+    in property <string> placeholder-text: "Search or paste link";
+    in property <[SearchSuggestion]> suggestions: [];
+    in property <bool> menu-enabled: true;
+    out property <bool> has-focus: field.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    callback cleared;
+    callback suggestion-selected(string, string, string);
+
+    public function focus-input() { field.focus-input(); }
+
+    width: 30 * root.unit;
+    height: 3.25 * root.unit;
+    background: transparent;
+    // Slint requires z to be a compile-time number. Keep the complete search
+    // surface on the overlay layer so suggestions always render above pages.
+    z: 300;
+
+    field := SearchField {
+        width: parent.width;
+        height: parent.height;
+        unit: root.unit;
+        text <=> root.text;
+        placeholder-text: root.placeholder-text;
+        edited => { root.edited(root.text); }
+        accepted => { root.accepted(root.text); }
+        cleared => { root.cleared(); }
+    }
+
+    if (root.menu-enabled && field.has-focus && root.text != "" && root.suggestions.length > 0) : Rectangle {
+        x: 0px;
+        y: parent.height + 0.5 * root.unit;
+        width: parent.width;
+        height: (3.25 + root.suggestions.length * 2.75) * root.unit;
+        background: Theme.modal-background;
+        border-radius: Theme.border-radius;
+        border-width: 1px;
+        border-color: Theme.divider;
+        clip: true;
+        z: 300;
+
+        VerticalLayout {
+            width: 100%;
+            height: 100%;
+            padding: root.unit;
+            spacing: 0.25 * root.unit;
+
+            Text {
+                height: 1.5 * root.unit;
+                text: "Search Suggestions";
+                color: Theme.text-secondary;
+                font-size: 0.85 * root.unit;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            for suggestion in root.suggestions : Rectangle {
+                height: 2.5 * root.unit;
+                border-radius: Theme.compact-radius;
+                background: suggestion-area.has-hover ? Theme.overlay-hover : transparent;
+
+                Text {
+                    x: root.unit;
+                    width: parent.width - 2 * root.unit;
+                    height: parent.height;
+                    text: suggestion.title;
+                    color: Theme.text-primary;
+                    font-size: root.unit;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                suggestion-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.text = suggestion.title;
+                        root.suggestion-selected(
+                            suggestion.id,
+                            suggestion.media-type,
+                            suggestion.title
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

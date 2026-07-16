@@ -1,0 +1,121 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+
+// Exact reusable port of stremio-web/Checkbox. The optional link is surfaced
+// as a callback because URL dispatch belongs to the Rust application shell.
+export component Checkbox inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> name: "";
+    in property <string> label: "";
+    in property <string> link-label: "";
+    in property <bool> has-link: false;
+    in property <bool> enabled: true;
+    in-out property <bool> checked: false;
+    in property <bool> error: false;
+    out property <bool> has-focus: checkbox-focus.has-focus;
+    callback toggled(bool);
+    callback link-clicked;
+
+    min-height: 2.5 * root.unit;
+    background: transparent;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    forward-focus: checkbox-focus;
+    accessible-action-default => { root.toggle(); }
+
+    public function toggle() {
+        if (root.enabled) {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+
+    label-area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.not-allowed;
+        clicked => { root.toggle(); }
+    }
+
+    box := Rectangle {
+        x: 0.3 * root.unit;
+        y: 0.5 * root.unit;
+        width: 1.5 * root.unit;
+        height: 1.5 * root.unit;
+        border-radius: 0.3 * root.unit;
+        background: root.checked ? Theme.primary-accent : Theme.overlay-color;
+
+        animate background { duration: Theme.motion-control; easing: ease-in-out; }
+
+        if (root.checked) : Image {
+            x: 0.1 * root.unit;
+            y: 0.1 * root.unit;
+            width: parent.width - 0.2 * root.unit;
+            height: parent.height - 0.2 * root.unit;
+            source: @image-url("../assets/images/icons/checkmark.svg");
+            colorize: Theme.primary-foreground;
+            image-fit: contain;
+        }
+
+        if (root.has-focus || label-area.has-hover) : Rectangle {
+            x: -2px;
+            y: -2px;
+            width: parent.width + 4px;
+            height: parent.height + 4px;
+            border-radius: parent.border-radius + 2px;
+            border-width: Theme.focus-outline-size;
+            border-color: Theme.surface-light;
+            background: transparent;
+        }
+    }
+
+    HorizontalLayout {
+        x: 2.8 * root.unit;
+        y: 0.5 * root.unit;
+        width: parent.width - 2.8 * root.unit;
+        height: 1.5 * root.unit;
+        spacing: 0.5 * root.unit;
+        alignment: start;
+
+        Text {
+            text: root.label;
+            color: Theme.primary-foreground;
+            opacity: 0.6;
+            font-size: 0.9 * root.unit;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if (root.has-link && root.link-label != "") : link-button := ButtonSurface {
+            width: link-text.preferred-width;
+            height: parent.height;
+            accessible-name: root.link-label;
+            focus-on-tab-navigation: false;
+            clicked => { root.link-clicked(); }
+
+            link-text := Text {
+                text: root.link-label;
+                color: Theme.primary-accent;
+                font-size: 0.9 * root.unit;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    checkbox-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+}

@@ -1,25 +1,124 @@
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { HorizontalScroll } from "horizontal_scroll.slint";
+import { ChipOption } from "types.slint";
 
-export component Chip inherits Rectangle {
+// The interactive state is the exact stremio-web/Chips/Chip treatment.
+// interaction-enabled=false also supports the same pill as a reusable tag.
+export component Chip inherits ButtonSurface {
     in property <string> label;
-    in property <length> unit: 16px;
+    in property <string> value: root.label;
+    in property <length> unit: Theme.root-font-size;
+    in property <length> chip-width: 0px;
+    in property <bool> active: false;
+    in property <bool> interactive: false;
+    in property <brush> active-color: Theme.quaternary-accent;
+    in property <brush> surface-color: Theme.modal-color.with-alpha(0.68);
+    callback selected(string);
 
-    height: 2.5 * root.unit;
-    border-radius: self.height / 2;
-    background: Theme.modal-background.with-alpha(0.6);
-    border-width: 1px;
-    border-color: Theme.overlay;
+    width: root.chip-width > 0px
+        ? root.chip-width
+        : label-text.preferred-width + 3.5 * root.unit;
+    height: 2.75 * root.unit;
+    border-radius: root.height / 2;
+    interaction-enabled: root.interactive;
+    focus-on-tab-navigation: root.interactive;
+    accessible-name: root.label;
+    background: root.active
+        ? root.active-color
+        : (root.interactive
+            ? (root.has-hover ? Theme.overlay-color : transparent)
+            : root.surface-color);
+    opacity: root.active || (root.interactive && root.has-hover)
+        ? 1
+        : (root.interactive ? 0.6 : 1);
+    clip: true;
 
-    Text {
-        padding-left: root.unit;
-        padding-right: root.unit;
+    clicked => {
+        if (root.interactive) {
+            root.selected(root.value);
+        }
+    }
+
+    animate background { duration: Theme.motion-fast; easing: ease-out; }
+    animate opacity { duration: Theme.motion-fast; easing: ease-out; }
+
+    label-text := Text {
+        x: 1.75 * root.unit;
+        width: parent.width - 3.5 * root.unit;
+        height: parent.height;
         text: root.label;
-        color: Theme.text-primary;
-        opacity: 0.82;
-        font-size: 0.95 * root.unit;
-        font-weight: 600;
+        color: Theme.primary-foreground;
+        font-size: root.unit;
+        font-weight: 500;
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
+    }
+}
+
+export component SectionLabel inherits Rectangle {
+    in property <string> text;
+    in property <length> unit: Theme.root-font-size;
+    in property <brush> label-color: Theme.text-muted;
+
+    height: 1.5 * root.unit;
+    background: transparent;
+
+    Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        color: root.label-color;
+        font-size: 0.9 * root.unit;
+        font-weight: 700;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// Scrollable chip collection matching stremio-web/Chips. The model is kept
+// data-only so the same control works for filters, metadata links, and tabs.
+export component Chips inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <[ChipOption]> options: [];
+    in-out property <length> scroll-offset: 0px;
+    in property <bool> interactive: true;
+    in property <bool> show-edge-fades: true;
+    in property <color> fade-surface-color: Theme.background;
+    in property <brush> active-color: Theme.quaternary-accent;
+    in property <brush> surface-color: Theme.modal-color.with-alpha(0.68);
+    callback selected(string);
+
+    height: 2.75 * root.unit;
+    background: transparent;
+
+    scroll := HorizontalScroll {
+        width: parent.width;
+        height: parent.height;
+        unit: root.unit;
+        content-width: max(root.width, chip-row.preferred-width);
+        content-height: root.height;
+        scroll-offset <=> root.scroll-offset;
+        show-edge-fades: root.show-edge-fades;
+        fade-surface-color: root.fade-surface-color;
+
+        chip-row := HorizontalLayout {
+            width: self.preferred-width;
+            height: root.height;
+            spacing: root.unit;
+            alignment: start;
+
+            for option in root.options : Chip {
+                unit: root.unit;
+                label: option.label;
+                value: option.value;
+                active: option.active;
+                interactive: root.interactive;
+                active-color: root.active-color;
+                surface-color: root.surface-color;
+                selected(value) => { root.selected(value); }
+            }
+        }
     }
 }

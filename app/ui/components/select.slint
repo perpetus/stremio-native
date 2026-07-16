@@ -1,93 +1,281 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
 
-export component Select inherits Rectangle {
+// Shared popup select. Its label and option geometry follow the official
+// Multiselect, while the string model preserves the native page API.
+export component SelectField inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
     in-out property <string> value;
     in property <string> placeholder: "Select";
     in property <[string]> options: [];
     in-out property <bool> open: false;
+    in property <bool> enabled: true;
     in property <length> field-width: 15 * root.unit;
-    in property <length> unit: 16px;
-
+    in property <brush> surface-color: Theme.overlay-color;
     callback toggle;
+    callback opened;
+    callback closed;
     callback selected(string);
 
     width: root.field-width;
     height: 2.75 * root.unit;
-    border-radius: 0.75 * root.unit;
-    background: Theme.overlay;
-    z: root.open ? 80 : 1;
+    border-radius: root.height / 2;
+    background: root.surface-color;
+    z: root.open ? 10000 : 0;
 
-    button-area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.toggle(); }
-    }
-
-    HorizontalLayout {
-        padding-left: root.unit;
-        padding-right: root.unit;
-        spacing: 0.75 * root.unit;
-
-        Text {
-            horizontal-stretch: 1;
-            text: root.value == "" ? root.placeholder : root.value;
-            color: Theme.text-primary;
-            opacity: root.value == "" ? 0.5 : 0.8;
-            font-size: root.unit;
-            font-weight: 500;
-            vertical-alignment: center;
-            overflow: elide;
+    label-button := ButtonSurface {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        enabled: root.enabled;
+        accessible-name: root.value == "" ? root.placeholder : root.value;
+        clicked => {
+            root.toggle();
+            if (root.open) {
+                root.opened();
+            } else {
+                root.closed();
+            }
         }
 
-        Text {
-            width: root.unit;
-            text: root.open ? "▴" : "▾";
-            color: Theme.text-primary;
-            opacity: 0.5;
-            font-size: 0.8 * root.unit;
+        HorizontalLayout {
+            padding-left: 1.5 * root.unit;
+            padding-right: 1.5 * root.unit;
+            spacing: root.unit;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.value == "" ? root.placeholder : root.value;
+                color: Theme.primary-foreground;
+                opacity: root.value == "" ? 0.6 : 1;
+                font-size: root.unit;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            // A wrapper that stretches on the cross axis keeps the caret
+            // centered. Giving the image a fixed height directly in a
+            // HorizontalLayout otherwise places it at the layout's top edge.
+            Rectangle {
+                width: 1.5 * root.unit;
+                background: transparent;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: root.unit;
+                    height: root.unit;
+                    source: root.open
+                        ? @image-url("../assets/images/icons/caret-up.svg")
+                        : @image-url("../assets/images/icons/caret-down.svg");
+                    colorize: Theme.primary-foreground;
+                    opacity: 0.4;
+                    image-fit: contain;
+                }
+            }
+        }
+    }
+
+    if (root.open) : menu := Rectangle {
+        x: 0px;
+        y: root.height;
+        width: root.width;
+        height: root.options.length == 0
+            ? 4 * root.unit
+            : min(root.options.length, 7) * 3 * root.unit;
+        border-radius: Theme.border-radius;
+        background: Theme.modal-color;
+        drop-shadow-blur: Theme.outer-glow-blur;
+        drop-shadow-color: Theme.outer-glow-color;
+        clip: true;
+        z: 10001;
+
+        if (root.options.length == 0) : Text {
+            width: parent.width;
+            height: parent.height;
+            text: "No options";
+            color: Theme.surface-light-90;
+            font-size: 1.2 * root.unit;
+            font-weight: 500;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
-    }
 
-    if (root.open) : Rectangle {
-        x: 0px;
-        y: root.height + 0.5 * root.unit;
-        width: root.width;
-        height: (root.options.length > 6 ? 6 : root.options.length) * 3 * root.unit + root.unit;
-        border-radius: 0.75 * root.unit;
-        background: Theme.modal-background;
-        border-width: 1px;
-        border-color: Theme.overlay;
-        clip: true;
-        z: 100;
+        if (root.options.length > 0) : ScrollView {
+            width: parent.width;
+            height: parent.height;
 
-        ScrollView {
             VerticalLayout {
-                padding: 0.5 * root.unit;
+                width: menu.width;
                 spacing: 0px;
 
-                for option in root.options : Rectangle {
+                for option in root.options : option-button := ButtonSurface {
+                    horizontal-stretch: 1;
                     height: 3 * root.unit;
-                    border-radius: 0.5 * root.unit;
-                    background: option-area.has-hover || option == root.value ? Theme.overlay : transparent;
+                    accessible-name: option;
+                    background: self.has-hover || self.has-focus
+                        ? Theme.overlay-color
+                        : transparent;
+                    clicked => { root.selected(option); }
 
-                    Text {
-                        x: root.unit;
-                        width: parent.width - 2 * root.unit;
-                        height: parent.height;
-                        text: option;
-                        color: Theme.text-primary;
-                        opacity: option == root.value ? 1 : 0.7;
-                        font-size: root.unit;
-                        font-weight: option == root.value ? 600 : 400;
-                        vertical-alignment: center;
-                        overflow: elide;
+                    HorizontalLayout {
+                        padding: root.unit;
+                        spacing: root.unit;
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: option;
+                            color: Theme.primary-foreground;
+                            font-size: root.unit;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        if (option == root.value) : Rectangle {
+                            width: 0.5 * root.unit;
+                            height: 0.5 * root.unit;
+                            border-radius: self.width / 2;
+                            background: Theme.secondary-accent;
+                        }
                     }
+                }
+            }
+        }
+    }
+}
 
-                    option-area := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.selected(option); }
+export component SeasonSelectField inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in-out property <int> value;
+    in property <[int]> options: [];
+    in-out property <bool> open: false;
+    in property <bool> enabled: true;
+    in property <length> field-width: 15 * root.unit;
+    in property <brush> surface-color: Theme.overlay-color;
+    callback toggle;
+    callback opened;
+    callback closed;
+    callback selected(int);
+
+    width: root.field-width;
+    height: 2.75 * root.unit;
+    border-radius: root.height / 2;
+    background: root.surface-color;
+    z: 10000;
+
+    label-button := ButtonSurface {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        enabled: root.enabled;
+        accessible-name: root.value > 0 ? "Season " + root.value : "Special";
+        clicked => {
+            root.toggle();
+            if (root.open) {
+                root.opened();
+            } else {
+                root.closed();
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 1.5 * root.unit;
+            padding-right: 1.5 * root.unit;
+            spacing: root.unit;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.value > 0 ? "Season " + root.value : "Special";
+                color: Theme.primary-foreground;
+                font-size: root.unit;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            Rectangle {
+                width: 1.5 * root.unit;
+                background: transparent;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: root.unit;
+                    height: root.unit;
+                    source: root.open
+                        ? @image-url("../assets/images/icons/caret-up.svg")
+                        : @image-url("../assets/images/icons/caret-down.svg");
+                    colorize: Theme.primary-foreground;
+                    opacity: 0.4;
+                    image-fit: contain;
+                }
+            }
+        }
+    }
+
+    if (root.open) : menu := Rectangle {
+        x: 0px;
+        y: root.height;
+        width: root.width;
+        height: root.options.length == 0
+            ? 4 * root.unit
+            : min(root.options.length, 7) * 3 * root.unit;
+        border-radius: Theme.border-radius;
+        background: Theme.modal-color;
+        drop-shadow-blur: Theme.outer-glow-blur;
+        drop-shadow-color: Theme.outer-glow-color;
+        clip: true;
+        z: 10001;
+
+        if (root.options.length == 0) : Text {
+            width: parent.width;
+            height: parent.height;
+            text: "No seasons";
+            color: Theme.surface-light-90;
+            font-size: 1.2 * root.unit;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        if (root.options.length > 0) : ScrollView {
+            width: parent.width;
+            height: parent.height;
+
+            VerticalLayout {
+                width: menu.width;
+                spacing: 0px;
+
+                for option in root.options : option-button := ButtonSurface {
+                    horizontal-stretch: 1;
+                    height: 3 * root.unit;
+                    accessible-name: option > 0 ? "Season " + option : "Special";
+                    background: self.has-hover || self.has-focus
+                        ? Theme.overlay-color
+                        : transparent;
+                    clicked => { root.selected(option); }
+
+                    HorizontalLayout {
+                        padding: root.unit;
+                        spacing: root.unit;
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: option > 0 ? "Season " + option : "Special";
+                            color: Theme.primary-foreground;
+                            font-size: root.unit;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        if (option == root.value) : Rectangle {
+                            width: 0.5 * root.unit;
+                            height: 0.5 * root.unit;
+                            border-radius: self.width / 2;
+                            background: Theme.secondary-accent;
+                        }
                     }
                 }
             }

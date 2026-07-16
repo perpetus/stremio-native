@@ -1,0 +1,304 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { SearchBox, SearchSuggestion } from "search.slint";
+import { MenuOption } from "types.slint";
+
+export component HorizontalNavButton inherits ButtonSurface {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> icon-source;
+    in property <bool> active: false;
+
+    width: 3.5 * root.unit;
+    height: 3.5 * root.unit;
+    border-radius: 0.75 * root.unit;
+    opacity: root.has-hover || root.has-focus || root.active ? 1 : 0.6;
+    background: root.has-hover || root.has-focus || root.active
+        ? Theme.overlay-color
+        : transparent;
+
+    animate background, opacity { duration: Theme.motion-fast; }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 2 * root.unit;
+        height: 2 * root.unit;
+        source: root.icon-source;
+        colorize: Theme.primary-foreground;
+        opacity: root.has-hover || root.has-focus || root.active ? 0.8 : 0.6;
+        image-fit: contain;
+    }
+}
+
+// Exact reusable shell of the official desktop HorizontalNavBar. Routing,
+// fullscreen, search, and profile behavior remain callback driven.
+export component HorizontalNavBar inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <bool> compact: root.width <= 50 * root.unit;
+    in property <bool> show-back-button: false;
+    in property <bool> show-search: true;
+    in property <bool> show-fullscreen: true;
+    in property <bool> fullscreen: false;
+    in property <bool> show-profile: true;
+    in property <bool> profile-active: false;
+    in property <bool> show-hdr: false;
+    in property <string> hdr-label: "HDR10";
+    in property <string> title: "";
+    in property <image> logo-source;
+    in property <image> avatar-source;
+    in property <bool> has-avatar: false;
+    in-out property <string> search-text: "";
+    in property <[SearchSuggestion]> search-suggestions: [];
+    callback back-requested;
+    callback search-edited(string);
+    callback search-accepted(string);
+    callback search-suggestion-selected(string, string, string);
+    callback fullscreen-requested(bool);
+    callback profile-requested;
+
+    height: 5.5 * root.unit;
+    background: transparent;
+    clip: false;
+
+    if (!root.show-back-button) : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.compact ? Theme.horizontal-nav-bar-size : Theme.vertical-nav-bar-size;
+        height: parent.height;
+        background: transparent;
+
+        Image {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 2.5 * root.unit;
+            height: 2.5 * root.unit;
+            source: root.logo-source;
+            opacity: 0.9;
+            image-fit: contain;
+        }
+    }
+
+    if (root.show-back-button) : HorizontalNavButton {
+        x: root.unit;
+        y: (parent.height - self.height) / 2;
+        unit: root.unit;
+        icon-source: @image-url("../assets/images/icons/chevron-back.svg");
+        accessible-name: "Back";
+        clicked => { root.back-requested(); }
+    }
+
+    if (root.title != "") : Text {
+        x: root.show-back-button ? 5.5 * root.unit : Theme.vertical-nav-bar-size;
+        y: 0px;
+        width: root.show-search
+            ? max(0px, search.x - self.x - root.unit)
+            : max(0px, buttons.x - self.x - root.unit);
+        height: parent.height;
+        text: root.title;
+        color: Theme.secondary-variant-light-90;
+        font-size: 1.2 * root.unit;
+        font-weight: 500;
+        letter-spacing: 0.01 * root.unit;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    search := SearchBox {
+        visible: root.show-search && !root.compact;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(30 * root.unit, parent.width - 34 * root.unit);
+        unit: root.unit;
+        text <=> root.search-text;
+        suggestions: root.search-suggestions;
+        edited(value) => { root.search-edited(value); }
+        accepted(value) => { root.search-accepted(value); }
+        suggestion-selected(id, media-type, title) => {
+            root.search-suggestion-selected(id, media-type, title);
+        }
+    }
+
+    buttons := Rectangle {
+        x: parent.width - self.width - root.unit;
+        y: 0px;
+        width: (root.show-hdr ? 4 * root.unit : 0px)
+            + (root.show-fullscreen && !root.compact ? 4 * root.unit : 0px)
+            + (root.show-profile ? 3.5 * root.unit : 0px);
+        height: parent.height;
+        background: transparent;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 0.5 * root.unit;
+
+            if (root.show-hdr) : Rectangle {
+                width: 3.5 * root.unit;
+                height: 3.5 * root.unit;
+                background: transparent;
+                opacity: 0.6;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 3 * root.unit;
+                    height: 1.5 * root.unit;
+                    source: @image-url("../assets/images/icons/hdr.svg");
+                    colorize: Theme.primary-foreground;
+                    opacity: 0.6;
+                    image-fit: contain;
+                }
+            }
+
+            if (root.show-fullscreen && !root.compact) : HorizontalNavButton {
+                unit: root.unit;
+                icon-source: root.fullscreen
+                    ? @image-url("../assets/images/icons/minimize.svg")
+                    : @image-url("../assets/images/icons/maximize.svg");
+                accessible-name: root.fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+                clicked => { root.fullscreen-requested(!root.fullscreen); }
+            }
+
+            if (root.show-profile) : profile-button := HorizontalNavButton {
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/person-outline.svg");
+                active: root.profile-active;
+                accessible-name: "Profile menu";
+                clicked => { root.profile-requested(); }
+
+                if (root.has-avatar) : Image {
+                    x: 0.35 * root.unit;
+                    y: 0.35 * root.unit;
+                    width: parent.width - 0.7 * root.unit;
+                    height: parent.height - 0.7 * root.unit;
+                    source: root.avatar-source;
+                    image-fit: cover;
+                }
+            }
+        }
+    }
+}
+
+export component NavMenuPanel inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <image> avatar-source;
+    in property <bool> has-avatar: false;
+    in property <string> user-label: "Anonymous User";
+    in property <string> auth-label: "Log in / Sign up";
+    in property <[MenuOption]> options: [];
+    in property <length> panel-max-height: 40 * root.unit;
+    callback auth-requested;
+    callback option-selected(string);
+
+    width: 22 * root.unit;
+    height: min(root.panel-max-height, 7 * root.unit + root.options.length * 4 * root.unit);
+    border-radius: Theme.border-radius;
+    background: Theme.modal-color;
+    clip: true;
+
+    ScrollView {
+        width: parent.width;
+        height: parent.height;
+        viewport-width: parent.width;
+        viewport-height: 7 * root.unit + root.options.length * 4 * root.unit;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+
+        VerticalLayout {
+            width: parent.width;
+            height: 7 * root.unit + root.options.length * 4 * root.unit;
+            spacing: 0px;
+
+            Rectangle {
+                height: 7 * root.unit;
+                background: transparent;
+
+                Image {
+                    x: root.unit;
+                    y: 1.5 * root.unit;
+                    width: 4 * root.unit;
+                    height: 4 * root.unit;
+                    source: root.avatar-source;
+                    image-fit: cover;
+                    opacity: 0.9;
+                }
+                VerticalLayout {
+                    x: 6 * root.unit;
+                    y: 1.5 * root.unit;
+                    width: parent.width - 7 * root.unit;
+                    height: 4 * root.unit;
+                    alignment: center;
+                    spacing: 0.5 * root.unit;
+
+                    Text {
+                        text: root.user-label;
+                        color: Theme.primary-foreground;
+                        font-size: root.unit;
+                        overflow: elide;
+                    }
+                    auth-button := ButtonSurface {
+                        height: 1.4 * root.unit;
+                        accessible-name: root.auth-label;
+                        clicked => { root.auth-requested(); }
+
+                        Text {
+                            width: parent.width;
+                            height: parent.height;
+                            text: root.auth-label;
+                            color: Theme.primary-foreground;
+                            font-size: 0.9 * root.unit;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+
+            for option in root.options : Rectangle {
+                height: 4 * root.unit;
+                background: transparent;
+
+                if (option.divider-before) : Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: 1px;
+                    background: Theme.overlay-color;
+                }
+
+                option-button := ButtonSurface {
+                    x: 0px;
+                    y: option.divider-before ? 1px : 0px;
+                    width: parent.width;
+                    height: parent.height - self.y;
+                    enabled: !option.disabled;
+                    accessible-name: option.label;
+                    background: self.has-hover ? Theme.overlay-color : transparent;
+                    clicked => { root.option-selected(option.value); }
+
+                    if (option.has-icon) : Image {
+                        x: 1.5 * root.unit;
+                        y: (parent.height - self.height) / 2;
+                        width: 2 * root.unit;
+                        height: 2 * root.unit;
+                        source: option.icon;
+                        colorize: option.destructive ? Theme.danger : Theme.primary-foreground;
+                        opacity: option.destructive ? 0.8 : 0.3;
+                        image-fit: contain;
+                    }
+                    Text {
+                        x: option.has-icon ? 4.5 * root.unit : 1.5 * root.unit;
+                        width: parent.width - self.x - 1.5 * root.unit;
+                        height: parent.height;
+                        text: option.label;
+                        color: option.destructive ? Theme.danger : Theme.primary-foreground;
+                        font-size: root.unit;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}

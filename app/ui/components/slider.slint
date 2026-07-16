@@ -1,57 +1,238 @@
 import { Theme } from "../theme.slint";
 
+// Stremio rendering with the same public contract and interaction semantics as
+// Slint's standard Slider. Keeping one renderer prevents a second native rail
+// or handle from leaking through the custom fill.
 export component Slider inherits Rectangle {
-    in-out property <float> value: 0.0; // Range: 0.0 to 1.0
-    in property <length> unit: 16px;
+    in property <length> unit: Theme.root-font-size;
+    in-out property <float> value: root.minimum;
+    in property <float> buffered: root.minimum;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <bool> enabled: true;
+    in property <bool> audio-boost: false;
+    in property <length> track-size: 0.4 * root.unit;
+    in property <length> thumb-size: 1.2 * root.unit;
+    in property <length> hover-thumb-size: root.thumb-size;
+    in property <length> track-inset: 0px;
+    in property <brush> track-color: Theme.primary-accent;
+    in property <float> track-opacity: 0.2;
+    in property <brush> buffered-color: Theme.overlay-color;
+    in property <brush> progress-color: Theme.primary-foreground;
+    in property <brush> thumb-color: Theme.primary-foreground;
+    in property <brush> thumb-border-color: transparent;
+    in property <length> thumb-border-width: 0px;
+    out property <bool> has-focus: slider-focus.has-focus;
     callback changed(float);
+    callback released(float);
+    // Compatibility names for the web component's callback vocabulary.
+    callback slid(float);
+    callback completed(float);
 
-    property <float> drag-value: value;
-    property <float> shown-value: touch-area.pressed ? drag-value : value;
+    private property <float> value-position: root.normalize(root.value);
+    private property <float> buffered-position: root.normalize(root.buffered);
+    private property <length> track-width: max(1px, root.width - 2 * root.track-inset);
+    private property <length> current-thumb-size:
+        slider-area.has-hover || slider-area.pressed
+            ? root.hover-thumb-size
+            : root.thumb-size;
 
-    height: 2 * root.unit;
+    height: max(root.track-size, root.thumb-size);
     background: transparent;
+    opacity: root.enabled ? 1 : 0.5;
+    clip: false;
+    accessible-role: slider;
+    accessible-enabled: root.enabled;
+    accessible-orientation: Orientation.horizontal;
+    accessible-value: root.value;
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.step;
+    forward-focus: slider-focus;
+    accessible-action-set-value(candidate) => {
+        if (candidate.is-float()) {
+            root.set-value(candidate.to-float());
+        }
+    }
+    accessible-action-increment => { root.set-value(root.value + root.step); }
+    accessible-action-decrement => { root.set-value(root.value - root.step); }
 
-    // Track
-    Rectangle {
-        x: root.unit / 2;
-        y: (parent.height - 0.375 * root.unit) / 2;
-        width: parent.width - root.unit;
-        height: 0.375 * root.unit;
-        border-radius: self.height / 2;
-        background: Theme.text-primary.with-alpha(0.2);
+    pure function normalize(candidate: float) -> float {
+        if (root.maximum <= root.minimum) {
+            return 0;
+        }
+        max(0, min(1,
+            (candidate - root.minimum) / (root.maximum - root.minimum)
+        ))
+    }
 
-        // Active Track
-        Rectangle {
-            width: parent.width * max(0.0, min(1.0, root.shown-value));
-            height: 100%;
-            border-radius: parent.border-radius;
-            background: Theme.accent;
+    pure function value-at(position: length) -> float {
+        if (root.maximum <= root.minimum) {
+            return root.minimum;
+        }
+        root.minimum + max(0, min(1,
+            (position - root.track-inset) / root.track-width))
+            * (root.maximum - root.minimum)
+    }
+
+    public function set-value(candidate: float) {
+        if (!root.enabled) {
+            return;
+        }
+        let next = max(root.minimum, min(root.maximum, candidate));
+        if (next != root.value) {
+            root.value = next;
+            root.changed(next);
+            root.slid(next);
         }
     }
 
-    // Thumb
-    Rectangle {
-        x: (parent.width - root.unit) * max(0.0, min(1.0, root.shown-value));
-        y: (parent.height - root.unit) / 2;
-        width: root.unit;
-        height: root.unit;
-        border-radius: self.width / 2;
-        background: Theme.text-primary;
-        border-width: touch-area.has-hover ? 1px : 0px;
-        border-color: Theme.accent;
-        
-        animate width, height, x, y { duration: 75ms; }
+    function update-from-pointer() {
+        root.set-value(root.value-at(slider-area.mouse-x));
     }
 
-    touch-area := TouchArea {
-        mouse-cursor: pointer;
+    // Base track.
+    Rectangle {
+        x: root.track-inset;
+        y: (parent.height - root.track-size) / 2;
+        width: root.track-width;
+        height: root.track-size;
+        border-radius: self.height / 2;
+        background: root.audio-boost
+            ? @linear-gradient(90deg,
+                Theme.primary-foreground 0%,
+                Theme.primary-foreground 50%,
+                Theme.warning 75%,
+                Theme.danger 100%)
+            : root.track-color;
+        opacity: root.audio-boost ? 0.3 : root.track-opacity;
+        accessible-role: none;
+    }
+
+    // Buffered track.
+    Rectangle {
+        x: root.track-inset;
+        y: (parent.height - root.track-size) / 2;
+        width: root.track-width * root.buffered-position;
+        height: root.track-size;
+        border-radius: self.height / 2;
+        background: root.buffered-color;
+        accessible-role: none;
+    }
+
+    // Normal progress is a directly anchored rectangle. This is intentionally
+    // not centered and always terminates at the live value position.
+    if (!root.audio-boost) : Rectangle {
+        x: root.track-inset;
+        y: (parent.height - root.track-size) / 2;
+        width: root.track-width * root.value-position;
+        height: root.track-size;
+        border-radius: self.height / 2;
+        background: root.progress-color;
+        accessible-role: none;
+    }
+
+    // Audio boost needs a full-range gradient clipped at the live value.
+    if (root.audio-boost) : progress-clip := Rectangle {
+        x: root.track-inset;
+        y: (parent.height - root.track-size) / 2;
+        width: root.track-width * root.value-position;
+        height: root.track-size;
+        border-radius: self.height / 2;
+        background: transparent;
+        clip: true;
+        accessible-role: none;
+
+        Rectangle {
+            x: 0px;
+            width: root.track-width;
+            height: root.track-size;
+            border-radius: self.height / 2;
+            background: @linear-gradient(90deg,
+                Theme.primary-foreground 0%,
+                Theme.primary-foreground 50%,
+                Theme.warning 75%,
+                Theme.danger 100%);
+            accessible-role: none;
+        }
+    }
+
+    Rectangle {
+        x: root.track-inset + root.track-width * root.value-position
+            - root.current-thumb-size / 2;
+        y: (parent.height - root.current-thumb-size) / 2;
+        width: root.current-thumb-size;
+        height: root.current-thumb-size;
+        border-radius: self.width / 2;
+        border-width: root.thumb-border-width;
+        border-color: root.thumb-border-color;
+        background: root.thumb-color;
+        accessible-role: none;
+
+        animate width, height, x, y {
+            duration: Theme.motion-fast;
+            easing: ease-out;
+        }
+    }
+
+    slider-area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.pointer;
         pointer-event(event) => {
-            if (event.kind == PointerEventKind.down ||
-                (event.kind == PointerEventKind.move && touch-area.pressed)) {
-                root.drag-value = max(0.0, min(1.0,
-                    (touch-area.mouse-x - root.unit / 2) / max(1px, root.width - root.unit)));
-                root.changed(root.drag-value);
+            if (event.button != PointerEventButton.left) {
+                return;
             }
+            if (event.kind == PointerEventKind.down) {
+                slider-focus.focus();
+                root.update-from-pointer();
+            } else if (event.kind == PointerEventKind.up) {
+                root.update-from-pointer();
+                root.released(root.value);
+                root.completed(root.value);
+            } else if (event.kind == PointerEventKind.cancel) {
+                root.released(root.value);
+                root.completed(root.value);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.update-from-pointer();
+            }
+        }
+    }
+
+    slider-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow || event.text == Key.UpArrow) {
+                root.set-value(root.value + root.step);
+                return accept;
+            } else if (event.text == Key.LeftArrow || event.text == Key.DownArrow) {
+                root.set-value(root.value - root.step);
+                return accept;
+            } else if (event.text == Key.Home) {
+                root.set-value(root.minimum);
+                return accept;
+            } else if (event.text == Key.End) {
+                root.set-value(root.maximum);
+                return accept;
+            }
+            reject
+        }
+        key-released(event) => {
+            if (event.text == Key.RightArrow || event.text == Key.UpArrow
+                || event.text == Key.LeftArrow || event.text == Key.DownArrow
+                || event.text == Key.Home || event.text == Key.End) {
+                root.released(root.value);
+                root.completed(root.value);
+                return accept;
+            }
+            reject
         }
     }
 }

@@ -1,4 +1,5 @@
 import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
 
 export struct MediaCardItem {
     id: string,
@@ -13,16 +14,27 @@ export struct MediaCardItem {
     progress-value: float,
 }
 
+// Reusable MetaItem port. Page navigation and image loading remain callbacks;
+// visual states and nested actions are owned here.
 export component MediaCard inherits Rectangle {
     in property <MediaCardItem> item;
-    in property <length> unit: 16px;
+    in property <length> unit: Theme.root-font-size;
+    in property <string> poster-shape: "poster";
+    in property <bool> selected: false;
+    in property <bool> menu-open: false;
     in property <bool> enable-hover-scale: true;
     in property <bool> show-close-button: false;
+    in property <bool> show-play-button: false;
+    in property <bool> show-menu-button: false;
+    in property <int> new-videos: 0;
+    in property <image> fallback-icon-source: @image-url("../assets/images/icons/movies.svg");
     in property <bool> enable-lazy-loading: false;
     in property <bool> is-visible: true;
 
     callback clicked;
     callback remove-clicked;
+    callback play-clicked;
+    callback menu-clicked;
     callback poster-requested(string);
 
     init => {
@@ -36,52 +48,69 @@ export component MediaCard inherits Rectangle {
         }
     }
 
-    property <length> poster-width: root.width - 2 * root.unit;
-    property <length> poster-height: root.poster-width * 1.464;
+    property <length> poster-width: max(0px, root.width - 2 * root.unit);
+    property <length> poster-height: root.poster-shape == "landscape"
+        ? root.poster-width * Theme.landscape-shape-ratio
+        : (root.poster-shape == "square"
+            ? root.poster-width
+            : root.poster-width * Theme.poster-shape-ratio);
+    property <bool> highlighted: card-button.has-hover || card-button.has-focus
+        || root.selected || root.menu-open;
 
     background: transparent;
     height: root.poster-height + 6 * root.unit;
+    clip: false;
 
-    card-area := TouchArea { clicked => { root.clicked(); } }
+    card-button := ButtonSurface {
+        width: parent.width;
+        height: parent.height;
+        accessible-name: root.item.title;
+        border-width: 0px;
+        clicked => { root.clicked(); }
+    }
+
+    // CSS box-shadow equivalent, outside the clipped poster bounds.
+    if (root.highlighted) : Rectangle {
+        x: root.unit - 0.2 * root.unit;
+        y: root.unit - 0.2 * root.unit;
+        width: root.poster-width + 0.4 * root.unit;
+        height: root.poster-height + 0.4 * root.unit;
+        border-radius: Theme.border-radius + 0.2 * root.unit;
+        background: Theme.primary-foreground;
+    }
 
     poster-container := Rectangle {
         x: root.unit;
         y: root.unit;
         width: root.poster-width;
         height: root.poster-height;
-        background: Theme.overlay;
-        border-radius: 0.75 * root.unit;
-        border-width: card-area.has-hover ? 0.2 * root.unit : 0px;
-        border-color: Theme.text-primary;
+        background: Theme.overlay-color;
+        border-radius: Theme.border-radius;
         clip: true;
 
-        animate border-width { duration: 100ms; }
-
-        if (root.item.poster.width == 0 || (root.enable-lazy-loading && !root.is-visible)) : Rectangle {
-            width: parent.width;
-            height: parent.height;
-            background: Theme.overlay;
-            border-radius: parent.border-radius;
-
-            Text {
-                text: root.item.description == "series" ? "▣" : "▤";
-                color: Theme.text-primary;
-                opacity: 0.2;
-                font-size: 5 * root.unit;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+        if (root.item.poster.width == 0 || (root.enable-lazy-loading && !root.is-visible)) : Image {
+            x: parent.width * 0.1;
+            y: parent.height * 0.25;
+            width: 80%;
+            height: 50%;
+            source: root.fallback-icon-source;
+            colorize: Theme.primary-foreground;
+            opacity: 0.2;
+            image-fit: contain;
         }
 
         if (root.item.poster.width > 0 && (!root.enable-lazy-loading || root.is-visible)) : Image {
             source: root.item.poster;
-            width: card-area.has-hover && root.enable-hover-scale ? 1.05 * parent.width : parent.width;
-            height: card-area.has-hover && root.enable-hover-scale ? 1.05 * parent.height : parent.height;
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
             image-fit: cover;
             opacity: 0.9;
-            animate width, height, x, y { duration: 100ms; easing: ease-out; }
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            transform-scale: root.highlighted && root.enable-hover-scale ? 105% : 100%;
+            // Render-only scaling keeps the repeated card geometry stable.
+            animate transform-scale { duration: Theme.motion-fast; easing: ease-out; }
         }
 
         if (root.item.show-checkmark) : Rectangle {
@@ -89,36 +118,69 @@ export component MediaCard inherits Rectangle {
             y: 0.5 * root.unit;
             width: 1.5 * root.unit;
             height: 1.5 * root.unit;
-            background: Theme.accent;
+            background: Theme.primary-accent;
             border-radius: self.width / 2;
-            z: 2;
-            Text {
-                text: "✓";
-                color: Theme.text-primary;
-                font-size: 0.75 * root.unit;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 0.75 * root.unit;
+                height: 0.75 * root.unit;
+                source: @image-url("../assets/images/icons/checkmark.svg");
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
             }
         }
 
-        if (root.show-close-button) : Rectangle {
+        if (root.show-close-button) : close-button := ButtonSurface {
             x: 0.5 * root.unit;
             y: 0.5 * root.unit;
             width: 1.5 * root.unit;
             height: 1.5 * root.unit;
             border-radius: self.width / 2;
-            background: #0c0b1199;
-            opacity: card-area.has-hover ? 1 : 0;
-            z: 3;
-            Text {
-                text: "×";
-                color: Theme.text-primary;
-                font-size: root.unit;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            background: Theme.background.with-alpha(0.6);
+            opacity: root.highlighted ? 1 : 0;
+            interaction-enabled: root.highlighted;
+            accessible-name: "Dismiss";
+            clicked => { root.remove-clicked(); }
+
+            animate opacity { duration: Theme.motion-fast; easing: ease-in; }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 1.25 * root.unit;
+                height: 1.25 * root.unit;
+                source: @image-url("../assets/images/icons/close.svg");
+                colorize: Theme.primary-foreground;
+                opacity: 0.8;
+                image-fit: contain;
             }
-            TouchArea { clicked => { root.remove-clicked(); } }
+        }
+
+        if (root.show-play-button) : play-button := ButtonSurface {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 4 * root.unit;
+            height: 4 * root.unit;
+            border-radius: self.width / 2;
+            border-width: root.highlighted ? 0px : 0.15 * root.unit;
+            border-color: Theme.primary-foreground;
+            background: root.highlighted
+                ? Theme.secondary-accent
+                : Theme.background.with-alpha(0.4);
+            accessible-name: "Play";
+            clicked => { root.play-clicked(); }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 2.25 * root.unit;
+                height: 2.25 * root.unit;
+                source: @image-url("../assets/images/icons/play.svg");
+                colorize: Theme.primary-foreground;
+                image-fit: contain;
+            }
         }
 
         if (root.item.show-progress) : Rectangle {
@@ -126,30 +188,107 @@ export component MediaCard inherits Rectangle {
             y: parent.height - 1.45 * root.unit;
             width: parent.width - 2 * root.unit;
             height: 0.45 * root.unit;
-            border-radius: self.height;
-            background: #ffffff4d;
-            z: 2;
+            border-radius: self.height / 2;
+            background: Theme.primary-foreground.with-alpha(0.3);
+            clip: true;
+
             Rectangle {
-                width: parent.width * root.item.progress-value;
+                x: 0px;
+                width: parent.width * max(0, min(1, root.item.progress-value));
+                height: parent.height;
+                background: Theme.primary-foreground;
+            }
+        }
+
+        if (root.new-videos > 0) : Rectangle {
+            x: parent.width - 2.75 * root.unit;
+            y: 1 * root.unit;
+            width: 2.25 * root.unit;
+            height: 1.25 * root.unit;
+            border-radius: 0.25 * root.unit;
+            background: Theme.primary-foreground;
+
+            Rectangle {
+                x: 0.25 * root.unit;
+                y: -0.25 * root.unit;
+                width: parent.width;
                 height: parent.height;
                 border-radius: parent.border-radius;
-                background: Theme.text-primary;
+                background: Theme.primary-foreground.with-alpha(0.6);
+            }
+
+            Rectangle {
+                x: 0.5 * root.unit;
+                y: -0.5 * root.unit;
+                width: parent.width;
+                height: parent.height;
+                border-radius: parent.border-radius;
+                background: Theme.primary-foreground.with-alpha(0.4);
+            }
+
+            HorizontalLayout {
+                padding-left: 0.25 * root.unit;
+                padding-right: 0.25 * root.unit;
+                spacing: 0.05 * root.unit;
+                alignment: center;
+
+                Image {
+                    width: 0.8 * root.unit;
+                    height: 0.8 * root.unit;
+                    source: @image-url("../assets/images/icons/add.svg");
+                    colorize: Theme.primary-accent;
+                    image-fit: contain;
+                }
+                Text {
+                    text: root.new-videos;
+                    color: Theme.primary-accent;
+                    font-size: 0.8 * root.unit;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
             }
         }
     }
 
-    Text {
+    Rectangle {
         x: root.unit;
         y: root.poster-height + root.unit;
         width: root.poster-width;
         height: 4 * root.unit;
-        text: root.item.title;
-        color: Theme.text-primary;
-        font-size: root.unit;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        wrap: word-wrap;
-        overflow: elide;
+        background: transparent;
+
+        Text {
+            x: root.show-menu-button ? 0px : 0.5 * root.unit;
+            width: parent.width - (root.show-menu-button ? 2.5 * root.unit : root.unit);
+            height: parent.height;
+            text: root.item.title;
+            color: Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            overflow: elide;
+        }
+
+        if (root.show-menu-button) : menu-button := ButtonSurface {
+            x: parent.width - 1.5 * root.unit;
+            width: 1.5 * root.unit;
+            height: parent.height;
+            accessible-name: "More options";
+            interaction-enabled: root.highlighted;
+            opacity: root.highlighted ? 1 : 0;
+            clicked => { root.menu-clicked(); }
+
+            Image {
+                y: root.unit;
+                width: parent.width;
+                height: 2 * root.unit;
+                source: @image-url("../assets/images/icons/more-vertical.svg");
+                colorize: Theme.primary-foreground;
+                opacity: 0.6;
+                image-fit: contain;
+            }
+        }
     }
 }

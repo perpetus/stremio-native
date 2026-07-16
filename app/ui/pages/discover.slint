@@ -1,63 +1,19 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
-import { MediaCard, MediaCardItem } from "../components/media_card.slint";
-import { SelectField, PillButton } from "../components/form_controls.slint";
+import { MediaCardItem } from "../components/media_card.slint";
+import { MediaCardGridRow, MediaGridPlaceholder } from "../components/media_carousel.slint";
+import { IconAction, PillButton } from "../components/button.slint";
+import { EmptyState } from "../components/feedback.slint";
+import { MetaStringLinks } from "../components/meta_preview.slint";
+import { SelectField } from "../components/select.slint";
 
 export struct DiscoverRow {
     cols: [MediaCardItem],
 }
 
-component MetadataTag inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <string> label;
-
-    height: 2.2 * root.unit;
-    border-radius: root.height / 2;
-    background: Theme.overlay;
-
-    Text {
-        x: root.unit;
-        width: parent.width - 2 * root.unit;
-        height: parent.height;
-        text: root.label;
-        color: Theme.text-primary;
-        opacity: 0.7;
-        font-size: 0.85 * root.unit;
-        font-weight: 500;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
-
-component PreviewIconButton inherits Rectangle {
-    in property <length> unit: 16px;
-    in property <image> icon-source;
-    in property <bool> active: false;
-    callback clicked;
-
-    width: 3.5 * root.unit;
-    height: 3.5 * root.unit;
-    border-radius: root.height / 2;
-    background: root.active ? Theme.accent : (action.has-hover ? #ffffff26 : #14121b99);
-
-    Image {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: 1.55 * root.unit;
-        height: 1.55 * root.unit;
-        source: root.icon-source;
-        colorize: Theme.text-primary;
-        opacity: 0.9;
-        image-fit: contain;
-    }
-    action := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 export component DiscoverPage inherits Rectangle {
+    width: 1280px;
+    height: 720px;
     in property <[DiscoverRow]> rows: [];
     in property <int> column-count: 6;
     in property <bool> loading: false;
@@ -96,12 +52,12 @@ export component DiscoverPage inherits Rectangle {
     callback toggle-watched-preview;
     callback play-trailer-preview(string);
 
-    property <length> unit: root.width > 2700px ? 18px :
-        (root.width > 2100px ? 16px : (root.width > 1500px ? 15px : 14px));
+    in property <length> unit: Theme.root-font-size;
     property <bool> preview-visible: root.has-preview && root.preview-title != "" && root.width > 1000px;
-    property <bool> type-open: false;
-    property <bool> catalog-open: false;
-    property <bool> genre-open: false;
+    in-out property <bool> type-open: false;
+    in-out property <bool> catalog-open: false;
+    in-out property <bool> genre-open: false;
+    property <length> preview-panel-width: min(36 * root.unit, 0.3 * root.width);
     property <length> grid-width: catalog.width - 3 * root.unit;
     property <length> card-width: root.column-count > 0
         ? (root.grid-width - (root.column-count - 1) * 0.5 * root.unit) / root.column-count
@@ -119,7 +75,7 @@ export component DiscoverPage inherits Rectangle {
 
             Rectangle {
                 height: 5.75 * root.unit;
-                z: 50;
+                z: 1000;
 
                 HorizontalLayout {
                     padding: 1.5 * root.unit;
@@ -182,37 +138,21 @@ export component DiscoverPage inherits Rectangle {
                 }
             }
 
-            if (root.loading) : Rectangle {
+            if (root.loading) : MediaGridPlaceholder {
                 vertical-stretch: 1;
-                Text {
-                    text: "Loading catalog…";
-                    color: Theme.text-primary;
-                    opacity: 0.6;
-                    font-size: 1.2 * root.unit;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+                unit: root.unit;
+                card-width: root.card-width;
+                card-height: root.card-height;
             }
 
-            if (!root.loading && root.rows.length == 0) : Rectangle {
+            if (!root.loading && root.rows.length == 0) : EmptyState {
+                width: max(0px, root.width
+                    - (root.preview-visible ? root.preview-panel-width : 0px));
                 vertical-stretch: 1;
-                VerticalLayout {
-                    alignment: center;
-                    spacing: root.unit;
-                    Text {
-                        text: "No items found";
-                        color: Theme.text-primary;
-                        font-size: 2 * root.unit;
-                        horizontal-alignment: center;
-                    }
-                    Text {
-                        text: "Try changing the catalog filters.";
-                        color: Theme.text-primary;
-                        opacity: 0.5;
-                        font-size: root.unit;
-                        horizontal-alignment: center;
-                    }
-                }
+                unit: root.unit;
+                icon-source: @image-url("../assets/images/icons/discover.svg");
+                title: "No items found";
+                message: "Try changing the catalog filters.";
             }
 
             if (!root.loading && root.rows.length > 0) : catalog-scroll := ListView {
@@ -225,28 +165,26 @@ export component DiscoverPage inherits Rectangle {
                 for row in root.rows : Rectangle {
                     width: catalog.width;
                     height: root.card-height + 0.5 * root.unit;
+                    clip: true;
 
-                    HorizontalLayout {
+                    MediaCardGridRow {
                         x: 1.5 * root.unit;
                         width: root.grid-width;
                         height: root.card-height;
+                        unit: root.unit;
+                        items: row.cols;
+                        card-width: root.card-width;
+                        card-height: root.card-height;
                         spacing: 0.5 * root.unit;
-                        alignment: start;
-
-                        for card-item in row.cols : MediaCard {
-                            width: root.card-width;
-                            unit: root.unit;
-                            item: card-item;
-                            clicked => { root.item-selected(card-item.id); }
-                            poster-requested(url) => { root.poster-requested(url); }
-                        }
+                        item-selected(id, _media-type, _video-id) => { root.item-selected(id); }
+                        poster-requested(url) => { root.poster-requested(url); }
                     }
                 }
             }
         }
 
         if (root.preview-visible) : preview := Rectangle {
-            width: 29 * root.unit;
+            width: root.preview-panel-width;
             background: Theme.modal-background;
             border-radius: 0.75 * root.unit;
             clip: true;
@@ -260,8 +198,15 @@ export component DiscoverPage inherits Rectangle {
             }
 
             ScrollView {
+                width: parent.width;
+                height: max(0px, parent.height - 6.5 * root.unit);
+                viewport-width: parent.width;
                 mouse-drag-pan-enabled: true;
-                VerticalLayout {
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+
+                drawer-content := VerticalLayout {
+                    width: preview.width;
                     padding-left: 2.5 * root.unit;
                     padding-right: 2.5 * root.unit;
                     padding-top: 2 * root.unit;
@@ -270,6 +215,8 @@ export component DiscoverPage inherits Rectangle {
                     alignment: start;
 
                     Text {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
                         text: root.preview-title;
                         color: Theme.text-primary;
                         font-size: 1.8 * root.unit;
@@ -278,6 +225,8 @@ export component DiscoverPage inherits Rectangle {
                     }
 
                     HorizontalLayout {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
                         spacing: 2.25 * root.unit;
                         alignment: start;
                         Text {
@@ -308,6 +257,8 @@ export component DiscoverPage inherits Rectangle {
                     }
 
                     Text {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
                         text: root.preview-description;
                         color: Theme.text-primary;
                         opacity: 0.65;
@@ -315,101 +266,90 @@ export component DiscoverPage inherits Rectangle {
                         wrap: word-wrap;
                     }
 
-                    if (root.preview-genres.length > 0) : VerticalLayout {
-                        spacing: 0.75 * root.unit;
-                        Text {
-                            text: "Genres";
-                            color: Theme.text-primary;
-                            opacity: 0.4;
-                            font-size: 0.85 * root.unit;
-                            font-weight: 600;
-                        }
-                        HorizontalLayout {
-                            spacing: 0.5 * root.unit;
-                            alignment: start;
-                            for genre in root.preview-genres : MetadataTag {
-                                unit: root.unit;
-                                label: genre;
-                            }
-                        }
+                    if (root.preview-genres.length > 0) : MetaStringLinks {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
+                        unit: root.unit;
+                        label: "GENRES";
+                        values: root.preview-genres;
                     }
 
-                    if (root.preview-cast.length > 0) : VerticalLayout {
-                        spacing: 0.75 * root.unit;
-                        Text {
-                            text: "Cast";
-                            color: Theme.text-primary;
-                            opacity: 0.4;
-                            font-size: 0.85 * root.unit;
-                            font-weight: 600;
-                        }
-                        HorizontalLayout {
-                            spacing: 0.5 * root.unit;
-                            alignment: start;
-                            for actor in root.preview-cast : MetadataTag {
-                                unit: root.unit;
-                                label: actor;
-                            }
-                        }
+                    if (root.preview-cast.length > 0) : MetaStringLinks {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
+                        unit: root.unit;
+                        label: "CAST";
+                        values: root.preview-cast;
                     }
 
-                    if (root.preview-directors.length > 0) : VerticalLayout {
-                        spacing: 0.75 * root.unit;
-                        Text {
-                            text: "DIRECTORS";
-                            color: Theme.text-primary;
-                            opacity: 0.4;
-                            font-size: 0.85 * root.unit;
-                            font-weight: 600;
-                        }
-                        HorizontalLayout {
-                            spacing: 0.5 * root.unit;
-                            alignment: start;
-                            for director in root.preview-directors : MetadataTag {
-                                unit: root.unit;
-                                label: director;
-                            }
-                        }
+                    if (root.preview-directors.length > 0) : MetaStringLinks {
+                        horizontal-stretch: 1;
+                        max-width: preview.width - 5 * root.unit;
+                        unit: root.unit;
+                        label: "DIRECTORS";
+                        values: root.preview-directors;
                     }
+                }
+            }
 
-                    Rectangle { vertical-stretch: 1; }
+            actions := HorizontalLayout {
+                x: 2.5 * root.unit;
+                y: parent.height - 5.5 * root.unit;
+                width: parent.width - 5 * root.unit;
+                height: 3.5 * root.unit;
+                spacing: 0.65 * root.unit;
 
-                    HorizontalLayout {
-                        height: 3.5 * root.unit;
-                        spacing: 0.65 * root.unit;
+                if (root.preview-has-trailer && root.preview-trailer-selection-id != "") : IconAction {
+                    unit: root.unit;
+                    width: 3.5 * root.unit;
+                    height: 3.5 * root.unit;
+                    icon-size: 1.55 * root.unit;
+                    label: "Trailer";
+                    surface-color: #14121b99;
+                    icon-source: @image-url("../assets/images/icons/trailer.svg");
+                    clicked => { root.play-trailer-preview(root.preview-trailer-selection-id); }
+                }
 
-                        if (root.preview-has-trailer && root.preview-trailer-selection-id != "") : PreviewIconButton {
-                            unit: root.unit;
-                            icon-source: @image-url("../assets/images/icons/trailer.svg");
-                            clicked => { root.play-trailer-preview(root.preview-trailer-selection-id); }
-                        }
+                IconAction {
+                    unit: root.unit;
+                    width: 3.5 * root.unit;
+                    height: 3.5 * root.unit;
+                    icon-size: 1.55 * root.unit;
+                    label: root.preview-is-in-library
+                        ? "Remove from Library"
+                        : "Add to Library";
+                    active: root.preview-is-in-library;
+                    active-color: Theme.accent;
+                    surface-color: #14121b99;
+                    icon-source: root.preview-is-in-library
+                        ? @image-url("../assets/images/icons/remove-from-library.svg")
+                        : @image-url("../assets/images/icons/add-to-library.svg");
+                    clicked => { root.toggle-library-preview(); }
+                }
 
-                        PreviewIconButton {
-                            unit: root.unit;
-                            active: root.preview-is-in-library;
-                            icon-source: root.preview-is-in-library
-                                ? @image-url("../assets/images/icons/remove-from-library.svg")
-                                : @image-url("../assets/images/icons/add-to-library.svg");
-                            clicked => { root.toggle-library-preview(); }
-                        }
+                IconAction {
+                    unit: root.unit;
+                    width: 3.5 * root.unit;
+                    height: 3.5 * root.unit;
+                    icon-size: 1.55 * root.unit;
+                    label: root.preview-is-watched
+                        ? "Mark as unwatched"
+                        : "Mark as watched";
+                    active: root.preview-is-watched;
+                    active-color: Theme.accent;
+                    surface-color: #14121b99;
+                    icon-source: root.preview-is-watched
+                        ? @image-url("../assets/images/icons/eye-off.svg")
+                        : @image-url("../assets/images/icons/eye.svg");
+                    clicked => { root.toggle-watched-preview(); }
+                }
 
-                        PreviewIconButton {
-                            unit: root.unit;
-                            active: root.preview-is-watched;
-                            icon-source: root.preview-is-watched
-                                ? @image-url("../assets/images/icons/eye-off.svg")
-                                : @image-url("../assets/images/icons/eye.svg");
-                            clicked => { root.toggle-watched-preview(); }
-                        }
-
-                        PillButton {
-                            horizontal-stretch: 1;
-                            unit: root.unit;
-                            label: "Show";
-                            primary: true;
-                            clicked => { root.play-preview(); }
-                        }
-                    }
+                PillButton {
+                    horizontal-stretch: 1;
+                    unit: root.unit;
+                    label: "Show";
+                    primary: true;
+                    clicked => { root.play-preview(); }
                 }
             }
         }

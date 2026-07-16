@@ -1,10 +1,13 @@
-use crate::AddonItem;
-use crate::AppModel;
-use crate::AppModelField;
-use crate::MainWindow;
+use crate::models::{Fingerprint, SyncFingerprint, sync_fingerprint_changed};
+use crate::{
+    AddonItem, AppModel, AppModelField, MainWindow, NavigationController, NavigationIntent,
+};
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex, OnceLock},
+};
 use stremio_core::{
     models::{
         addon_details::{AddonDetails, Selected as AddonDetailsSelected},
@@ -19,14 +22,42 @@ use stremio_core::{
 };
 use url::Url;
 
+static LAST_SYNC_STATE: OnceLock<Mutex<Option<SyncFingerprint>>> = OnceLock::new();
+
+fn hash_addon(fingerprint: &mut Fingerprint, descriptor: &Descriptor, installed: bool) {
+    fingerprint.bool(installed);
+    fingerprint.str(&descriptor.manifest.id);
+    fingerprint.str(&descriptor.manifest.name);
+    fingerprint.u64(descriptor.manifest.version.major);
+    fingerprint.u64(descriptor.manifest.version.minor);
+    fingerprint.u64(descriptor.manifest.version.patch);
+    fingerprint.str(descriptor.manifest.version.pre.as_str());
+    fingerprint.str(descriptor.manifest.version.build.as_str());
+    fingerprint.optional_str(descriptor.manifest.description.as_deref());
+    fingerprint.optional_str(descriptor.manifest.logo.as_ref().map(Url::as_str));
+    fingerprint.str(descriptor.transport_url.as_str());
+    for addon_type in &descriptor.manifest.types {
+        fingerprint.str(addon_type);
+    }
+    fingerprint.bool(descriptor.manifest.behavior_hints.configurable);
+    fingerprint.bool(descriptor.manifest.behavior_hints.configuration_required);
+}
+
 fn addon_types_label(descriptor: &Descriptor) -> String {
     let types = &descriptor.manifest.types;
     match types.as_slice() {
         [] => "Other".to_owned(),
         [only] => title_case_type(only),
         many => {
-            let labels = many.iter().map(|value| title_case_type(value)).collect::<Vec<_>>();
-            format!("{} & {}", labels[..labels.len() - 1].join(", "), labels.last().unwrap())
+            let labels = many
+                .iter()
+                .map(|value| title_case_type(value))
+                .collect::<Vec<_>>();
+            format!(
+                "{} & {}",
+                labels[..labels.len() - 1].join(", "),
+                labels.last().unwrap()
+            )
         }
     }
 }
@@ -39,13 +70,19 @@ fn title_case_type(value: &str) -> String {
         "anime" => "Anime".to_owned(),
         other => {
             let mut result = other.to_owned();
-            if let Some(first) = result.get_mut(0..1) { first.make_ascii_uppercase(); }
+            if let Some(first) = result.get_mut(0..1) {
+                first.make_ascii_uppercase();
+            }
             result
         }
     }
 }
 
-fn project_addon(descriptor: &Descriptor, installed: bool, ui_weak: &slint::Weak<MainWindow>) -> AddonItem {
+fn project_addon(
+    descriptor: &Descriptor,
+    installed: bool,
+    ui_weak: &slint::Weak<MainWindow>,
+) -> AddonItem {
     let supports = |kind: &str| {
         descriptor
             .manifest
@@ -54,10 +91,22 @@ fn project_addon(descriptor: &Descriptor, installed: bool, ui_weak: &slint::Weak
             .any(|value| value.eq_ignore_ascii_case(kind))
     };
     AddonItem {
-        id: descriptor.manifest.id.clone().into(),
-        name: descriptor.manifest.name.clone().into(),
+        id: descriptor.manifest.id.as_str().into(),
+        name: descriptor.manifest.name.as_str().into(),
         version: format!("v.{}", descriptor.manifest.version).into(),
-        description: descriptor.manifest.description.clone().unwrap_or_default().into(),
+        description: descriptor
+            .manifest
+            .description
+            .clone()
+            .unwrap_or_default()
+            .into(),
+        logo_url: descriptor
+            .manifest
+            .logo
+            .as_ref()
+            .map(Url::as_str)
+            .unwrap_or_default()
+            .into(),
         logo: crate::image_cache::get_poster_image(&descriptor.manifest.logo, ui_weak),
         is_installed: installed,
         transport_url: descriptor.transport_url.as_str().into(),
@@ -71,7 +120,11 @@ fn project_addon(descriptor: &Descriptor, installed: bool, ui_weak: &slint::Weak
     }
 }
 
-pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
+pub fn setup(
+    ui: &MainWindow,
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    navigation: &NavigationController,
+) {
     let ui_weak = ui.as_weak();
 
     // Install addon callback
@@ -169,14 +222,20 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
     ui.on_open_addon_details({
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
         move |transport_url| {
             let Some(transport_url) = Url::parse(transport_url.as_str()).ok() else {
                 return;
             };
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_addon_details_open(true);
                 ui.set_addon_details_loading(true);
                 ui.set_addon_details_error("".into());
+                navigation.dispatch_and_project(
+                    &ui,
+                    NavigationIntent::OpenAddonDetails {
+                        transport_url: transport_url.to_string(),
+                    },
+                );
             }
             runtime.dispatch(RuntimeAction {
                 field: Some(AppModelField::AddonDetails),
@@ -190,9 +249,10 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
     ui.on_close_addon_details({
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
         move || {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_addon_details_open(false);
+                navigation.dispatch_and_project(&ui, NavigationIntent::Back);
             }
             runtime.dispatch(RuntimeAction {
                 field: Some(AppModelField::AddonDetails),
@@ -240,6 +300,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
 
 #[tracing::instrument(skip_all)]
 pub fn sync_details(ui: &MainWindow, details: &AddonDetails, ui_weak: &slint::Weak<MainWindow>) {
+    let _span = tracing::info_span!("addon_details_mapping").entered();
     let mut loading = details.selected.is_some();
     let mut error = String::new();
     let mut descriptor = details.local_addon.as_ref();
@@ -282,6 +343,26 @@ pub fn sync(
     _runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
 ) {
     let query = ui.get_addons_search_query().trim().to_lowercase();
+    let mut fingerprint = Fingerprint::new();
+    fingerprint.str(&query);
+    for addon in installed {
+        hash_addon(&mut fingerprint, addon, true);
+    }
+    for page in &remote_addons.catalog {
+        match &page.content {
+            Some(Loadable::Ready(items)) => {
+                fingerprint.u64(1);
+                for addon in items {
+                    hash_addon(&mut fingerprint, addon, false);
+                }
+            }
+            _ => fingerprint.u64(0),
+        }
+    }
+    if !sync_fingerprint_changed(&LAST_SYNC_STATE, fingerprint.finish()) {
+        return;
+    }
+
     let matches_query = |descriptor: &Descriptor| {
         query.is_empty()
             || descriptor.manifest.name.to_lowercase().contains(&query)
@@ -293,43 +374,52 @@ pub fn sync(
                 .to_lowercase()
                 .contains(&query)
     };
-    let estimated_count = installed.len()
-        + remote_addons
-            .catalog
+    let estimated_count = {
+        let _span = tracing::info_span!("filter_addon_catalogs").entered();
+        installed.len()
+            + remote_addons
+                .catalog
+                .iter()
+                .filter_map(|page| {
+                    if let Some(Loadable::Ready(items)) = &page.content {
+                        Some(items.len())
+                    } else {
+                        None
+                    }
+                })
+                .sum::<usize>()
+    };
+
+    let slint_addons = {
+        let _span = tracing::info_span!("build_addon_items").entered();
+        let mut slint_addons = Vec::with_capacity(estimated_count);
+        let installed_urls = installed
             .iter()
-            .filter_map(|page| {
-                if let Some(Loadable::Ready(items)) = &page.content {
-                    Some(items.len())
-                } else {
-                    None
-                }
-            })
-            .sum::<usize>();
+            .map(|addon| addon.transport_url.as_str())
+            .collect::<HashSet<_>>();
 
-    let mut slint_addons = Vec::with_capacity(estimated_count);
-
-    // 1. Add all currently installed addons
-    for addon in installed {
-        if matches_query(addon) {
-            slint_addons.push(project_addon(addon, true, ui_weak));
+        // 1. Add all currently installed addons
+        for addon in installed {
+            if matches_query(addon) {
+                slint_addons.push(project_addon(addon, true, ui_weak));
+            }
         }
-    }
 
-    // 2. Add remote/discoverable addons that are not already installed
-    for page in &remote_addons.catalog {
-        if let Some(Loadable::Ready(items)) = &page.content {
-            for addon in items {
-                // Avoid duplicating if already installed
-                if matches_query(addon)
-                    && !installed
-                    .iter()
-                    .any(|a| a.transport_url == addon.transport_url)
-                {
-                    slint_addons.push(project_addon(addon, false, ui_weak));
+        // 2. Add remote/discoverable addons that are not already installed
+        for page in &remote_addons.catalog {
+            if let Some(Loadable::Ready(items)) = &page.content {
+                for addon in items {
+                    // Avoid duplicating if already installed
+                    if matches_query(addon)
+                        && !installed_urls.contains(addon.transport_url.as_str())
+                    {
+                        slint_addons.push(project_addon(addon, false, ui_weak));
+                    }
                 }
             }
         }
-    }
+        slint_addons
+    };
 
     let addons_model = slint::VecModel::from(slint_addons);
     ui.set_addons_list(slint::ModelRc::new(addons_model));
