@@ -1,0 +1,43 @@
+import { CinematicTheme } from "theme.slint";
+import { TopNavigation } from "components/top_navigation.slint";
+import { SearchSuggestion } from "../components/search.slint";
+
+export component CinematicShell inherits Rectangle {
+    in property <int> active-tab: 0;
+    in-out property <string> search-text: "";
+    in property <[SearchSuggestion]> suggestions: [];
+    in-out property <bool> profile-menu-open: false;
+    in property <string> username: "";
+    callback change-tab(int);
+    callback search-edited(string);
+    callback search-accepted(string);
+    callback suggestion-selected(string, string, string);
+    callback logout;
+
+    background: CinematicTheme.canvas;
+
+    content := Rectangle {
+        y: root.active-tab == 0 ? 0px : CinematicTheme.navigation-height;
+        width: parent.width;
+        height: parent.height - self.y;
+        background: CinematicTheme.canvas;
+        clip: true;
+        @children
+    }
+
+    TopNavigation {
+        width: parent.width;
+        active-tab: root.active-tab;
+        over-hero: root.active-tab == 0;
+        username: root.username;
+        suggestions: root.suggestions;
+        search-text <=> root.search-text;
+        profile-menu-open <=> root.profile-menu-open;
+        change-tab(tab) => { root.change-tab(tab); }
+        search-edited(value) => { root.search-edited(value); }
+        search-accepted(value) => { root.search-accepted(value); }
+        suggestion-selected(id, media-type, title) => { root.suggestion-selected(id, media-type, title); }
+        logout => { root.logout(); }
+    }
+
+}

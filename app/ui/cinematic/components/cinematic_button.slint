@@ -1,0 +1,21 @@
+import { CinematicTheme } from "../theme.slint";
+import { FocusSurface } from "focus_surface.slint";
+
+export component CinematicButton inherits FocusSurface {
+    in property <string> label: "Action";
+    in property <image> icon;
+    in property <bool> show-icon: false;
+    in property <bool> primary: false;
+    accessible-name: root.label;
+    min-width: 112px;
+    height: 44px;
+    background: root.pressed
+        ? (root.primary ? CinematicTheme.accent.darker(18%) : CinematicTheme.hover.darker(12%))
+        : (root.primary ? (root.hovered ? CinematicTheme.accent-hover : CinematicTheme.accent)
+            : (root.hovered ? CinematicTheme.hover : CinematicTheme.raised));
+    HorizontalLayout {
+        padding-left: 18px; padding-right: 18px; spacing: 9px; alignment: center;
+        if root.show-icon : Image { source: root.icon; width: 19px; height: 19px; image-fit: contain; colorize: CinematicTheme.primary; }
+        Text { text: root.label; color: CinematicTheme.primary; font-size: 15px; font-weight: 700; vertical-alignment: center; }
+    }
+}

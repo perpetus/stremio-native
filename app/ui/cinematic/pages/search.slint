@@ -1,0 +1,119 @@
+import { ListView } from "std-widgets.slint";
+import { CinematicTheme } from "../theme.slint";
+import { MediaRail } from "../components/media_rail.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { BoardSection } from "../../pages/board.slint";
+
+export component CinematicSearchPage inherits Rectangle {
+    in property <string> query: "";
+    in property <[BoardSection]> sections: [];
+    in property <bool> loading: false;
+    in property <int> catalog-count: 0;
+    callback item-selected(string, string, string);
+    callback poster-requested(string);
+
+    private property <length> gutter: root.width < 1200px ? 24px : CinematicTheme.page-gutter;
+    background: CinematicTheme.canvas;
+
+    if (root.query == "") : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        VerticalLayout {
+            alignment: center;
+            spacing: 24px;
+            padding-left: root.gutter;
+            padding-right: root.gutter;
+            Text {
+                text: "Search Stremio";
+                color: CinematicTheme.primary;
+                font-size: 30px;
+                font-weight: 800;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "Find movies, series, people, and playable links from the search field above.";
+                color: CinematicTheme.muted;
+                font-size: 15px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                width: min(760px, parent.width - 2 * root.gutter);
+                height: 92px;
+                spacing: 12px;
+                for hint in ["Movies and series", "Cast and crew", "HTTP and magnet links", "IMDB and TVDB"] : Rectangle {
+                    horizontal-stretch: 1;
+                    background: CinematicTheme.raised;
+                    border-radius: CinematicTheme.card-radius;
+                    border-width: 1px;
+                    border-color: CinematicTheme.divider;
+                    Text {
+                        x: 10px;
+                        width: parent.width - 20px;
+                        height: parent.height;
+                        text: hint;
+                        color: CinematicTheme.secondary;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+
+    if (root.query != "") : Text {
+        x: root.gutter;
+        y: 24px;
+        width: parent.width - 2 * root.gutter;
+        height: 42px;
+        text: "Results for “" + root.query + "”";
+        color: CinematicTheme.primary;
+        font-size: 28px;
+        font-weight: 800;
+        overflow: elide;
+    }
+
+    if (root.query != "" && root.loading && root.sections.length == 0) : HorizontalLayout {
+        x: root.gutter;
+        y: 84px;
+        width: parent.width - 2 * root.gutter;
+        height: 141px;
+        spacing: 10px;
+        for _item in [0, 1, 2, 3, 4] : CinematicSkeleton { width: 250px; height: 141px; }
+    }
+
+    if (root.query != "" && !root.loading && root.catalog-count == 0) : CinematicFeedback {
+        y: 72px;
+        width: parent.width;
+        height: parent.height - 72px;
+        title: "Search is not available";
+        message: "Install a search-capable add-on and try again.";
+    }
+
+    if (root.query != "" && !root.loading && root.catalog-count > 0 && root.sections.length == 0) : CinematicFeedback {
+        y: 72px;
+        width: parent.width;
+        height: parent.height - 72px;
+        title: "No results found";
+        message: "Try another title, person, or identifier.";
+    }
+
+    if (root.query != "" && root.sections.length > 0) : ListView {
+        x: root.gutter;
+        y: 76px;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - 76px;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        for section in root.sections : MediaRail {
+            width: parent.width;
+            title: section.title;
+            items: section.items;
+            item-selected(id, media-type, video-id) => { root.item-selected(id, media-type, video-id); }
+            poster-requested(url) => { root.poster-requested(url); }
+        }
+    }
+}

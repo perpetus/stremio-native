@@ -1,0 +1,29 @@
+import { FullscreenPreviewShell } from "preview_shell.slint";
+import { AuthPage } from "../pages/auth.slint";
+import { Theme } from "../theme.slint";
+
+export component AuthPreview inherits Window {
+    in-out property <string> preview-state: "login";
+    in-out property <bool> parity-size: false;
+    width: root.parity-size ? 2048px : 1280px;
+    height: root.parity-size ? 1096px : 720px;
+    background: Theme.background;
+    default-font-family: "Plus Jakarta Sans";
+
+    FullscreenPreviewShell {
+        width: parent.width;
+        height: parent.height;
+
+        AuthPage {
+            width: parent.width;
+            height: parent.height;
+            register-mode: root.preview-state == "register";
+            loading: root.preview-state == "loading";
+            error-message: root.preview-state == "error"
+                ? "The email or password is incorrect."
+                : "";
+            facebook-icon: { glyph: "f", font_family: "Plus Jakarta Sans" };
+            apple-icon: { glyph: "●", font_family: "Plus Jakarta Sans" };
+        }
+    }
+}

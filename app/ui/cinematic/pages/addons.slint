@@ -1,0 +1,332 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { CinematicTheme } from "../theme.slint";
+import { CinematicButton } from "../components/cinematic_button.slint";
+import { CinematicInput } from "../components/input.slint";
+import { CinematicSelectField } from "../components/select.slint";
+import { FocusSurface } from "../components/focus_surface.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { FallbackImage } from "../../components/fallback_image.slint";
+import { AddonItem } from "../../pages/addons.slint";
+
+component AddonRow inherits FocusSurface {
+    in property <AddonItem> addon;
+    callback details;
+    callback install;
+    callback uninstall;
+    callback configure;
+    callback share;
+
+    height: 104px;
+    radius: CinematicTheme.card-radius;
+    accessible-name: root.addon.name + ". " + (root.addon.is-installed ? "Installed" : "Not installed");
+    background: root.pressed ? CinematicTheme.hover.darker(12%)
+        : (root.has-hover || root.has-focus ? CinematicTheme.hover : CinematicTheme.raised);
+    clicked => { root.details(); }
+
+    FallbackImage {
+        x: 16px;
+        y: 16px;
+        width: 72px;
+        height: 72px;
+        source: root.addon.logo;
+        Image {
+            x: 18px;
+            y: 18px;
+            width: parent.width - 36px;
+            height: parent.height - 36px;
+            source: @image-url("../../assets/images/icons/addons.svg");
+            colorize: CinematicTheme.muted;
+            image-fit: contain;
+            visible: root.addon.logo.width == 0;
+        }
+    }
+
+    VerticalLayout {
+        x: 104px;
+        y: 16px;
+        width: max(160px, parent.width - self.x - 330px);
+        height: parent.height - 32px;
+        spacing: 5px;
+        alignment: center;
+        HorizontalLayout {
+            height: 24px;
+            spacing: 8px;
+            Text { text: root.addon.name; color: CinematicTheme.primary; font-size: 17px; font-weight: 700; overflow: elide; }
+            Text { text: root.addon.version; color: CinematicTheme.muted; font-size: 12px; vertical-alignment: center; }
+        }
+        Text { text: root.addon.types-label; color: CinematicTheme.secondary; font-size: 12px; overflow: elide; }
+        Text { text: root.addon.description; color: CinematicTheme.muted; font-size: 13px; wrap: word-wrap; overflow: elide; }
+    }
+
+    VerticalLayout {
+        x: parent.width - 302px;
+        y: 12px;
+        width: 286px;
+        height: parent.height - 24px;
+        alignment: center;
+        spacing: 6px;
+        Text {
+            text: root.addon.is-installed ? "Installed"
+                : (root.addon.configuration-required ? "Configuration required" : "Available");
+            color: root.addon.is-installed ? CinematicTheme.success : CinematicTheme.secondary;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: right;
+        }
+        HorizontalLayout {
+            height: 40px;
+            spacing: 6px;
+            alignment: end;
+            if (root.addon.configurable) : CinematicButton {
+                min-width: 84px;
+                height: 40px;
+                label: "Configure";
+                clicked => { root.configure(); }
+            }
+            CinematicButton {
+                min-width: 82px;
+                height: 40px;
+                primary: !root.addon.is-installed;
+                label: root.addon.is-installed ? "Remove" : "Install";
+                enabled: root.addon.is-installed || !root.addon.configuration-required;
+                clicked => { if (root.addon.is-installed) { root.uninstall(); } else { root.install(); } }
+            }
+            CinematicButton { min-width: 62px; height: 40px; label: "Share"; clicked => { root.share(); } }
+        }
+    }
+}
+
+export component CinematicAddonsPage inherits Rectangle {
+    in property <[AddonItem]> addons: [];
+    in property <bool> loading: false;
+    callback install-addon(string);
+    callback uninstall-addon(string);
+    callback open-addon-details(string);
+    callback close-addon-details;
+    callback configure-addon(string);
+    callback share-addon(string);
+    callback search-changed(string);
+    in-out property <bool> details-open: false;
+    in property <AddonItem> details-addon;
+    in property <bool> details-loading: false;
+    in property <string> details-error: "";
+    in property <bool> details-configurable: false;
+    in property <bool> details-configuration-required: false;
+    in-out property <string> active-filter: "Installed";
+    in-out property <string> active-type: "All";
+    in-out property <bool> filter-open: false;
+    in-out property <bool> type-open: false;
+    in-out property <bool> add-modal-open: false;
+    in-out property <string> search-query: "";
+    private property <string> manifest-url: "";
+    private property <length> gutter: root.width < 1200px ? 24px : CinematicTheme.page-gutter;
+
+    background: CinematicTheme.canvas;
+    forward-focus: page-focus;
+
+    page-focus := FocusScope {
+        width: parent.width;
+        height: parent.height;
+
+    Rectangle {
+        width: parent.width;
+        height: 82px;
+        z: 120;
+        background: CinematicTheme.canvas;
+        HorizontalLayout {
+            padding-left: root.gutter;
+            padding-right: root.gutter;
+            spacing: 12px;
+            alignment: center;
+            Text { text: "Add-ons"; color: CinematicTheme.primary; font-size: 30px; font-weight: 800; vertical-alignment: center; }
+            CinematicSelectField {
+                field-width: 150px;
+                value: root.active-filter;
+                options: ["Installed", "Community"];
+                open: root.filter-open;
+                toggle => { root.filter-open = !root.filter-open; root.type-open = false; }
+                selected(value) => { root.active-filter = value; root.filter-open = false; }
+            }
+            CinematicSelectField {
+                field-width: 160px;
+                value: root.active-type;
+                options: ["All", "Movie", "Series", "Anime", "TV Channel"];
+                open: root.type-open;
+                toggle => { root.type-open = !root.type-open; root.filter-open = false; }
+                selected(value) => { root.active-type = value; root.type-open = false; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            CinematicButton { min-width: 106px; primary: true; label: "Add add-on"; clicked => { root.add-modal-open = true; } }
+            CinematicInput {
+                width: root.width < 1180px ? 180px : 250px;
+                height: 42px;
+                placeholder: "Search add-ons";
+                text <=> root.search-query;
+                edited(value) => { root.search-changed(value); }
+            }
+        }
+    }
+
+    if (root.loading) : VerticalLayout {
+        x: root.gutter;
+        y: 82px;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - 82px;
+        spacing: 10px;
+        for _row in [0, 1, 2, 3] : CinematicSkeleton { width: parent.width; height: 104px; }
+    }
+
+    if (!root.loading && root.addons.length == 0) : CinematicFeedback {
+        y: 82px;
+        width: parent.width;
+        height: parent.height - 82px;
+        title: "No add-ons found";
+        message: "Try another filter or install an add-on by manifest URL.";
+    }
+
+    if (!root.loading && root.addons.length > 0) : ListView {
+        x: root.gutter;
+        y: 82px;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - 82px;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        for addon in root.addons : Rectangle {
+            private property <bool> matches-filter:
+                ((root.active-filter == "Installed") == addon.is-installed)
+                    && (root.active-type == "All"
+                        || (root.active-type == "Movie" && addon.supports-movie)
+                        || (root.active-type == "Series" && addon.supports-series)
+                        || (root.active-type == "Anime" && addon.supports-anime)
+                        || (root.active-type == "TV Channel" && addon.supports-tv));
+            width: parent.width;
+            height: self.matches-filter ? 114px : 0px;
+            clip: true;
+            AddonRow {
+                visible: parent.matches-filter;
+                width: parent.width;
+                addon: addon;
+                details => { root.open-addon-details(addon.transport-url); }
+                install => { root.install-addon(addon.transport-url); }
+                uninstall => { root.uninstall-addon(addon.transport-url); }
+                configure => { root.configure-addon(addon.transport-url); }
+                share => { root.share-addon(addon.transport-url); }
+            }
+        }
+    }
+
+    if (root.add-modal-open) : Rectangle {
+        background: #000000b8;
+        z: 2100;
+        TouchArea { clicked => { } }
+        Rectangle {
+            width: min(520px, parent.width - 48px);
+            height: 270px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: CinematicTheme.raised;
+            border-radius: CinematicTheme.modal-radius;
+            border-width: 1px;
+            border-color: CinematicTheme.divider;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                Text { text: "Add add-on"; color: CinematicTheme.primary; font-size: 24px; font-weight: 800; }
+                Text { text: "Paste the HTTPS URL of an add-on manifest."; color: CinematicTheme.muted; font-size: 14px; }
+                CinematicInput { label: "Manifest URL"; placeholder: "https://example.com/manifest.json"; text <=> root.manifest-url; }
+                HorizontalLayout {
+                    height: 44px;
+                    spacing: 10px;
+                    Rectangle { horizontal-stretch: 1; }
+                    CinematicButton { label: "Cancel"; clicked => { root.add-modal-open = false; } }
+                    CinematicButton {
+                        primary: true;
+                        label: "Install";
+                        enabled: root.manifest-url != "";
+                        clicked => { root.install-addon(root.manifest-url); root.add-modal-open = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    if (root.details-open) : Rectangle {
+        background: #000000c7;
+        z: 2200;
+        TouchArea { clicked => { root.close-addon-details(); } }
+        Rectangle {
+            width: min(680px, parent.width - 48px);
+            height: min(560px, parent.height - 48px);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: CinematicTheme.raised;
+            border-radius: CinematicTheme.modal-radius;
+            border-width: 1px;
+            border-color: CinematicTheme.divider;
+            clip: true;
+            TouchArea { clicked => { } }
+            VerticalLayout {
+                padding: 26px;
+                spacing: 16px;
+                Text { text: "Community add-on"; color: CinematicTheme.muted; font-size: 13px; font-weight: 700; }
+                if (root.details-loading) : CinematicSkeleton { vertical-stretch: 1; width: parent.width; }
+                if (!root.details-loading && root.details-error != "") : CinematicFeedback {
+                    vertical-stretch: 1;
+                    title: "Add-on unavailable";
+                    message: root.details-error;
+                }
+                if (!root.details-loading && root.details-error == "") : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 14px;
+                    HorizontalLayout {
+                        height: 92px;
+                        spacing: 16px;
+                        FallbackImage { width: 92px; height: 92px; source: root.details-addon.logo; }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 5px;
+                            Text { text: root.details-addon.name; color: CinematicTheme.primary; font-size: 26px; font-weight: 800; overflow: elide; }
+                            Text { text: root.details-addon.version + "  " + root.details-addon.types-label; color: CinematicTheme.secondary; font-size: 13px; overflow: elide; }
+                            Text { text: root.details-addon.transport-url; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                        }
+                    }
+                    ScrollView {
+                        vertical-stretch: 1;
+                        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                        mouse-drag-pan-enabled: true;
+                        Text { width: parent.width; text: root.details-addon.description; color: CinematicTheme.secondary; font-size: 14px; wrap: word-wrap; }
+                    }
+                }
+                HorizontalLayout {
+                    height: 44px;
+                    spacing: 10px;
+                    CinematicButton { label: "Close"; clicked => { root.close-addon-details(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    if (root.details-configurable) : CinematicButton { label: "Configure"; clicked => { root.configure-addon(root.details-addon.transport-url); } }
+                    if (!root.details-loading && root.details-error == "" && (root.details-addon.is-installed || !root.details-configuration-required)) : CinematicButton {
+                        primary: !root.details-addon.is-installed;
+                        label: root.details-addon.is-installed ? "Remove" : "Install";
+                        clicked => {
+                            if (root.details-addon.is-installed) { root.uninstall-addon(root.details-addon.transport-url); }
+                            else { root.install-addon(root.details-addon.transport-url); }
+                            root.close-addon-details();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(Escape);
+        enabled: root.details-open || root.add-modal-open || root.filter-open || root.type-open;
+        activated => {
+            if (root.details-open) { root.close-addon-details(); }
+            else if (root.add-modal-open) { root.add-modal-open = false; }
+            else { root.filter-open = false; root.type-open = false; }
+        }
+    }
+    }
+}

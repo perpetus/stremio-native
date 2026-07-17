@@ -1,0 +1,10 @@
+import { CinematicTheme } from "../theme.slint";
+export component CinematicPageSurface inherits Rectangle {
+    in property <string> title: "";
+    background: CinematicTheme.canvas;
+    VerticalLayout { padding-top: 26px; padding-left: 36px; padding-right: 36px; padding-bottom: 30px; spacing: 20px;
+        Text { text: root.title; color: CinematicTheme.primary; font-size: 30px; font-weight: 800; }
+        @children
+    }
+}
+

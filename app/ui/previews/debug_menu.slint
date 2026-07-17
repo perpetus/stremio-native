@@ -1,0 +1,82 @@
+import { Theme } from "../theme.slint";
+import { ButtonSurface, MenuButton } from "../components/button.slint";
+
+export struct PreviewStateOption {
+    label: string,
+    value: string,
+}
+
+// Reusable preview-only state switcher. It never ships page behavior or data;
+// it only drives the public inputs of the component under inspection.
+export component PreviewDebugMenu inherits Rectangle {
+    in property <length> unit: Theme.root-font-size;
+    in property <string> title: "Preview states";
+    in property <[PreviewStateOption]> options: [];
+    in property <string> selected-value: "";
+    in-out property <bool> open: false;
+    callback state-selected(string);
+
+    width: 18 * root.unit;
+    height: 3.25 * root.unit
+        + (root.open ? root.options.length * 2.5 * root.unit + 0.5 * root.unit : 0px);
+    border-radius: Theme.border-radius;
+    border-width: 1px;
+    border-color: Theme.divider;
+    background: Theme.modal-color;
+    clip: true;
+    z: 20000;
+
+    header := ButtonSurface {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 3.25 * root.unit;
+        accessible-name: root.open ? "Hide preview states" : "Show preview states";
+        background: self.has-hover ? Theme.overlay-hover : transparent;
+        clicked => { root.open = !root.open; }
+
+        Text {
+            x: 1.25 * root.unit;
+            width: parent.width - 4 * root.unit;
+            height: parent.height;
+            text: root.title;
+            color: Theme.primary-foreground;
+            font-size: root.unit;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Image {
+            x: parent.width - self.width - 1.25 * root.unit;
+            y: (parent.height - self.height) / 2;
+            width: root.unit;
+            height: root.unit;
+            source: root.open
+                ? @image-url("../assets/images/icons/caret-down.svg")
+                : @image-url("../assets/images/icons/caret-up.svg");
+            colorize: Theme.primary-foreground;
+            opacity: 0.5;
+            image-fit: contain;
+        }
+    }
+
+    if (root.open) : VerticalLayout {
+        x: 0.5 * root.unit;
+        y: 3.25 * root.unit;
+        width: parent.width - root.unit;
+        height: parent.height - self.y - 0.5 * root.unit;
+        spacing: 0px;
+
+        for option in root.options : MenuButton {
+            horizontal-stretch: 1;
+            height: 2.5 * root.unit;
+            unit: root.unit;
+            label: option.label;
+            label-font-size: 0.85 * root.unit;
+            horizontal-padding: root.unit;
+            selected: option.value == root.selected-value;
+            clicked => { root.state-selected(option.value); }
+        }
+    }
+}

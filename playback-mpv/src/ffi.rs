@@ -37,6 +37,10 @@ pub const RENDER_PARAM_OPENGL_FBO: c_int = 3;
 pub const RENDER_PARAM_FLIP_Y: c_int = 4;
 pub const RENDER_PARAM_ADVANCED_CONTROL: c_int = 10;
 pub const RENDER_PARAM_SKIP_RENDERING: c_int = 13;
+pub const RENDER_PARAM_SW_SIZE: c_int = 17;
+pub const RENDER_PARAM_SW_FORMAT: c_int = 18;
+pub const RENDER_PARAM_SW_STRIDE: c_int = 19;
+pub const RENDER_PARAM_SW_POINTER: c_int = 20;
 pub const RENDER_UPDATE_FRAME: u64 = 1 << 0;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -112,6 +116,12 @@ pub enum MpvError {
     OpenGl(String),
     #[error("OpenGL video framebuffer is incomplete (status {status:#x})")]
     IncompleteOpenGlFramebuffer { status: u32 },
+    #[error("software rendering failed: {0}")]
+    Software(String),
+    #[error("could not start the software-render worker: {0}")]
+    SoftwareThread(#[source] std::io::Error),
+    #[error("software-render worker panicked")]
+    SoftwareWorkerPanicked,
 }
 
 #[repr(C)]
@@ -219,7 +229,7 @@ type RenderUpdateFn = unsafe extern "C" fn(*mut MpvRenderContext) -> u64;
 type RenderFn = unsafe extern "C" fn(*mut MpvRenderContext, *mut MpvRenderParam) -> c_int;
 type RenderFreeFn = unsafe extern "C" fn(*mut MpvRenderContext);
 
-// The symbols are provided by the pinned static MPV SDK selected by build.rs.
+// The symbols are provided by the pinned MPV import library selected by build.rs.
 // Keeping this list explicit makes the unsafe ABI surface small and auditable.
 unsafe extern "C" {
     fn mpv_client_api_version() -> c_ulong;
@@ -320,7 +330,7 @@ impl MpvApi {
     }
 
     pub fn api_version(&self) -> ApiVersion {
-        // SAFETY: The function is statically linked with the pinned client.h signature.
+        // SAFETY: The imported function uses the pinned client.h signature.
         ApiVersion::decode(unsafe { (self.client_api_version)() } as u64)
     }
 
@@ -467,11 +477,13 @@ mod tests {
     use super::{ApiVersion, HEADER_CLIENT_API_VERSION, MpvApi, MpvClient, MpvError};
 
     #[test]
-    fn statically_linked_engine_should_initialize() -> Result<(), MpvError> {
+    fn pinned_dll_should_initialize_with_d3d11_options() -> Result<(), MpvError> {
         let api = MpvApi::linked()?;
         let client = MpvClient::create(api)?;
         client.set_option("terminal", "no")?;
         client.set_option("vo", "libmpv")?;
+        client.set_option("gpu-context", "d3d11")?;
+        client.set_option("gpu-api", "d3d11")?;
         client.set_option("idle", "yes")?;
         client.initialize()
     }

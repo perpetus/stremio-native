@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "architecture": "x86_64",
+  "cpuBaseline": "x86-64-v3",
+  "linkName": "mpv",
+  "clientApi": {
+    "major": 2,
+    "minor": 5
+  },
+  "importLibrary": {
+    "file": "lib/mpv.lib",
+    "sha256": "bef1b89f534bc86b33135e1f04fa2d5064b9d48b5de8bc9866665bbf43def793"
+  },
+  "runtimeLibrary": {
+    "file": "bin/libmpv-2.dll",
+    "sha256": "ade5cac46cfc397a3d5cd356a968cda7acf0debffb705a16509dafdf93029f5e"
+  }
+}

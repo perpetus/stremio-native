@@ -10,12 +10,13 @@ use std::{
 
 use anyhow::{Context, anyhow};
 use playback_mpv::{
-    EndReason, PlaybackCommand, PlaybackController, PlaybackEvent, PlaybackRuntime, PlaybackState,
-    PlayerConfig, RenderContext, RenderOutcome, RenderSource,
+    EndReason, OpenGlRenderContext, OpenGlRenderOutcome, OpenGlRenderSource, PlaybackCommand,
+    PlaybackController, PlaybackEvent, PlaybackRuntime, PlaybackState, PlaybackVideoSource,
+    PlayerConfig, PlayerVideoOutput, SoftwareFrameSource,
 };
 use slint::{
     BorrowedOpenGLTextureBuilder, BorrowedOpenGLTextureOrigin, ComponentHandle, ModelRc,
-    SharedString, VecModel,
+    Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
 };
 use stremio_core::{
     models::{
@@ -51,7 +52,9 @@ struct PlaybackEventInbox {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlaybackEvent, PlaybackEventInbox, PlaybackState};
+    use super::{
+        PlaybackEvent, PlaybackEventInbox, PlaybackState, should_show_native_video_output_hint,
+    };
 
     fn state_at(time: f64) -> PlaybackEvent {
         PlaybackEvent::State(Box::new(PlaybackState {
@@ -94,6 +97,25 @@ mod tests {
         ));
         assert!(matches!(inbox.recv().await, Some(PlaybackEvent::Shutdown)));
         assert!(inbox.recv().await.is_none());
+    }
+
+    #[test]
+    fn loading_failure_without_a_video_track_is_not_reported_as_video_output_failure() {
+        assert!(!should_show_native_video_output_hint(
+            true,
+            &PlaybackState::default()
+        ));
+    }
+
+    #[test]
+    fn unconfigured_native_video_track_reports_the_video_output_hint() {
+        let state = PlaybackState {
+            has_video_track: true,
+            ..PlaybackState::default()
+        };
+
+        assert!(should_show_native_video_output_hint(true, &state));
+        assert!(!should_show_native_video_output_hint(false, &state));
     }
 }
 
@@ -238,6 +260,7 @@ impl NativePlayback {
         ui: &MainWindow,
         core: &Arc<Runtime<DesktopEnv, AppModel>>,
         hardware_decoding: bool,
+        video_output: PlayerVideoOutput,
         navigation: NavigationController,
         discord_rpc: Arc<crate::discord::DiscordRpc>,
         runtime_handle: tokio::runtime::Handle,
@@ -252,6 +275,7 @@ impl NativePlayback {
         let config_dir = resolve_config_dir();
         tracing::info!(
             hardware_decoding,
+            ?video_output,
             config_dir = %config_dir.display(),
             "initializing native MPV playback"
         );
@@ -267,6 +291,7 @@ impl NativePlayback {
             PlayerConfig {
                 config_dir: Some(config_dir),
                 hardware_decoding,
+                video_output,
             },
             move |event| {
                 runtime_event_inbox.push(event);
@@ -294,7 +319,9 @@ impl NativePlayback {
             ui.set_player_subtitle_size_percent(f32::from(settings.subtitles_size));
             ui.set_player_subtitle_offset_percent(f32::from(settings.subtitles_offset));
         }
-        install_renderer(ui, runtime.render_source(), state.clone(), session.clone())?;
+        let video_source = runtime.video_source();
+        let native_window_output = matches!(&video_source, PlaybackVideoSource::NativeWindow);
+        install_video_source(ui, video_source, state.clone(), session.clone())?;
 
         let event_state = state.clone();
         let event_session = session.clone();
@@ -318,6 +345,7 @@ impl NativePlayback {
                     &event_discord_rpc,
                     &event_autohide_task,
                     &event_runtime_handle,
+                    native_window_output,
                 );
             }
             tracing::debug!("MPV application event pump stopped");
@@ -344,6 +372,10 @@ impl NativePlayback {
 
     pub fn bridge(&self) -> NativePlaybackBridge {
         self.bridge.clone()
+    }
+
+    pub fn video_source(&self) -> PlaybackVideoSource {
+        self.runtime.video_source()
     }
 
     pub fn shutdown(self) -> anyhow::Result<()> {
@@ -801,7 +833,7 @@ impl NativePlaybackBridge {
             };
             Some(StatisticsRequest {
                 info_hash: info_hash.iter().map(|byte| format!("{byte:02x}")).collect(),
-                file_idx: file_idx.unwrap_or_default(),
+                file_idx: file_idx.as_ref().copied()?,
             })
         });
         let Some(request) = request else {
@@ -865,6 +897,7 @@ fn handle_event(
     discord_rpc: &Arc<crate::discord::DiscordRpc>,
     autohide_task: &Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     runtime_handle: &tokio::runtime::Handle,
+    native_window_output: bool,
 ) {
     match event {
         PlaybackEvent::State(state) => {
@@ -906,8 +939,30 @@ fn handle_event(
             tracing::info!(?load_elapsed_ms, "MPV file loaded");
             restore_stream_state(core, controller, ui);
         }
-        PlaybackEvent::Ended { reason, error } => {
-            tracing::info!(?reason, error = error.as_deref(), "MPV playback ended");
+        PlaybackEvent::PlaybackRestarted => {
+            if native_window_output {
+                let state = read_state(state_slot).clone();
+                if state.has_video_track && state.vo_configured {
+                    let ui = ui.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui.upgrade() {
+                            ui.set_player_has_video_frame(true);
+                        }
+                    });
+                }
+            }
+        }
+        PlaybackEvent::Ended {
+            reason,
+            error_code,
+            error,
+        } => {
+            tracing::info!(
+                ?reason,
+                ?error_code,
+                error = error.as_deref(),
+                "MPV playback ended"
+            );
             if reason == EndReason::Eof {
                 dispatch_player(core, ActionPlayer::Ended);
                 let binge = core
@@ -925,7 +980,15 @@ fn handle_event(
                         }
                     });
                 }
-            } else if let Some(error) = error {
+            } else if let Some(mut error) = error {
+                if should_show_native_video_output_hint(
+                    native_window_output,
+                    &read_state(state_slot),
+                ) {
+                    error.push_str(
+                        "\n\nNative video output could not be configured. Restart with --video-output=shared-opengl.",
+                    );
+                }
                 show_player_error(ui, error);
             }
         }
@@ -936,6 +999,10 @@ fn handle_event(
         }
         PlaybackEvent::Shutdown => tracing::info!("MPV playback shutdown event received"),
     }
+}
+
+fn should_show_native_video_output_hint(native_window_output: bool, state: &PlaybackState) -> bool {
+    native_window_output && state.has_video_track && !state.vo_configured
 }
 
 fn format_discord_time(seconds: i64) -> String {
@@ -1694,16 +1761,130 @@ fn apply_state_to_ui(
     projection.previous = Some(state);
 }
 
-fn install_renderer(
+fn install_video_source(
     ui: &MainWindow,
-    source: RenderSource,
+    source: PlaybackVideoSource,
+    playback_state: SharedPlaybackState,
+    session: Arc<Mutex<SessionState>>,
+) -> anyhow::Result<()> {
+    match source {
+        PlaybackVideoSource::NativeWindow => {
+            ui.set_player_video_surface_mode(crate::PlayerVideoSurfaceMode::NativeWindow);
+            install_native_renderer_verifier(ui)
+        }
+        PlaybackVideoSource::OpenGl(source) => {
+            ui.set_player_video_surface_mode(crate::PlayerVideoSurfaceMode::Image);
+            install_open_gl_renderer(ui, source, playback_state, session)
+        }
+        PlaybackVideoSource::Software(source) => {
+            ui.set_player_video_surface_mode(crate::PlayerVideoSurfaceMode::Image);
+            install_software_renderer(ui, source, session);
+            Ok(())
+        }
+        _ => Err(anyhow!("unsupported MPV video source")),
+    }
+}
+
+fn install_native_renderer_verifier(ui: &MainWindow) -> anyhow::Result<()> {
+    let window_weak = ui.as_weak();
+    ui.window()
+        .set_rendering_notifier(move |state, graphics_api| {
+            if !matches!(state, slint::RenderingState::RenderingSetup) {
+                return;
+            }
+            match graphics_api {
+                slint::GraphicsAPI::NativeOpenGL { get_proc_address } => {
+                    match crate::rendering::open_gl_alpha_bits(get_proc_address) {
+                        Ok(alpha_bits) if alpha_bits > 0 => tracing::info!(
+                            alpha_bits,
+                            "native video overlay OpenGL surface verified"
+                        ),
+                        Ok(alpha_bits) => show_player_error(
+                            &window_weak,
+                            format!(
+                                "Native video requires a transparent OpenGL surface, but this window has {alpha_bits} alpha bits. Restart with --video-output=shared-opengl."
+                            ),
+                        ),
+                        Err(error) => show_player_error(&window_weak, error),
+                    }
+                }
+                other => show_player_error(
+                    &window_weak,
+                    format!(
+                        "Native video requires an OpenGL UI renderer, but Slint exposed {other:?}."
+                    ),
+                ),
+            }
+        })
+        .map_err(|error| anyhow!("could not verify native video renderer: {error}"))?;
+    Ok(())
+}
+
+fn install_software_renderer(
+    ui: &MainWindow,
+    source: SoftwareFrameSource,
+    session: Arc<Mutex<SessionState>>,
+) {
+    let window_weak = ui.as_weak();
+    let callback_source = source.clone();
+    let last_reported_load = Arc::new(Mutex::new(None));
+    source.set_wakeup_callback(move || {
+        crate::performance::counters().record_mpv_redraw_post();
+        let source = callback_source.clone();
+        let failed_source = source.clone();
+        let ui = window_weak.clone();
+        let session = session.clone();
+        let last_reported_load = last_reported_load.clone();
+        if let Err(error) = slint::invoke_from_event_loop(move || {
+            let Some(frame) = source.take_latest() else {
+                return;
+            };
+            let Some(ui) = ui.upgrade() else {
+                return;
+            };
+            if !ui.get_show_player() {
+                return;
+            }
+            let pixels = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+                &frame.rgba,
+                frame.width.get(),
+                frame.height.get(),
+            );
+            ui.set_player_video_frame(slint::Image::from_rgba8(pixels));
+            ui.set_player_has_video_frame(true);
+            crate::performance::counters().record_mpv_frame_published();
+
+            let load_started_at = lock_session(&session).load_requested_at;
+            let mut last_reported = last_reported_load
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if load_started_at.is_some() && *last_reported != load_started_at {
+                *last_reported = load_started_at;
+                tracing::info!(
+                    width = frame.width.get(),
+                    height = frame.height.get(),
+                    load_to_first_frame_ms =
+                        load_started_at.map(|started_at| started_at.elapsed().as_millis()),
+                    "first software MPV frame submitted to Slint"
+                );
+            }
+        }) {
+            let _ = failed_source.take_latest();
+            tracing::debug!(%error, "software MPV frame arrived after the Slint loop stopped");
+        }
+    });
+}
+
+fn install_open_gl_renderer(
+    ui: &MainWindow,
+    source: OpenGlRenderSource,
     playback_state: SharedPlaybackState,
     session: Arc<Mutex<SessionState>>,
 ) -> anyhow::Result<()> {
     let backend = std::env::var("SLINT_BACKEND").unwrap_or_else(|_| "NOT SET".to_owned());
     tracing::info!(backend = %backend, "install_renderer called");
     let window_weak = ui.as_weak();
-    let mut context: Option<RenderContext> = None;
+    let mut context: Option<OpenGlRenderContext> = None;
     let mut render_target_ready = false;
     let mut initial_surface_logged = false;
     let mut last_reported_load = None;
@@ -1827,7 +2008,7 @@ fn install_renderer(
                         );
                     }
                     match render_result {
-                        Ok(RenderOutcome::Rendered {
+                        Ok(OpenGlRenderOutcome::Rendered {
                             texture,
                             frame_ready,
                         }) => {
@@ -1872,7 +2053,7 @@ fn install_renderer(
                                 );
                             }
                         }
-                        Ok(RenderOutcome::NoFrame) => {
+                        Ok(OpenGlRenderOutcome::NoFrame) => {
                             tracing::trace!("BeforeRendering: MPV has no new frame to render");
                         }
                         Err(error) => {
@@ -1908,7 +2089,10 @@ fn install_renderer(
     Ok(())
 }
 
-fn ensure_render_target(ui: &MainWindow, context: &mut RenderContext) -> anyhow::Result<bool> {
+fn ensure_render_target(
+    ui: &MainWindow,
+    context: &mut OpenGlRenderContext,
+) -> anyhow::Result<bool> {
     let size = ui.window().size();
     let width = i32::try_from(size.width)?;
     let height = i32::try_from(size.height)?;
@@ -1917,7 +2101,7 @@ fn ensure_render_target(ui: &MainWindow, context: &mut RenderContext) -> anyhow:
 
 fn ensure_render_target_size(
     ui: &MainWindow,
-    context: &mut RenderContext,
+    context: &mut OpenGlRenderContext,
     (width, height): (i32, i32),
 ) -> anyhow::Result<bool> {
     let start = std::time::Instant::now();

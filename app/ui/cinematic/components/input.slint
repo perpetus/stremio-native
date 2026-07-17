@@ -1,0 +1,50 @@
+import { CinematicTheme } from "../theme.slint";
+
+export component CinematicInput inherits Rectangle {
+    in-out property <string> text: "";
+    in property <string> label: "";
+    in property <string> placeholder: "";
+    in property <InputType> input-type: InputType.text;
+    out property <bool> has-focus: field.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    forward-focus: field;
+    height: root.label == "" ? 44px : 66px;
+    min-width: 180px; border-radius: 4px;
+    background: #00000099;
+    border-width: field.has-focus ? 2px : 1px;
+    border-color: field.has-focus ? CinematicTheme.accent : #ffffff52;
+
+    if root.label != "" : Text {
+        x: 14px;
+        y: 7px;
+        width: parent.width - 28px;
+        height: 18px;
+        text: root.label;
+        color: CinematicTheme.secondary;
+        font-size: 12px;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+
+    field := TextInput {
+        x: 14px;
+        y: root.label == "" ? 0px : 23px;
+        width: parent.width - 28px;
+        height: parent.height - self.y;
+        text <=> root.text; color: CinematicTheme.primary; font-size: 15px;
+        input-type: root.input-type;
+        single-line: true; vertical-alignment: center;
+        edited => { root.edited(self.text); }
+        accepted => { root.accepted(self.text); }
+    }
+    if root.text == "" && !field.has-focus : Text {
+        x: 14px;
+        y: root.label == "" ? 0px : 23px;
+        width: parent.width - 28px;
+        height: parent.height - self.y;
+        text: root.placeholder;
+        color: CinematicTheme.muted;
+        vertical-alignment: center;
+    }
+}

@@ -1,0 +1,77 @@
+import { CinematicTheme } from "../theme.slint";
+import { FocusSurface } from "focus_surface.slint";
+import { ListView } from "std-widgets.slint";
+
+export component CinematicSelect inherits FocusSurface {
+    in property <string> value: "Select";
+    accessible-name: root.value;
+    height: 40px; min-width: 130px;
+    HorizontalLayout { padding-left: 13px; padding-right: 13px; spacing: 10px;
+        Text { text: root.value; color: CinematicTheme.secondary; font-size: 14px; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: "⌄"; color: CinematicTheme.muted; vertical-alignment: center; }
+    }
+}
+
+export component CinematicSelectField inherits Rectangle {
+    in property <string> value: "";
+    in property <string> placeholder: "Select";
+    in property <[string]> options: [];
+    in-out property <bool> open: false;
+    in property <length> field-width: 180px;
+    callback toggle;
+    callback selected(string);
+
+    width: root.field-width;
+    height: 42px;
+    background: transparent;
+    z: root.open ? 1500 : 1;
+
+    trigger := CinematicSelect {
+        width: parent.width;
+        height: parent.height;
+        value: root.value == "" ? root.placeholder : root.value;
+        selected: root.open;
+        clicked => { root.toggle(); }
+    }
+
+    if (root.open) : Rectangle {
+        x: 0px;
+        y: 46px;
+        width: parent.width;
+        height: min(280px, max(46px, root.options.length * 42px + 8px));
+        background: CinematicTheme.raised;
+        border-radius: CinematicTheme.modal-radius;
+        border-width: 1px;
+        border-color: CinematicTheme.divider;
+        clip: true;
+        z: 1600;
+
+        ListView {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: parent.height - 8px;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            for option in root.options : FocusSurface {
+                width: parent.width;
+                height: 42px;
+                accessible-name: option;
+                selected: option == root.value;
+                background: self.pressed ? CinematicTheme.hover.darker(12%)
+                    : (self.has-hover || self.has-focus || self.selected
+                        ? CinematicTheme.hover : transparent);
+                Text {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    height: parent.height;
+                    text: option;
+                    color: CinematicTheme.secondary;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                clicked => { root.selected(option); }
+            }
+        }
+    }
+}

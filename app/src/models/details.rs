@@ -42,6 +42,26 @@ fn get_search_query() -> &'static Mutex<String> {
     EPISODE_SEARCH_QUERY.get_or_init(|| Mutex::new(String::new()))
 }
 
+/// Reopening the currently selected item can be a no-op in core when its
+/// metadata is already cached. In that case the UI must not wait for a state
+/// update that will never arrive to leave its loading presentation.
+pub fn selected_details_are_ready(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: &str) -> bool {
+    let Ok(model) = rt.model() else {
+        return false;
+    };
+    model
+        .meta_details
+        .selected
+        .as_ref()
+        .is_some_and(|selected| selected.meta_path.id == id)
+        && model.meta_details.meta_items.iter().any(|resource| {
+            matches!(
+                &resource.content,
+                Some(Loadable::Ready(item)) if item.preview.id == id
+            )
+        })
+}
+
 /// Core function to load meta details and streams for an item
 pub fn load_meta_details(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: String) {
     load_meta_details_for_video(rt, id, None, None);

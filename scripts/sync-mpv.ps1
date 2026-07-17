@@ -1,353 +1,266 @@
+[CmdletBinding()]
 param(
-    [switch]$CheckOnly,
-    [switch]$ReuseSource,
-    [switch]$PackageOnly,
-    [ValidateSet("x86_64")]
-    [string]$Architecture = "x86_64",
-    [string]$VisualStudioPath
+    [switch]$CheckOnly
 )
 
-$ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
-$PSNativeCommandUseErrorActionPreference = $true
 Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
 $lockPath = Join-Path $repoRoot "mpv.lock.json"
-$pinnedPath = Join-Path $repoRoot "playback-mpv\src\pinned.rs"
-$distDir = Join-Path $repoRoot "dist\mpv\windows-$Architecture-static"
-$workDir = Join-Path $repoRoot "target\mpv-static-build"
-$headers = @("client.h", "render.h", "render_gl.h")
-$githubHeaders = @{ "User-Agent" = "stremio-native-mpv-static-sync" }
-if ($PackageOnly) {
-    $ReuseSource = $true
-}
+$pinnedRustPath = Join-Path $repoRoot "playback-mpv\src\pinned.rs"
+$workDir = Join-Path $repoRoot "target\mpv-prebuilt-sync"
+$artifactKey = "windows-x86_64-v3-dynamic"
+$githubHeaders = @{ "User-Agent" = "stremio-native-mpv-sync" }
 
 function Get-Sha256([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Get-ClientApi([string]$ClientHeader) {
-    $line = Select-String -LiteralPath $ClientHeader -Pattern '^#define MPV_CLIENT_API_VERSION MPV_MAKE_VERSION\((\d+),\s*(\d+)\)' | Select-Object -First 1
-    if (-not $line) {
-        throw "MPV_CLIENT_API_VERSION was not found in $ClientHeader"
+function Assert-Hash([string]$Path, [string]$Expected) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required MPV file is missing: $Path"
     }
-    return @{
-        major = [int]$line.Matches[0].Groups[1].Value
-        minor = [int]$line.Matches[0].Groups[2].Value
+    $actual = Get-Sha256 $Path
+    if ($actual -ne $Expected.ToLowerInvariant()) {
+        throw "SHA-256 mismatch for $Path`nExpected: $Expected`nActual:   $actual"
     }
 }
 
 function Assert-WorkspacePath([string]$Path) {
-    $root = [IO.Path]::GetFullPath($repoRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $root = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     $resolved = [IO.Path]::GetFullPath($Path)
     if (-not $resolved.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to modify a path outside the repository: $resolved"
     }
+    $resolved
 }
 
-function Invoke-Native([string]$Program, [string[]]$Arguments) {
-    & $Program @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Program failed with exit code $LASTEXITCODE"
+function Remove-WorkspaceTree([string]$Path) {
+    $resolved = Assert-WorkspacePath $Path
+    if (Test-Path -LiteralPath $resolved) {
+        Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }
 
-$release = Invoke-RestMethod -Headers $githubHeaders "https://api.github.com/repos/mpv-player/mpv/releases/latest"
-if ($release.prerelease -or $release.draft) {
-    throw "GitHub releases/latest returned a non-stable release"
+function Write-Utf8Lf([string]$Path, [string]$Contents) {
+    $normalized = $Contents.Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalized = [regex]::Replace($normalized, "`n+$", "") + "`n"
+    [IO.File]::WriteAllText($Path, $normalized, [Text.UTF8Encoding]::new($false))
 }
-$tag = [string]$release.tag_name
+
+function Get-ClientApi([string]$ClientHeader) {
+    $match = Select-String `
+        -LiteralPath $ClientHeader `
+        -Pattern '^#define MPV_CLIENT_API_VERSION MPV_MAKE_VERSION\((\d+),\s*(\d+)\)' |
+        Select-Object -First 1
+    if (-not $match) {
+        throw "MPV_CLIENT_API_VERSION was not found in $ClientHeader"
+    }
+    [ordered]@{
+        major = [int]$match.Matches[0].Groups[1].Value
+        minor = [int]$match.Matches[0].Groups[2].Value
+    }
+}
+
+function Get-PeMachine([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $reader = [IO.BinaryReader]::new($stream)
+    try {
+        if ($reader.ReadUInt16() -ne 0x5A4D) {
+            throw "$Path is not a PE image"
+        }
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadUInt32()
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) {
+            throw "$Path has an invalid PE signature"
+        }
+        $reader.ReadUInt16()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Download-Verified([string]$Url, [string]$Destination, [string]$Sha256) {
+    if ((Test-Path -LiteralPath $Destination) -and (Get-Sha256 $Destination) -ne $Sha256.ToLowerInvariant()) {
+        Remove-Item -LiteralPath $Destination -Force
+    }
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        $parent = Split-Path -Parent $Destination
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+        Invoke-WebRequest -Headers $githubHeaders -Uri $Url -OutFile $Destination
+    }
+    Assert-Hash $Destination $Sha256
+}
+
+function Get-LatestOptimizedAsset {
+    $release = Invoke-RestMethod `
+        -Headers $githubHeaders `
+        -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+    $assets = @($release.assets | Where-Object {
+        $_.name -match '^mpv-dev-x86_64-v3-\d{8}-git-[0-9a-f]+\.7z$'
+    })
+    if ($assets.Count -ne 1) {
+        throw "Expected one optimized x86-64 libmpv asset in release $($release.tag_name), found $($assets.Count)"
+    }
+    $digest = [string]$assets[0].digest
+    if (-not $digest.StartsWith("sha256:", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "GitHub did not publish a SHA-256 digest for $($assets[0].name)"
+    }
+    [pscustomobject]@{
+        release = [string]$release.tag_name
+        name = [string]$assets[0].name
+        sha256 = $digest.Substring(7).ToLowerInvariant()
+    }
+}
+
+if (-not (Test-Path -LiteralPath $lockPath)) {
+    throw "MPV lock file is missing: $lockPath"
+}
 $locked = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
-
-if ($CheckOnly -and $locked.release -ne $tag) {
-    throw "MPV is stale: repository pins $($locked.release), latest stable is $tag. Run scripts/sync-mpv.ps1."
+if ($locked.linkage -ne "dynamic") {
+    throw "The MPV lock describes $($locked.linkage) linkage; dynamic linkage is required"
 }
-
-New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-$sourceUrl = "https://github.com/mpv-player/mpv/archive/refs/tags/$tag.tar.gz"
-$archive = Join-Path $workDir "$tag.tar.gz"
-Invoke-WebRequest -Headers $githubHeaders $sourceUrl -OutFile $archive
-$sourceSha = Get-Sha256 $archive
-
-$headerHashes = [ordered]@{}
-$headerPaths = @{}
-foreach ($header in $headers) {
-    $path = Join-Path $workDir $header
-    Invoke-WebRequest -Headers $githubHeaders "https://raw.githubusercontent.com/mpv-player/mpv/$tag/include/mpv/$header" -OutFile $path
-    $headerHashes[$header] = Get-Sha256 $path
-    $headerPaths[$header] = $path
+$artifactProperty = $locked.artifacts.PSObject.Properties[$artifactKey]
+if (-not $artifactProperty) {
+    throw "The MPV lock does not contain artifact $artifactKey"
 }
-$api = Get-ClientApi $headerPaths["client.h"]
+$artifact = $artifactProperty.Value
 
 if ($CheckOnly) {
-    if ($locked.source.url -ne $sourceUrl -or $locked.source.sha256 -ne $sourceSha) {
-        throw "Pinned source metadata does not match the official $tag archive"
+    $latest = Get-LatestOptimizedAsset
+    if ($locked.distribution.release -ne $latest.release -or
+        $locked.distribution.asset -ne $latest.name -or
+        $locked.distribution.sha256 -ne $latest.sha256) {
+        throw "MPV is stale: repository pins $($locked.distribution.asset), latest optimized build is $($latest.name) from release $($latest.release)"
     }
-    if ($locked.clientApi.major -ne $api.major -or $locked.clientApi.minor -ne $api.minor) {
-        throw "Pinned client API does not match $tag headers"
-    }
-    foreach ($header in $headers) {
-        if ($locked.headers.$header -ne $headerHashes[$header]) {
-            throw "Pinned hash for $header does not match $tag"
-        }
-    }
-    $pinned = Get-Content -LiteralPath $pinnedPath -Raw
-    $expectedApi = "ApiVersion::new($($api.major), $($api.minor))"
-    if (-not $pinned.Contains($expectedApi)) {
-        throw "Generated Rust API pin does not match $tag headers"
-    }
-    if ($locked.linkage -and $locked.linkage -ne "static") {
-        throw "The MPV lock describes $($locked.linkage) linkage; static linkage is required"
-    }
-    Write-Host "MPV $tag client API $($api.major).$($api.minor) is current and configured for static linkage."
+    Write-Host "MPV $($locked.mpv.version) optimized runtime is current ($($latest.name))."
     exit 0
 }
 
-$extractDir = Join-Path $workDir "source"
-Assert-WorkspacePath $extractDir
-if (-not $ReuseSource) {
-    if (Test-Path $extractDir) {
-        Remove-Item -LiteralPath $extractDir -Recurse -Force
-    }
-    New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-    Invoke-Native "tar" @("-xf", $archive, "-C", $extractDir, "--strip-components=1")
+if ($artifact.target -ne "x86_64-pc-windows-msvc" -or
+    $artifact.architecture -ne "x86_64" -or
+    $artifact.cpuBaseline -ne "x86-64-v3") {
+    throw "The pinned runtime must target x86_64-pc-windows-msvc with the x86-64-v3 CPU baseline"
 }
-elseif (-not (Test-Path (Join-Path $extractDir "ci\build-win32.ps1"))) {
-    throw "-ReuseSource was requested, but no complete MPV source tree exists at $extractDir"
+if ([IO.Path]::GetFileName([string]$locked.distribution.asset) -ne $locked.distribution.asset) {
+    throw "The locked MPV asset name is not a plain file name"
 }
 
-$python = (Get-Command python -ErrorAction Stop).Source
-Invoke-Native $python @("-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "meson")
-$pythonScripts = & $python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+$archivePath = Join-Path $workDir $locked.distribution.asset
+Download-Verified $locked.distribution.url $archivePath $locked.distribution.sha256
+
+$sevenZip = Get-Command "7z.exe" -ErrorAction SilentlyContinue
+if (-not $sevenZip) {
+    throw "7-Zip is required to extract the pinned libmpv archive"
+}
+$extractDir = Join-Path $workDir "extracted"
+Remove-WorkspaceTree $extractDir
+New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+& $sevenZip.Source x -y "-o$extractDir" $archivePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not locate Python's scripts directory"
-}
-$env:PATH = "$pythonScripts;$env:PATH"
-
-foreach ($program in @("meson", "ninja", "git", "nasm")) {
-    if (-not (Get-Command $program -ErrorAction SilentlyContinue)) {
-        throw "$program is required to build the static MPV SDK"
-    }
+    throw "7-Zip failed with exit code $LASTEXITCODE"
 }
 
-if (-not $VisualStudioPath) {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) {
-        throw "Visual Studio Installer's vswhere.exe was not found"
-    }
-    $VisualStudioPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-}
-if (-not $VisualStudioPath) {
-    throw "Visual Studio with the x64 C++ toolchain was not found"
-}
-$devShell = Join-Path $VisualStudioPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-Import-Module $devShell
-Enter-VsDevShell -VsInstallPath $VisualStudioPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64" | Out-Null
-
-$llvmBin = Join-Path $VisualStudioPath "VC\Tools\Llvm\x64\bin"
-if (Test-Path $llvmBin) {
-    $env:PATH = "$llvmBin;$env:PATH"
-}
-$env:CC = "clang"
-$env:CXX = "clang++"
-$env:CC_LD = "lld-link"
-$env:CXX_LD = "lld-link"
-$env:RUST_LD = "lld-link"
-$env:WINDRES = "llvm-rc"
-
-# Git for Windows bundles Perl and other Unix build helpers used by libaom.
-# They are not consistently added to PATH by package managers or CI images.
-$gitExecPath = & git --exec-path
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not determine the Git for Windows installation path"
-}
-$gitRoot = [IO.Path]::GetFullPath((Join-Path $gitExecPath "..\..\.."))
-$gitUnixTools = Join-Path $gitRoot "usr\bin"
-if ((Test-Path (Join-Path $gitUnixTools "perl.exe")) -and -not (Get-Command perl -ErrorAction SilentlyContinue)) {
-    $env:PATH = "$gitUnixTools;$env:PATH"
+$sourceDll = Join-Path $extractDir "libmpv-2.dll"
+$sourceImportLibrary = Join-Path $extractDir "libmpv.dll.a"
+Assert-Hash $sourceDll $artifact.runtimeLibrary.sha256
+Assert-Hash $sourceImportLibrary $artifact.importLibrary.sha256
+if ((Get-PeMachine $sourceDll) -ne 0x8664) {
+    throw "The pinned libmpv DLL is not a 64-bit x86 PE image"
 }
 
-$buildDir = Join-Path $extractDir "build"
-Assert-WorkspacePath $buildDir
-if (-not $PackageOnly -and (Test-Path $buildDir)) {
-    Remove-Item -LiteralPath $buildDir -Recurse -Force
+$clientHeader = Join-Path $extractDir $locked.headers.'client.h'.file
+$api = Get-ClientApi $clientHeader
+if ($api.major -ne $locked.clientApi.major -or $api.minor -ne $locked.clientApi.minor) {
+    throw "Client API mismatch: archive contains $($api.major).$($api.minor), lock contains $($locked.clientApi.major).$($locked.clientApi.minor)"
 }
 
-if (-not $PackageOnly) {
-    Push-Location $extractDir
-    try {
-        Invoke-Native "meson" @("wrap", "update-db")
-        foreach ($wrap in @("expat", "harfbuzz", "libpng", "zlib")) {
-            if (-not (Test-Path (Join-Path "subprojects" "$wrap.wrap"))) {
-                Invoke-Native "meson" @("wrap", "install", $wrap)
-            }
-        }
+$stagingDir = Join-Path $workDir "package"
+Remove-WorkspaceTree $stagingDir
+New-Item -ItemType Directory -Force -Path `
+    (Join-Path $stagingDir "bin"), `
+    (Join-Path $stagingDir "lib"), `
+    (Join-Path $stagingDir "include\mpv") | Out-Null
+Copy-Item -LiteralPath $sourceDll -Destination (Join-Path $stagingDir $artifact.runtimeLibrary.file)
+Copy-Item -LiteralPath $sourceImportLibrary -Destination (Join-Path $stagingDir $artifact.importLibrary.file)
 
-        # MPV's own Windows CI script is the source of truth for its static dependency
-        # graph. We only change its final product from the CLI executable to a reusable
-        # static SDK and disable Vulkan, which would otherwise remain a runtime DLL.
-        $officialScript = Get-Content -LiteralPath "ci\build-win32.ps1" -Raw
-        $officialScript = [regex]::Replace(
-            $officialScript,
-            '(?s)# Wrap shaderc.*?(?=# Manually wrap spirv-cross)',
-            ''
-        )
-        $officialScript = $officialScript.Replace("-Dlibmpv=false", "-Dlibmpv=true")
-        $officialScript = $officialScript.Replace("meson setup build", "meson setup build -Db_vscrt=mt")
-        $officialScript = $officialScript.Replace("-Dtests=true", "-Dtests=false")
-        $officialScript = $officialScript.Replace("-Dlibplacebo:shaderc=enabled", "-Dlibplacebo:shaderc=disabled")
-        $officialScript = $officialScript.Replace("-Dlibplacebo:vulkan=enabled", "-Dlibplacebo:vulkan=disabled")
-        $officialScript = $officialScript.Replace("-Dlibplacebo:d3d11=enabled", "-Dlibplacebo:d3d11=disabled")
-        $officialScript = $officialScript.Replace("-Dshaderc=enabled", "-Dshaderc=disabled")
-        $officialScript = $officialScript.Replace("-Dvulkan=enabled", "-Dvulkan=disabled")
-        $officialScript = $officialScript.Replace("-Dffmpeg:vulkan=auto", "-Dffmpeg:vulkan=disabled")
-        $officialScript = $officialScript.Replace("-Dd3d11=enabled", "-Dd3d11=disabled")
-        $officialScript = $officialScript.Replace("-Dsubrandr=enabled", "-Dsubrandr=disabled")
-        $officialScript = $officialScript.Replace("ninja -C build mpv.exe mpv.com", "ninja -d keeprsp -C build mpv.exe mpv.com")
-        $officialScript = $officialScript.Replace("cp ./build/subprojects/vulkan-loader/vulkan.dll ./build/vulkan-1.dll", "")
-        $localBuildScript = Join-Path $workDir "build-win32-static.ps1"
-        Set-Content -LiteralPath $localBuildScript -Value $officialScript -Encoding utf8
-        & $localBuildScript
-        if ($LASTEXITCODE -ne 0) {
-            throw "MPV's official Windows build script failed"
-        }
-    }
-    finally {
-        Pop-Location
-    }
+foreach ($headerProperty in $locked.headers.PSObject.Properties) {
+    $header = $headerProperty.Value
+    $source = Join-Path $extractDir $header.file
+    Assert-Hash $source $header.sha256
+    Copy-Item -LiteralPath $source -Destination (Join-Path $stagingDir $header.file)
 }
 
-$mpvLibrary = Join-Path $buildDir "libmpv.a"
-if (-not (Test-Path $mpvLibrary)) {
-    throw "MPV did not produce the expected static library at $mpvLibrary"
-}
-$linkResponse = Get-ChildItem -LiteralPath $buildDir -Recurse -Filter "mpv.exe.rsp" | Select-Object -First 1
-if (-not $linkResponse) {
-    throw "Ninja did not retain MPV's linker response file; the static dependency graph cannot be packaged"
+foreach ($licenseProperty in $locked.licenses.PSObject.Properties) {
+    $license = $licenseProperty.Value
+    $destination = Join-Path $stagingDir $licenseProperty.Name
+    Download-Verified $license.url $destination $license.sha256
 }
 
-$staticInputs = [ordered]@{}
-$wholeArchives = @{}
-$systemLibraries = [ordered]@{}
-$staticInputs[[IO.Path]::GetFullPath($mpvLibrary)] = $false
-$tokens = [regex]::Matches((Get-Content -LiteralPath $linkResponse.FullName -Raw), '(?:[^\s"]+|"[^"]*")+')
-foreach ($match in $tokens) {
-    $token = $match.Value.Trim('"')
-    $whole = $false
-    if ($token.StartsWith("/WHOLEARCHIVE:", [StringComparison]::OrdinalIgnoreCase)) {
-        $whole = $true
-        $token = $token.Substring("/WHOLEARCHIVE:".Length).Trim('"')
-    }
-    if ($token.StartsWith("-l") -and $token.Length -gt 2) {
-        $name = $token.Substring(2)
-        $systemLibraries[$name.ToLowerInvariant()] = $name
-        continue
-    }
-    if (-not ($token.EndsWith(".lib", [StringComparison]::OrdinalIgnoreCase) -or
-        $token.EndsWith(".a", [StringComparison]::OrdinalIgnoreCase))) {
-        continue
-    }
-    $candidate = if ([IO.Path]::IsPathRooted($token)) { $token } else { Join-Path $buildDir $token }
-    if (Test-Path $candidate) {
-        $resolved = [IO.Path]::GetFullPath($candidate)
-        $staticInputs[$resolved] = $staticInputs.Contains($resolved) -and $staticInputs[$resolved] -or $whole
-        if ($whole) {
-            $wholeArchives[$resolved] = $true
-        }
-    }
-    else {
-        $name = [IO.Path]::GetFileNameWithoutExtension($token)
-        if ($name) {
-            $systemLibraries[$name.ToLowerInvariant()] = $name
-        }
-    }
+$runtimeManifest = @"
+{
+  "schemaVersion": 1,
+  "target": "$($artifact.target)",
+  "architecture": "$($artifact.architecture)",
+  "cpuBaseline": "$($artifact.cpuBaseline)",
+  "linkName": "$($artifact.linkName)",
+  "clientApi": {
+    "major": $($locked.clientApi.major),
+    "minor": $($locked.clientApi.minor)
+  },
+  "importLibrary": {
+    "file": "$($artifact.importLibrary.file)",
+    "sha256": "$($artifact.importLibrary.sha256)"
+  },
+  "runtimeLibrary": {
+    "file": "$($artifact.runtimeLibrary.file)",
+    "sha256": "$($artifact.runtimeLibrary.sha256)"
+  }
 }
+"@
+$runtimeManifestPath = Join-Path $stagingDir $artifact.sdkManifest.file
+Write-Utf8Lf $runtimeManifestPath $runtimeManifest
+Assert-Hash $runtimeManifestPath $artifact.sdkManifest.sha256
 
-Assert-WorkspacePath $distDir
-if (Test-Path $distDir) {
-    Remove-Item -LiteralPath $distDir -Recurse -Force
-}
-$libraryDir = Join-Path $distDir "lib"
-New-Item -ItemType Directory -Force -Path $libraryDir | Out-Null
+$sourceNotice = @"
+libmpv Windows binary provenance
+================================
 
-$linkLines = @(
-    "# Generated by scripts/sync-mpv.ps1 from MPV's successful static link command."
-    "# Format: static|archive, whole-static|archive, or system|library."
-)
-$sdkLibraries = @()
-$dependencyIndex = 0
-foreach ($entry in $staticInputs.GetEnumerator()) {
-    $source = [string]$entry.Key
-    # Meson folds these dependencies into libmpv.a with link_whole. Their GNU
-    # archives are therefore redundant, and link.exe cannot read their long
-    # member names even though LLVM's linker can.
-    $sourceName = [IO.Path]::GetFileName($source)
-    if ($sourceName.Equals("libdl.a", [StringComparison]::OrdinalIgnoreCase) -or
-        $sourceName.Equals("libuchardet.a", [StringComparison]::OrdinalIgnoreCase)) {
-        continue
-    }
-    if ([IO.Path]::GetFullPath($source) -eq [IO.Path]::GetFullPath($mpvLibrary)) {
-        $linkName = "mpv"
-    }
-    else {
-        $baseName = [regex]::Replace([IO.Path]::GetFileNameWithoutExtension($source), '[^A-Za-z0-9_]', '_')
-        $linkName = "stremio_mpv_dep_{0:D3}_{1}" -f $dependencyIndex, $baseName
-        $dependencyIndex++
-    }
-    $destination = Join-Path $libraryDir "$linkName.lib"
-    Copy-Item -LiteralPath $source -Destination $destination
-    $kind = if ($wholeArchives.ContainsKey([IO.Path]::GetFullPath($source))) { "whole-static" } else { "static" }
-    $linkLines += "$kind|$linkName"
-    $sdkLibraries += [ordered]@{
-        name = $linkName
-        source = [IO.Path]::GetFileName($source)
-        wholeArchive = ($kind -eq "whole-static")
-        sha256 = Get-Sha256 $destination
-    }
-}
-foreach ($library in $systemLibraries.Values) {
-    $linkLines += "system|$library"
-}
+Distribution: $($locked.distribution.provider) release $($locked.distribution.release)
+MPV version: $($locked.mpv.version)
+MPV revision: $($locked.mpv.revision)
+CPU baseline: $($artifact.cpuBaseline)
+Archive: $($locked.distribution.asset)
+Archive SHA-256: $($locked.distribution.sha256)
+Archive URL: $($locked.distribution.url)
+Build scripts and dependency revisions: $($locked.distribution.repository)/tree/$($locked.distribution.release)
+MPV source: $($locked.mpv.repository)/commit/$($locked.mpv.revision)
 
-$linkManifest = Join-Path $distDir "link-libraries.txt"
-$linkLines | Set-Content -LiteralPath $linkManifest -Encoding utf8
-Copy-Item -LiteralPath (Join-Path $extractDir "LICENSE.GPL") -Destination $distDir
-Copy-Item -LiteralPath (Join-Path $extractDir "LICENSE.LGPL") -Destination $distDir
+The mpv project lists shinchiro's builds on its Windows installation page:
+https://mpv.io/installation/
 
-$sdkManifest = [ordered]@{
-    schemaVersion = 1
-    target = "x86_64-pc-windows-msvc"
-    mpv = $tag
-    clientApi = [ordered]@{ major = $api.major; minor = $api.minor }
-    staticLibraries = $sdkLibraries
-    systemLibraries = @($systemLibraries.Values)
-}
-$sdkManifestPath = Join-Path $distDir "static-sdk.json"
-$sdkManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $sdkManifestPath -Encoding utf8
+The upstream GNU-style COFF import archive is stored as lib/mpv.lib so Cargo's
+MSVC target can discover it by link name. Its bytes are otherwise unchanged.
+"@
+$sourceNoticePath = Join-Path $stagingDir $artifact.sourceNotice.file
+Write-Utf8Lf $sourceNoticePath $sourceNotice
+Assert-Hash $sourceNoticePath $artifact.sourceNotice.sha256
 
-$lock = [ordered]@{
-    schemaVersion = 2
-    channel = "stable"
-    linkage = "static"
-    release = $tag
-    clientApi = [ordered]@{ major = $api.major; minor = $api.minor }
-    source = [ordered]@{ url = $sourceUrl; sha256 = $sourceSha }
-    headers = $headerHashes
-    artifacts = [ordered]@{
-        "windows-$Architecture-static" = [ordered]@{
-            directory = "dist/mpv/windows-$Architecture-static"
-            library = [ordered]@{ file = "lib/mpv.lib"; sha256 = Get-Sha256 (Join-Path $libraryDir "mpv.lib") }
-            linkManifest = [ordered]@{ file = "link-libraries.txt"; sha256 = Get-Sha256 $linkManifest }
-            sdkManifest = [ordered]@{ file = "static-sdk.json"; sha256 = Get-Sha256 $sdkManifestPath }
-        }
-    }
-    verifiedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
-}
-$lock | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $lockPath -Encoding utf8
-@"
+$distDir = Assert-WorkspacePath (Join-Path $repoRoot $artifact.directory)
+Remove-WorkspaceTree $distDir
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $distDir) | Out-Null
+Move-Item -LiteralPath (Assert-WorkspacePath $stagingDir) -Destination $distDir
+
+$pinnedRust = @"
 // This file is updated by scripts/sync-mpv.ps1 from the pinned MPV headers.
 pub const HEADER_CLIENT_API_VERSION: ApiVersion = ApiVersion::new($($api.major), $($api.minor));
-"@ | Set-Content -LiteralPath $pinnedPath -Encoding utf8
+"@
+Write-Utf8Lf $pinnedRustPath $pinnedRust
 
-Write-Host "Built and packaged statically linked MPV $tag client API $($api.major).$($api.minor) into $distDir"
+Write-Host "Packaged $($locked.mpv.version) optimized libmpv runtime into $distDir"

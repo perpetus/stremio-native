@@ -1,0 +1,159 @@
+import { CinematicTheme } from "../theme.slint";
+import { FocusSurface } from "../components/focus_surface.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { FallbackImage } from "../../components/fallback_image.slint";
+import { CalendarCell, CalendarRow } from "../../pages/calendar.slint";
+
+component CalendarDay inherits Rectangle {
+    in property <CalendarCell> cell;
+    callback item-selected(string, string);
+
+    border-width: 1px;
+    border-color: CinematicTheme.divider;
+    background: root.cell.blank ? #14141480 : CinematicTheme.raised;
+    clip: true;
+
+    if (!root.cell.blank) : Rectangle {
+        x: 8px;
+        y: 7px;
+        width: 28px;
+        height: 28px;
+        border-radius: root.cell.today ? 14px : 4px;
+        background: root.cell.today ? CinematicTheme.accent : transparent;
+        Text {
+            text: root.cell.day;
+            color: CinematicTheme.primary;
+            font-size: 13px;
+            font-weight: root.cell.today ? 800 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if (!root.cell.blank && root.cell.items.length > 0) : HorizontalLayout {
+        x: 8px;
+        y: 42px;
+        width: parent.width - 16px;
+        height: parent.height - 50px;
+        spacing: 5px;
+        alignment: start;
+        for media in root.cell.items : FocusSurface {
+            width: min(54px, self.height * 0.7);
+            height: parent.height;
+            radius: CinematicTheme.card-radius;
+            accessible-name: media.title;
+            clicked => { root.item-selected(media.meta-id, media.media-type); }
+            FallbackImage { width: parent.width; height: parent.height; source: media.poster; }
+        }
+    }
+}
+
+export component CinematicCalendarPage inherits Rectangle {
+    in property <bool> authenticated: false;
+    in property <bool> loading: false;
+    in property <int> selected-year: 0;
+    in property <string> selected-month: "";
+    in property <string> previous-month: "";
+    in property <string> next-month: "";
+    in property <[CalendarRow]> rows: [];
+    callback previous;
+    callback next;
+    callback item-selected(string, string);
+
+    private property <length> gutter: root.width < 1200px ? 24px : CinematicTheme.page-gutter;
+    background: CinematicTheme.canvas;
+
+    if (!root.authenticated) : CinematicFeedback {
+        width: parent.width;
+        height: parent.height;
+        title: "Sign in to use Calendar";
+        message: "Your upcoming library episodes will appear here.";
+    }
+
+    if (root.authenticated) : Rectangle {
+        x: root.gutter;
+        y: 20px;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - 36px;
+
+        HorizontalLayout {
+            width: parent.width;
+            height: 54px;
+            spacing: 12px;
+            alignment: center;
+            Text { text: "Calendar"; color: CinematicTheme.primary; font-size: 30px; font-weight: 800; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            FocusSurface {
+                width: 126px;
+                height: 40px;
+                accessible-name: "Previous month " + root.previous-month;
+                Text { text: "‹  " + root.previous-month; color: CinematicTheme.secondary; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+                clicked => { root.previous(); }
+            }
+            Text {
+                width: 180px;
+                text: root.selected-month + " " + root.selected-year;
+                color: CinematicTheme.primary;
+                font-size: 18px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            FocusSurface {
+                width: 126px;
+                height: 40px;
+                accessible-name: "Next month " + root.next-month;
+                Text { text: root.next-month + "  ›"; color: CinematicTheme.secondary; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+                clicked => { root.next(); }
+            }
+        }
+
+        HorizontalLayout {
+            y: 58px;
+            width: parent.width;
+            height: 34px;
+            spacing: 0px;
+            for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : Rectangle {
+                horizontal-stretch: 1;
+                Text { text: day; color: CinematicTheme.muted; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+
+        if (root.loading) : VerticalLayout {
+            y: 92px;
+            width: parent.width;
+            height: parent.height - 92px;
+            spacing: 5px;
+            for _row in [0, 1, 2, 3, 4, 5] : HorizontalLayout {
+                spacing: 5px;
+                for _cell in [0, 1, 2, 3, 4, 5, 6] : CinematicSkeleton { horizontal-stretch: 1; vertical-stretch: 1; }
+            }
+        }
+
+        if (!root.loading && root.rows.length == 0) : CinematicFeedback {
+            y: 92px;
+            width: parent.width;
+            height: parent.height - 92px;
+            title: "Nothing scheduled this month";
+            message: "Upcoming episodes from your library will appear here.";
+        }
+
+        if (!root.loading && root.rows.length > 0) : VerticalLayout {
+            y: 92px;
+            width: parent.width;
+            height: parent.height - 92px;
+            spacing: 5px;
+            for row in root.rows : HorizontalLayout {
+                spacing: 5px;
+                for cell in row.cells : CalendarDay {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    cell: cell;
+                    item-selected(id, media-type) => { root.item-selected(id, media-type); }
+                }
+            }
+        }
+    }
+}

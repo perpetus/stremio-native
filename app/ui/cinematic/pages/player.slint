@@ -1,0 +1,11 @@
+import { CinematicTheme } from "../theme.slint";
+export component CinematicPlayerChrome inherits Rectangle {
+    in property <string> title: ""; in property <string> elapsed: ""; in property <string> total: ""; in property <float> progress: 0;
+    background: transparent;
+    Rectangle { y: parent.height - 145px; width: parent.width; height: 145px; background: @linear-gradient(0deg, #000000ed, transparent);
+        Text { x: 34px; y: 28px; width: parent.width - 68px; text: root.title; color: CinematicTheme.primary; font-size: 17px; font-weight: 700; overflow: elide; }
+        Rectangle { x: 34px; y: 70px; width: parent.width - 68px; height: 5px; background: #6d6d6e; Rectangle { width: parent.width * root.progress; height: parent.height; background: CinematicTheme.accent; } }
+        Text { x: 34px; y: 88px; text: root.elapsed + " / " + root.total; color: CinematicTheme.secondary; }
+        @children
+    }
+}

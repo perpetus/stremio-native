@@ -1,0 +1,17 @@
+import { CinematicTheme } from "../theme.slint";
+export component SettingsSection inherits Rectangle {
+    in property <string> title: ""; min-height: layout.preferred-height; background: CinematicTheme.raised; border-radius: CinematicTheme.modal-radius;
+    layout := VerticalLayout { padding: 22px; spacing: 14px;
+        Text { text: root.title; color: CinematicTheme.primary; font-size: 20px; font-weight: 700; }
+        Rectangle { height: 1px; background: CinematicTheme.divider; }
+        @children
+    }
+}
+export component SettingsRow inherits HorizontalLayout {
+    in property <string> label: ""; in property <string> description: ""; height: 58px; spacing: 20px;
+    VerticalLayout { horizontal-stretch: 1; spacing: 4px;
+        Text { text: root.label; color: CinematicTheme.primary; font-size: 15px; }
+        Text { text: root.description; color: CinematicTheme.muted; font-size: 12px; }
+    }
+    @children
+}

@@ -1,0 +1,195 @@
+import { Theme } from "theme.slint";
+import { HorizontalNavBar, NavMenuPanel } from "components/horizontal_nav.slint";
+import { ActionsGroup } from "components/action_group.slint";
+import { SharePrompt } from "components/share_prompt.slint";
+import { ColorInput, ColorPicker } from "components/color_input.slint";
+import { ShortcutComboView } from "components/shortcuts.slint";
+import { HorizontalScroll } from "components/horizontal_scroll.slint";
+import { EpisodeRow } from "components/media_rows.slint";
+import { MetaRow } from "components/meta_row.slint";
+import { MetaPreview } from "components/meta_preview.slint";
+import "./assets/fonts/PlusJakartaSans.ttf";
+
+export component ComponentsPreview inherits Window {
+    width: 1000px;
+    height: 1040px;
+    background: Theme.background;
+    default-font-family: "Plus Jakarta Sans";
+
+    HorizontalNavBar {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        unit: 16px;
+        logo-source: @image-url("assets/images/stremio_symbol.png");
+        search-text: "Search or paste link";
+        has-avatar: true;
+        avatar-source: @image-url("assets/images/default_avatar.png");
+    }
+
+    ActionsGroup {
+        x: 32px;
+        y: 118px;
+        unit: 16px;
+        items: [
+            { id: "like", label: "Like", icon: @image-url("assets/images/icons/thumbs-up.svg"), disabled: false, active: true },
+            { id: "library", label: "Library", icon: @image-url("assets/images/icons/add-to-library.svg"), disabled: false, active: false },
+            { id: "share", label: "Share", icon: @image-url("assets/images/icons/share.svg"), disabled: false, active: false }
+        ];
+    }
+
+    SharePrompt {
+        x: 32px;
+        y: 210px;
+        unit: 16px;
+        url: "https://strem.io/s/demo";
+    }
+
+    ColorInput {
+        x: 32px;
+        y: 374px;
+        width: 180px;
+        unit: 16px;
+        value: #7b5bf5;
+    }
+
+    ColorPicker {
+        x: 540px;
+        y: 118px;
+        unit: 14px;
+        value: #7b5bf5cc;
+    }
+
+    ShortcutComboView {
+        x: 32px;
+        y: 444px;
+        width: 220px;
+        unit: 16px;
+        keys: [
+            { label: "CTRL", separator: "+" },
+            { label: "K", separator: "" }
+        ];
+    }
+
+    HorizontalScroll {
+        x: 32px;
+        y: 550px;
+        width: 620px;
+        height: 64px;
+        content-width: 980px;
+        content-height: 64px;
+        fade-surface-color: Theme.background;
+
+        for label[index] in ["Animation", "Action", "Adventure", "Comedy", "Documentary", "Drama"] : Rectangle {
+            x: index * 156px;
+            y: 8px;
+            width: 140px;
+            height: 48px;
+            border-radius: self.height / 2;
+            background: Theme.overlay-color;
+            Text {
+                width: parent.width;
+                height: parent.height;
+                text: label;
+                color: Theme.primary-foreground;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    EpisodeRow {
+        x: 540px;
+        y: 440px;
+        width: 420px;
+        unit: 14px;
+        episode-number: 10;
+        title: "A Welcome with Friends' Cups and Intruders Seeking Loki";
+        released: "Jun 7, 2026";
+        thumbnail: @image-url("assets/images/intro-background.png");
+        watched: true;
+        progress: 63;
+    }
+
+    MetaRow {
+        x: 32px;
+        y: 650px;
+        width: 936px;
+        unit: 14px;
+        title: "Popular Movies";
+        show-see-all: true;
+        content-height: 290px;
+        content-width: 1110px;
+
+        for label[index] in ["Dune", "Alien", "Arrival", "Blade Runner", "Moon", "Solaris"] : Rectangle {
+            x: index * 185px;
+            y: 0px;
+            width: 170px;
+            height: 275px;
+            background: transparent;
+            Rectangle {
+                width: parent.width;
+                height: 238px;
+                border-radius: Theme.border-radius;
+                background: Math.mod(index, 2) == 0 ? #241f3d : #18243b;
+            }
+            Text {
+                y: 238px;
+                width: parent.width;
+                height: 39px;
+                text: label;
+                color: Theme.primary-foreground;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+export component MetaPreviewPreview inherits Window {
+    width: 900px;
+    height: 700px;
+    background: Theme.background;
+    default-font-family: "Plus Jakarta Sans";
+
+    MetaPreview {
+        x: 48px;
+        y: 32px;
+        width: 804px;
+        height: 636px;
+        unit: 16px;
+        name: "One Piece";
+        background-image: @image-url("assets/images/intro-background.png");
+        runtime: "25 min";
+        release-info: "1999 -";
+        imdb-label: "9.0";
+        description: "Monkey D. Luffy, a pirate with rubber powers, forms the Straw Hat crew and sails the Grand Line in search of the legendary treasure One Piece.";
+        link-groups: [
+            {
+                label: "GENRES",
+                links: [
+                    { label: "Animation", value: "animation" },
+                    { label: "Action", value: "action" },
+                    { label: "Adventure", value: "adventure" }
+                ]
+            },
+            {
+                label: "CAST",
+                links: [
+                    { label: "Mayumi Tanaka", value: "mayumi" },
+                    { label: "Akemi Okamura", value: "akemi" },
+                    { label: "Tony Beck", value: "tony" }
+                ]
+            }
+        ];
+        show-trailer: true;
+        show-library-actions: true;
+        in-library: true;
+        show-ratings: true;
+        liked: true;
+        show-share: true;
+    }
+}

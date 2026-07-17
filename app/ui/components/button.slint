@@ -7,6 +7,9 @@ export component ButtonSurface inherits Rectangle {
     in property <bool> interaction-enabled: root.enabled;
     in property <string> accessible-name: "";
     in property <bool> focus-on-tab-navigation: true;
+    // Cinematic controls accept Space as well as Enter. The default remains
+    // false so the optimized Classic interaction contract is unchanged.
+    in property <bool> activate-on-space: false;
     // Most buttons never use long-press. Keeping this opt-in avoids starting a
     // timer for every click in dense repeated lists and card grids.
     in property <bool> long-press-enabled: false;
@@ -79,7 +82,7 @@ export component ButtonSurface inherits Rectangle {
         key-pressed(event) => {
             // The official generic Button activates on Enter only. Controls
             // that also accept Space add that behavior in their own scope.
-            if (event.text == "\n") {
+            if (event.text == "\n" || (root.activate-on-space && event.text == " ")) {
                 root.clicked();
                 return accept;
             }

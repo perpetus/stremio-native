@@ -1,0 +1,175 @@
+import { CinematicTheme } from "../theme.slint";
+import { FocusSurface } from "focus_surface.slint";
+import { CinematicInput } from "input.slint";
+import { SearchSuggestion } from "../../components/search.slint";
+import { FallbackImage } from "../../components/fallback_image.slint";
+import { ListView } from "std-widgets.slint";
+
+component NavItem inherits FocusSurface {
+    in property <string> label: "";
+    in property <bool> compact: false;
+
+    height: 40px;
+    min-width: root.compact ? 48px : 64px;
+    radius: CinematicTheme.control-radius;
+    background: root.pressed ? #ffffff1f : (root.has-hover ? #ffffff12 : transparent);
+    accessible-name: root.label;
+
+    Text {
+        x: 10px;
+        width: parent.width - 20px;
+        height: parent.height;
+        text: root.label;
+        color: root.selected ? CinematicTheme.primary : CinematicTheme.secondary;
+        font-size: root.compact ? 13px : 14px;
+        font-weight: root.selected ? 700 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component SuggestionRow inherits FocusSurface {
+    in property <SearchSuggestion> suggestion;
+    height: 56px;
+    accessible-name: root.suggestion.title;
+    background: root.pressed ? CinematicTheme.hover.darker(12%)
+        : (root.has-hover || root.has-focus ? CinematicTheme.hover : transparent);
+
+    FallbackImage {
+        x: 6px;
+        y: 6px;
+        width: 32px;
+        height: 44px;
+        source: root.suggestion.poster;
+    }
+    VerticalLayout {
+        x: 48px;
+        y: 8px;
+        width: parent.width - 58px;
+        height: parent.height - 16px;
+        spacing: 3px;
+        alignment: center;
+        Text {
+            text: root.suggestion.title;
+            color: CinematicTheme.primary;
+            font-size: 14px;
+            font-weight: 650;
+            overflow: elide;
+        }
+        Text {
+            text: root.suggestion.release-info;
+            color: CinematicTheme.muted;
+            font-size: 12px;
+            overflow: elide;
+        }
+    }
+}
+
+export component TopNavigation inherits Rectangle {
+    in property <int> active-tab: 0;
+    in-out property <string> search-text: "";
+    in property <[SearchSuggestion]> suggestions: [];
+    in-out property <bool> profile-menu-open: false;
+    in property <bool> over-hero: false;
+    in property <string> username: "";
+    callback change-tab(int);
+    callback search-edited(string);
+    callback search-accepted(string);
+    callback suggestion-selected(string, string, string);
+    callback logout;
+
+    private property <bool> compact: root.width < 1180px;
+    height: CinematicTheme.navigation-height;
+    background: root.over-hero
+        ? @linear-gradient(180deg, #000000d9 0%, #0000007a 60%, transparent 100%)
+        : #141414f5;
+    z: 1000;
+
+    HorizontalLayout {
+        padding-left: root.compact ? 18px : 30px;
+        padding-right: root.compact ? 18px : 30px;
+        spacing: root.compact ? 4px : 8px;
+        alignment: center;
+
+        Image {
+            source: root.compact
+                ? @image-url("../../assets/images/stremio_symbol.png")
+                : @image-url("../../assets/images/stremio-logo.svg");
+            width: root.compact ? 36px : 118px;
+            height: 32px;
+            image-fit: contain;
+        }
+
+        NavItem { label: "Home"; compact: root.compact; selected: root.active-tab == 0; clicked => { root.change-tab(0); } }
+        NavItem { label: "Discover"; compact: root.compact; selected: root.active-tab == 1; clicked => { root.change-tab(1); } }
+        NavItem { label: "Library"; compact: root.compact; selected: root.active-tab == 2; clicked => { root.change-tab(2); } }
+        NavItem { label: root.compact ? "Add-ons" : "Add-ons"; compact: root.compact; selected: root.active-tab == 3; clicked => { root.change-tab(3); } }
+        NavItem { label: root.compact ? "Cal" : "Calendar"; compact: root.compact; selected: root.active-tab == 5; clicked => { root.change-tab(5); } }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        search-box := CinematicInput {
+            width: root.compact ? 180px : 250px;
+            height: 40px;
+            placeholder: root.compact ? "Search" : "Titles, people and genres";
+            text <=> root.search-text;
+            edited(value) => { root.search-edited(value); }
+            accepted(value) => { root.search-accepted(value); }
+        }
+
+        NavItem {
+            width: root.compact ? 54px : 84px;
+            label: root.compact ? "Me" : (root.username == "" ? "Profile" : root.username);
+            compact: root.compact;
+            selected: root.active-tab == 4 || root.profile-menu-open;
+            clicked => { root.profile-menu-open = !root.profile-menu-open; }
+        }
+    }
+
+    if (root.search-text != "" && root.suggestions.length > 0) : Rectangle {
+        x: search-box.x;
+        y: 56px;
+        width: search-box.width;
+        height: min(292px, root.suggestions.length * 56px + 8px);
+        background: CinematicTheme.raised;
+        border-radius: CinematicTheme.modal-radius;
+        border-width: 1px;
+        border-color: CinematicTheme.divider;
+        z: 1190;
+        clip: true;
+
+        ListView {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: parent.height - 8px;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            for suggestion in root.suggestions : SuggestionRow {
+                width: parent.width;
+                suggestion: suggestion;
+                clicked => { root.suggestion-selected(suggestion.id, suggestion.media-type, suggestion.title); }
+            }
+        }
+    }
+
+    if (root.profile-menu-open) : Rectangle {
+        x: parent.width - 220px;
+        y: 58px;
+        width: 190px;
+        height: 146px;
+        background: CinematicTheme.raised;
+        border-radius: CinematicTheme.modal-radius;
+        border-width: 1px;
+        border-color: CinematicTheme.divider;
+        z: 1200;
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 2px;
+            NavItem { label: "Settings"; clicked => { root.profile-menu-open = false; root.change-tab(4); } }
+            NavItem { label: "Add-ons"; clicked => { root.profile-menu-open = false; root.change-tab(3); } }
+            NavItem { label: "Sign out"; clicked => { root.profile-menu-open = false; root.logout(); } }
+        }
+    }
+}

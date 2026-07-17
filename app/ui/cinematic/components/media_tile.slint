@@ -1,0 +1,46 @@
+import { CinematicTheme } from "../theme.slint";
+import { FocusSurface } from "focus_surface.slint";
+import { FallbackImage } from "../../components/fallback_image.slint";
+
+export component MediaTile inherits FocusSurface {
+    in property <string> title: "";
+    in property <image> artwork;
+    in property <string> artwork-url: "";
+    in property <bool> landscape: false;
+    in property <bool> show-progress: false;
+    in property <float> progress: 0;
+    in property <bool> watched: false;
+    in property <bool> is-visible: false;
+    callback poster-requested(string);
+    callback became-focused;
+    accessible-name: root.title;
+    changed focused => { if (root.focused) { root.became-focused(); } }
+    width: root.landscape ? 250px : 156px;
+    height: root.landscape ? 141px : 234px;
+    clip: true;
+    private property <string> requested-url: "";
+    request-timer := Timer {
+        interval: 1ms;
+        running: root.is-visible && root.artwork.width == 0
+            && root.artwork-url != "" && root.requested-url != root.artwork-url;
+        triggered => {
+            self.stop();
+            if (root.is-visible && root.artwork.width == 0 && root.artwork-url != "") {
+                root.requested-url = root.artwork-url;
+                root.poster-requested(root.artwork-url);
+            }
+        }
+    }
+    FallbackImage { width: parent.width; height: parent.height; source: root.is-visible ? root.artwork : @image-url("");
+        Text { text: "No artwork"; color: CinematicTheme.muted; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    Rectangle { y: parent.height * 0.55; width: parent.width; height: parent.height * 0.45; background: @linear-gradient(0deg, #000000e8, transparent); }
+    Text { x: 10px; y: parent.height - 34px; width: parent.width - 20px; text: root.title; color: CinematicTheme.primary; font-size: 13px; font-weight: 650; overflow: elide; }
+    if root.watched : Rectangle { x: parent.width - 29px; y: 9px; width: 20px; height: 20px; border-radius: 10px; background: CinematicTheme.success; Text { text: "✓"; color: #000; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; } }
+    if root.show-progress : Rectangle { y: parent.height - 4px; width: parent.width; height: 4px; background: #6d6d6e; Rectangle { width: parent.width * root.progress; height: parent.height; background: CinematicTheme.accent; } }
+    if root.focused || root.selected : Rectangle {
+        width: parent.width; height: parent.height; background: transparent;
+        border-radius: CinematicTheme.card-radius; border-width: 2px;
+        border-color: root.focused ? CinematicTheme.primary : CinematicTheme.accent;
+    }
+}

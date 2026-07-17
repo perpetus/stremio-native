@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { ButtonSurface, MenuButton } from "button.slint";
+import { UiStyle } from "../cinematic/types.slint";
 
 export struct DebugPageOption {
     label: string,
@@ -20,12 +21,14 @@ export component AppDebugMenu inherits Rectangle {
     in property <[DebugStateOption]> states: [];
     in property <int> selected-page: 0;
     in property <string> selected-state: "";
+    in property <UiStyle> selected-style: UiStyle.classic;
     in-out property <bool> open: false;
     callback page-selected(int);
     callback state-selected(string);
+    callback style-selected(UiStyle);
 
     width: root.open ? 36 * root.unit : 3.25 * root.unit;
-    height: root.open ? 31 * root.unit : 3.25 * root.unit;
+    height: root.open ? 34 * root.unit : 3.25 * root.unit;
     border-radius: Theme.border-radius;
     border-width: 1px;
     border-color: Theme.surface-light-30;
@@ -78,6 +81,16 @@ export component AppDebugMenu inherits Rectangle {
     if (root.open) : HorizontalLayout {
         x: 0px;
         y: 3.25 * root.unit;
+        width: parent.width;
+        height: 3 * root.unit;
+        spacing: 0px;
+        MenuButton { horizontal-stretch: 1; unit: root.unit; label: "Classic"; selected: root.selected-style == UiStyle.classic; clicked => { root.style-selected(UiStyle.classic); } }
+        MenuButton { horizontal-stretch: 1; unit: root.unit; label: "Cinematic"; selected: root.selected-style == UiStyle.cinematic; clicked => { root.style-selected(UiStyle.cinematic); } }
+    }
+
+    if (root.open) : HorizontalLayout {
+        x: 0px;
+        y: 6.25 * root.unit;
         width: parent.width;
         height: parent.height - self.y;
         spacing: 0px;

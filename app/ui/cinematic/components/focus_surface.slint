@@ -1,0 +1,30 @@
+import { CinematicTheme } from "../theme.slint";
+import { ButtonSurface } from "../../components/button.slint";
+
+// Reuse Classic's optimized interaction primitive: one pointer area, one
+// zero-sized keyboard FocusScope, opt-in long-press timer, and accessibility
+// action. Cinematic owns presentation only.
+export component FocusSurface inherits ButtonSurface {
+    in property <bool> selected: false;
+    in property <length> radius: CinematicTheme.control-radius;
+    out property <bool> hovered: root.has-hover;
+    out property <bool> focused: root.has-focus;
+    activate-on-space: true;
+    border-radius: root.radius;
+    border-width: root.has-focus ? 2px : (root.selected ? 1px : 0px);
+    border-color: root.has-focus ? CinematicTheme.focus-outer : CinematicTheme.accent;
+    background: root.pressed ? CinematicTheme.hover.darker(12%)
+        : (root.has-hover ? CinematicTheme.hover : CinematicTheme.raised);
+    animate background { duration: CinematicTheme.motion-hover; }
+
+    if root.has-focus : Rectangle {
+        x: 3px;
+        y: 3px;
+        width: max(0px, parent.width - 6px);
+        height: max(0px, parent.height - 6px);
+        border-radius: max(0px, root.radius - 2px);
+        border-width: 1px;
+        border-color: CinematicTheme.focus-inner;
+        background: transparent;
+    }
+}

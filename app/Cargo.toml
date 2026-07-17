@@ -10,13 +10,25 @@ settings-gui = { path = "../../stream-server/settings-gui" }
 core-env = { path = "../core-env" }
 playback-mpv = { path = "../playback-mpv" }
 server-connector = { path = "../server-connector" }
-slint = { workspace = true, features = ["compat-1-2", "unstable-winit-030"] }
+slint = { workspace = true, features = [
+    "std",
+    "backend-winit",
+    "renderer-skia-opengl",
+    "renderer-femtovg",
+    "renderer-software",
+    "accessibility",
+    "system-tray",
+    "compat-1-2",
+    "unstable-winit-030",
+    "raw-window-handle-06",
+] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true, features = ["rt"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 futures.workspace = true
 anyhow.workspace = true
+thiserror.workspace = true
 blake3.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
@@ -36,6 +48,15 @@ hex = "0.4.3"
 open = "5.4.0"
 uuid = { version = "1.23.5", features = ["v4"] }
 discord-rich-presence = { workspace = true }
+glow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 
 [build-dependencies]

@@ -1,37 +1,77 @@
-﻿{
-    "schemaVersion":  2,
-    "channel":  "stable",
-    "linkage":  "static",
-    "release":  "v0.41.0",
-    "clientApi":  {
-                      "major":  2,
-                      "minor":  5
-                  },
-    "source":  {
-                   "url":  "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
-                   "sha256":  "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
-               },
-    "headers":  {
-                    "client.h":  "3c073236a09cb456c6e80587d5523c8771c32fb22ca014e0f99cc3d43905b75c",
-                    "render.h":  "192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55",
-                    "render_gl.h":  "48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69"
-                },
-    "artifacts":  {
-                      "windows-x86_64-static":  {
-                                                    "directory":  "dist/mpv/windows-x86_64-static",
-                                                    "library":  {
-                                                                    "file":  "lib/mpv.lib",
-                                                                    "sha256":  "9bbe9f2fd79ac73bfcba83736d991012cd4d0068ddbd21b87dc20f8bf959801b"
-                                                                },
-                                                    "linkManifest":  {
-                                                                         "file":  "link-libraries.txt",
-                                                                         "sha256":  "f3930677ba7373a920346613198c0a6d06f471130803e24883353b0bf7269d09"
-                                                                     },
-                                                    "sdkManifest":  {
-                                                                        "file":  "static-sdk.json",
-                                                                        "sha256":  "b63b60f6044b55ebca5b59bd3c5b5882cd7c114e74c071e077227253aaf17372"
-                                                                    }
-                                                }
-                  },
-    "verifiedAt":  "2026-07-13"
+{
+  "schemaVersion": 3,
+  "channel": "git",
+  "linkage": "dynamic",
+  "release": "20260610",
+  "mpv": {
+    "version": "v0.41.0-744-g304426c39",
+    "revision": "304426c390901436fb1d4a63efbd582ae80c88f4",
+    "repository": "https://github.com/mpv-player/mpv"
+  },
+  "clientApi": {
+    "major": 2,
+    "minor": 5
+  },
+  "distribution": {
+    "provider": "shinchiro/mpv-winbuild-cmake",
+    "repository": "https://github.com/shinchiro/mpv-winbuild-cmake",
+    "release": "20260610",
+    "asset": "mpv-dev-x86_64-v3-20260610-git-304426c.7z",
+    "url": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-v3-20260610-git-304426c.7z",
+    "sha256": "d4b3d6df9fdb33d5591c4ece7d0cc24d2f7822b298f6a1528595e0ccff7424a6"
+  },
+  "headers": {
+    "client.h": {
+      "file": "include/mpv/client.h",
+      "sha256": "1acf99ee77c8c2a6f1d1993bd81bbc8a91d27fb5924e80171670e6139a4bd353"
+    },
+    "render.h": {
+      "file": "include/mpv/render.h",
+      "sha256": "192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55"
+    },
+    "render_gl.h": {
+      "file": "include/mpv/render_gl.h",
+      "sha256": "48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69"
+    },
+    "stream_cb.h": {
+      "file": "include/mpv/stream_cb.h",
+      "sha256": "188e58b6d14383e15a5dffdc4ecebbdfbf2e412b9c099ff21b571f747a8ce32d"
+    }
+  },
+  "licenses": {
+    "LICENSE.GPL": {
+      "url": "https://raw.githubusercontent.com/mpv-player/mpv/304426c390901436fb1d4a63efbd582ae80c88f4/LICENSE.GPL",
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "LICENSE.LGPL": {
+      "url": "https://raw.githubusercontent.com/mpv-player/mpv/304426c390901436fb1d4a63efbd582ae80c88f4/LICENSE.LGPL",
+      "sha256": "72b672113d642cbb8ef5dcc76938db801983c56e50b1400ab930f1a64d6dc8d9"
+    }
+  },
+  "artifacts": {
+    "windows-x86_64-v3-dynamic": {
+      "directory": "dist/mpv/windows-x86_64-v3-dynamic",
+      "target": "x86_64-pc-windows-msvc",
+      "architecture": "x86_64",
+      "cpuBaseline": "x86-64-v3",
+      "linkName": "mpv",
+      "runtimeLibrary": {
+        "file": "bin/libmpv-2.dll",
+        "sha256": "ade5cac46cfc397a3d5cd356a968cda7acf0debffb705a16509dafdf93029f5e"
+      },
+      "importLibrary": {
+        "file": "lib/mpv.lib",
+        "sha256": "bef1b89f534bc86b33135e1f04fa2d5064b9d48b5de8bc9866665bbf43def793"
+      },
+      "sdkManifest": {
+        "file": "runtime-sdk.json",
+        "sha256": "a8d7ae7ee127ff32d32ff87e70c845ff74574ab7985ccb2f503565a2cb8c4b92"
+      },
+      "sourceNotice": {
+        "file": "SOURCE.txt",
+        "sha256": "ed0b1e9487d96943926b2143d332d260eba112343729121990ee6caf0bd32993"
+      }
+    }
+  },
+  "verifiedAt": "2026-07-17"
 }

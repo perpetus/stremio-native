@@ -1,0 +1,120 @@
+import { AppState, AppActions } from "../app_contract.slint";
+import { PlayerPage } from "../pages/player.slint";
+import { PlayerVideoSurfaceMode } from "../rendering_types.slint";
+
+export component PlayerLayer inherits Rectangle {
+    in property <bool> show-player-layer: false;
+    in property <PlayerVideoSurfaceMode> video-surface-mode: PlayerVideoSurfaceMode.image;
+    background: transparent;
+
+    if (root.show-player-layer) : PlayerPage {
+        width: 100%;
+        height: 100%;
+        z: 1000;
+        video-surface-mode: root.video-surface-mode;
+
+        item-title: AppState.player-title;
+        stream-name: AppState.player-stream-name;
+        poster-image: AppState.player-poster-image;
+        video-frame: AppState.player-video-frame;
+        has-video-frame: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? AppState.debug-preview-state != "player-loading"
+            : AppState.player-has-video-frame;
+        loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? AppState.debug-preview-state == "player-loading"
+            : AppState.player-loading;
+        buffering: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? AppState.debug-preview-state == "buffering"
+            : AppState.player-buffering;
+        buffering-percent: AppState.player-buffering-percent;
+        paused: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? (AppState.debug-preview-state == "paused" || AppState.debug-preview-state == "player-error")
+            : AppState.player-paused;
+        volume: AppState.player-volume;
+        muted: AppState.player-muted;
+        progress: AppState.player-progress;
+        elapsed-time-str: AppState.player-elapsed-time-str;
+        total-time-str: AppState.player-total-time-str;
+        subtitles-tracks: AppState.player-subtitles-tracks;
+        subtitle-track-languages: AppState.player-subtitle-track-languages;
+        subtitle-track-origins: AppState.player-subtitle-track-origins;
+        subtitle-languages: AppState.player-subtitle-languages;
+        subtitle-language-track-indices: AppState.player-subtitle-language-track-indices;
+        audio-tracks: AppState.player-audio-tracks;
+        audio-track-languages: AppState.player-audio-track-languages;
+        audio-track-labels: AppState.player-audio-track-labels;
+        active-subtitle-idx: AppState.player-active-subtitle-idx;
+        active-audio-idx: AppState.player-active-audio-idx;
+        subtitle-delay-seconds: AppState.player-subtitle-delay-seconds;
+        subtitle-size-percent: AppState.player-subtitle-size-percent;
+        subtitle-offset-percent: AppState.player-subtitle-offset-percent;
+        is-series: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? true : AppState.player-is-series;
+        episode-names: AppState.player-episode-names;
+        active-episode-idx: AppState.player-active-episode-idx;
+        playback-speed: AppState.player-playback-speed;
+        video-scale-mode: AppState.player-video-scale-mode;
+        error-message: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? (AppState.debug-preview-state == "player-error"
+                ? "The stream stopped unexpectedly. Select another stream and try again."
+                : "")
+            : AppState.player-error;
+        video-format: AppState.player-video-format;
+        audio-format: AppState.player-audio-format;
+        file-format: AppState.player-file-format;
+        hardware-decoder: AppState.player-hwdec;
+        buffered-percent: AppState.player-buffered-percent;
+        download-speed: AppState.player-download-speed;
+        upload-speed: AppState.player-upload-speed;
+        peer-count: AppState.player-peer-count;
+        stream-progress: AppState.player-stream-progress;
+        seek-step-seconds: AppState.player-seek-step-seconds;
+        show-skip-button: AppState.debug-preview-enabled && AppState.debug-preview-page == 8
+            ? AppState.debug-preview-state == "skip-intro"
+            : AppState.player-show-skip-button;
+        skip-button-label: AppState.player-skip-button-label;
+        controls-visible <=> AppState.player-controls-visible;
+        show-subtitles-menu <=> AppState.player-show-subtitles-menu;
+        show-audio-menu <=> AppState.player-show-audio-menu;
+        show-speed-menu <=> AppState.player-show-speed-menu;
+        show-stats-menu <=> AppState.player-show-stats-menu;
+        show-options-menu <=> AppState.player-show-options-menu;
+        show-context-menu <=> AppState.player-show-context-menu;
+        show-playlist-drawer <=> AppState.player-show-playlist-drawer;
+
+        icon-play: AppState.icon-play;
+        icon-pause: AppState.icon-pause;
+        icon-next: AppState.icon-next;
+        icon-volume-high: AppState.icon-volume-high;
+        icon-volume-low: AppState.icon-volume-low;
+        icon-volume-mute: AppState.icon-volume-mute;
+        icon-fullscreen: AppState.icon-fullscreen;
+        icon-subtitles: AppState.icon-subtitles;
+        icon-audio: AppState.icon-audio;
+        icon-speed: AppState.icon-speed;
+        icon-stats: AppState.icon-stats;
+        icon-options: AppState.icon-options;
+        icon-menu: AppState.icon-menu;
+        icon-back: AppState.icon-back;
+
+        toggle-pause => { AppActions.player-toggle-pause(); }
+        seek(value) => { AppActions.player-seek(value); }
+        seek-relative(seconds) => { AppActions.player-seek-relative(seconds); }
+        change-volume(value) => { AppActions.player-change-volume(value); }
+        toggle-mute => { AppActions.player-toggle-mute(); }
+        change-subtitle(index) => { AppActions.player-change-subtitle(index); }
+        change-audio(index) => { AppActions.player-change-audio(index); }
+        change-subtitle-delay(value) => { AppActions.player-change-subtitle-delay(value); }
+        change-subtitle-size(value) => { AppActions.player-change-subtitle-size(value); }
+        change-subtitle-offset(value) => { AppActions.player-change-subtitle-offset(value); }
+        change-speed(value) => { AppActions.player-change-speed(value); }
+        change-video-scale(mode) => { AppActions.player-change-video-scale(mode); }
+        skip-segment => { AppActions.player-skip-segment(); }
+        copy-stream-link => { AppActions.player-copy-stream-link(); }
+        download-video => { AppActions.player-download-video(); }
+        play-episode(index) => { AppActions.player-play-episode(index); }
+        toggle-fullscreen => { AppActions.player-toggle-fullscreen(); }
+        close => { AppActions.player-close(); }
+        activity => { AppActions.player-activity(); }
+    }
+}

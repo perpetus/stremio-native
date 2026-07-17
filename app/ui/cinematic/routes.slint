@@ -1,0 +1,307 @@
+import { AppState, AppActions } from "../app_contract.slint";
+import { CinematicShell } from "shell.slint";
+import { CinematicBoardPage } from "pages/board.slint";
+import { CinematicDiscoverPage } from "pages/discover.slint";
+import { CinematicLibraryPage } from "pages/library.slint";
+import { CinematicAddonsPage } from "pages/addons.slint";
+import { CinematicSettingsPage } from "pages/settings.slint";
+import { CinematicCalendarPage } from "pages/calendar.slint";
+import { CinematicSearchPage } from "pages/search.slint";
+
+export component CinematicRoutes inherits Rectangle {
+    in property <int> route-index: 0;
+    in-out property <int> settings-active-category: 0;
+    private property <length> ui-unit: root.width >= 2800px ? 18px
+        : (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
+
+    shell := CinematicShell {
+            width: 100%;
+            height: 100%;
+            active-tab: root.route-index;
+            username: AppState.username;
+            search-text <=> AppState.search-query;
+            suggestions: AppState.search-suggestions;
+            profile-menu-open <=> AppState.profile-menu-open;
+            change-tab(tab) => { AppActions.tab-changed(tab); }
+            search-edited(value) => {
+                AppActions.global-search-edited(value);
+                if (root.route-index == 1) { AppActions.discover-search-changed(value); }
+                else if (root.route-index == 2) { AppActions.library-search-changed(value); }
+            }
+            search-accepted(value) => { if (value != "") { AppActions.global-search-submitted(value); } }
+            suggestion-selected(id, media-type, title) => {
+                AppState.search-query = title;
+                AppActions.global-search-suggestion-selected(id, media-type);
+            }
+            logout => { AppActions.logout(); }
+
+            if (root.route-index == 0) : CinematicBoardPage {
+                width: parent.width;
+                height: parent.height;
+                continue-watching: AppState.debug-preview-enabled && AppState.debug-preview-page == 0
+                    && (AppState.debug-preview-state == "empty"
+                        || AppState.debug-preview-state == "loading"
+                        || AppState.debug-preview-state == "catalogs-only")
+                    ? [] : AppState.board-continue-watching;
+                sections: AppState.debug-preview-enabled && AppState.debug-preview-page == 0
+                    && (AppState.debug-preview-state == "empty"
+                        || AppState.debug-preview-state == "loading"
+                        || AppState.debug-preview-state == "continue-only")
+                    ? [] : AppState.board-sections;
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 0
+                    ? AppState.debug-preview-state == "loading" : AppState.loading;
+                show-missing-artwork: AppState.debug-preview-enabled && AppState.debug-show-missing-artwork;
+                selected-index: AppState.debug-preview-state == "rail-focus-start" ? 0
+                    : (AppState.debug-preview-state == "rail-focus-middle" ? 4
+                    : (AppState.debug-preview-state == "rail-focus-end" ? 7 : -1));
+                hero-backdrop: @image-url("");
+                play-icon: @image-url("../assets/images/icons/play.svg");
+                item-selected(id, media-type, video-id) => { AppActions.board-item-selected(id, media-type, video-id); }
+                poster-requested(url) => { AppActions.request-poster(url); }
+            }
+
+            if (root.route-index == 1) : CinematicDiscoverPage {
+                width: parent.width;
+                height: parent.height;
+                rows: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && (AppState.debug-preview-state == "empty" || AppState.debug-preview-state == "loading")
+                    ? [] : AppState.discover-rows;
+                column-count: AppState.discover-column-count;
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    ? AppState.debug-preview-state == "loading" : AppState.loading;
+                available-types: AppState.discover-types;
+                active-type: AppState.discover-active-type;
+                available-catalogs: AppState.discover-catalogs;
+                active-catalog: AppState.discover-active-catalog;
+                available-genres: AppState.discover-genres;
+                active-genre: AppState.discover-active-genre;
+                has-preview: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    ? (AppState.debug-preview-state == "movie-selected" || AppState.debug-preview-state == "series-selected")
+                    : AppState.discover-has-preview;
+                preview-title: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected" ? "Dune: Part Two" : AppState.discover-preview-title;
+                preview-description: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected"
+                    ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+                    : AppState.discover-preview-description;
+                preview-rating: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected" ? "8.5" : AppState.discover-preview-rating;
+                preview-year: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected" ? "2024" : AppState.discover-preview-year;
+                preview-runtime: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected" ? "166 min" : AppState.discover-preview-runtime;
+                preview-genres: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected"
+                    ? ["Science Fiction", "Adventure", "Drama"] : AppState.discover-preview-genres;
+                preview-cast: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected"
+                    ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : AppState.discover-preview-cast;
+                preview-directors: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "movie-selected"
+                    ? ["Denis Villeneuve"] : AppState.discover-preview-directors;
+                preview-is-in-library: AppState.discover-preview-is-in-library;
+                preview-is-watched: AppState.discover-preview-is-watched;
+                preview-has-trailer: AppState.discover-preview-has-trailer;
+                preview-trailer-selection-id: AppState.detail-trailer-selection-id;
+                preview-poster: AppState.discover-preview-poster;
+                type-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "type-dropdown";
+                catalog-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "catalog-dropdown";
+                genre-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 1
+                    && AppState.debug-preview-state == "genre-dropdown";
+                scroll-y <=> AppState.discover-scroll-y;
+                type-changed(value) => { AppActions.discover-type-changed(value); }
+                catalog-changed(value) => { AppActions.discover-catalog-changed(value); }
+                genre-changed(value) => { AppActions.discover-genre-changed(value); }
+                item-selected(id) => { AppActions.discover-item-selected(id); }
+                poster-requested(url) => { AppActions.request-poster(url); }
+                play-preview => { AppActions.play-preview(); }
+                toggle-library-preview => { AppActions.toggle-library-preview(); }
+                toggle-watched-preview => { AppActions.details-toggle-watched(); }
+                play-trailer-preview(selection-id) => { AppActions.play-stream(selection-id); }
+            }
+
+            if (root.route-index == 2) : CinematicLibraryPage {
+                width: parent.width;
+                height: parent.height;
+                rows: AppState.debug-preview-enabled && AppState.debug-preview-page == 2
+                    && (AppState.debug-preview-state == "empty" || AppState.debug-preview-state == "loading")
+                    ? [] : AppState.library-rows;
+                column-count: AppState.library-column-count;
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 2
+                    ? AppState.debug-preview-state == "loading" : AppState.loading;
+                active-type <=> AppState.library-active-type;
+                active-sort <=> AppState.library-active-sort;
+                type-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 2
+                    && AppState.debug-preview-state == "type-dropdown";
+                sort-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 2
+                    && AppState.debug-preview-state == "sort-dropdown";
+                scroll-y <=> AppState.library-scroll-y;
+                type-changed(value) => { AppActions.library-type-changed(value); }
+                sort-changed(value) => { AppActions.library-sort-changed(value); }
+                item-selected(id, media-type) => { AppActions.library-item-selected(id, media-type); }
+                poster-requested(url) => { AppActions.request-poster(url); }
+            }
+
+            if (root.route-index == 3) : CinematicAddonsPage {
+                width: parent.width;
+                height: parent.height;
+                addons: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    && (AppState.debug-preview-state == "empty" || AppState.debug-preview-state == "loading")
+                    ? [] : AppState.addons-list;
+                search-query <=> AppState.addons-search-query;
+                active-filter <=> AppState.addons-active-filter;
+                active-type <=> AppState.addons-active-type;
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    ? AppState.debug-preview-state == "loading" : AppState.loading;
+                details-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    ? (AppState.debug-preview-state == "addon-details"
+                        || AppState.debug-preview-state == "addon-details-loading"
+                        || AppState.debug-preview-state == "addon-details-error")
+                    : AppState.addon-details-open;
+                details-addon: AppState.addon-details-addon;
+                details-loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    ? AppState.debug-preview-state == "addon-details-loading" : AppState.addon-details-loading;
+                details-error: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    ? (AppState.debug-preview-state == "addon-details-error" ? "Unable to load the add-on manifest." : "")
+                    : AppState.addon-details-error;
+                details-configurable: AppState.addon-details-configurable;
+                details-configuration-required: AppState.addon-details-configuration-required;
+                filter-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    && AppState.debug-preview-state == "filter-dropdown";
+                type-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    && AppState.debug-preview-state == "type-dropdown";
+                add-modal-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 3
+                    && AppState.debug-preview-state == "add-addon";
+                install-addon(url) => { AppActions.install-addon(url); }
+                uninstall-addon(url) => { AppActions.uninstall-addon(url); }
+                open-addon-details(url) => { AppActions.open-addon-details(url); }
+                close-addon-details => { AppActions.close-addon-details(); }
+                configure-addon(url) => { AppActions.configure-addon(url); }
+                share-addon(url) => { AppActions.share-addon(url); }
+                search-changed(query) => { AppActions.addons-search-changed(query); }
+            }
+
+            if (root.route-index == 4) : CinematicSettingsPage {
+                width: parent.width;
+                height: parent.height;
+                unit: root.ui-unit;
+                ui-style: AppState.ui-style;
+                active-category: AppState.debug-preview-enabled && AppState.debug-preview-page == 4
+                    ? (AppState.debug-preview-state == "interface" ? 1
+                        : (AppState.debug-preview-state == "player-settings" ? 2
+                        : (AppState.debug-preview-state == "streaming" ? 3
+                        : (AppState.debug-preview-state == "shortcuts" ? 4
+                        : (AppState.debug-preview-state == "diagnostics" ? 5 : 0)))))
+                    : root.settings-active-category;
+                changed active-category => { if (!AppState.debug-preview-enabled) { root.settings-active-category = self.active-category; } }
+                torrent-cache-size: AppState.torrent-cache-size;
+                server-url: AppState.server-url;
+                interface-language: AppState.settings-interface-language;
+                subtitles-language: AppState.settings-subtitles-language;
+                torrent-profile: AppState.settings-torrent-profile;
+                hardware-acceleration: AppState.settings-hardware-acceleration;
+                binge-watching: AppState.settings-binge-watching;
+                discord-rpc-enabled: AppState.settings-discord-rpc-enabled;
+                tidb-api-key: AppState.settings-tidb-api-key;
+                tidb-show-intro: AppState.settings-tidb-show-intro;
+                tidb-show-recap: AppState.settings-tidb-show-recap;
+                tidb-show-credits: AppState.settings-tidb-show-credits;
+                tidb-show-preview: AppState.settings-tidb-show-preview;
+                hide-spoilers: AppState.settings-hide-spoilers;
+                gamepad-support: AppState.settings-gamepad-support;
+                play-in-background: AppState.settings-play-in-background;
+                subtitles-auto-select: AppState.settings-subtitles-auto-select;
+                subtitles-font: AppState.settings-subtitles-font;
+                subtitles-size: AppState.settings-subtitles-size;
+                subtitles-bold: AppState.settings-subtitles-bold;
+                subtitles-offset: AppState.settings-subtitles-offset;
+                seek-duration: AppState.settings-seek-duration;
+                pause-on-minimize: AppState.settings-pause-on-minimize;
+                quit-on-close: AppState.settings-quit-on-close;
+                export-loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 4
+                    ? AppState.debug-preview-state == "exporting" : AppState.settings-export-loading;
+                export-status: AppState.debug-preview-enabled && AppState.debug-preview-page == 4
+                    && AppState.debug-preview-state == "exporting" ? "Exporting profile data" : AppState.settings-export-status;
+                streaming-seeding: AppState.settings-streaming-seeding;
+                streaming-dht: AppState.settings-streaming-dht;
+                streaming-pex: AppState.settings-streaming-pex;
+                streaming-lsd: AppState.settings-streaming-lsd;
+                streaming-remote-url: AppState.settings-streaming-remote-url;
+                streaming-logs-text: AppState.settings-streaming-logs-text;
+                refresh-icon: AppState.refresh-icon;
+                folder-icon: AppState.folder-icon;
+                apply-cache-settings(value) => { AppActions.apply-cache-settings(value); }
+                change-interface-language(value) => { AppActions.settings-change-interface-language(value); }
+                change-ui-style(style) => { AppState.ui-style = style; AppActions.settings-change-ui-style(style); }
+                change-subtitles-language(value) => { AppActions.settings-change-subtitles-language(value); }
+                change-torrent-profile(value) => { AppActions.settings-change-torrent-profile(value); }
+                change-hardware-acceleration(value) => { AppActions.settings-change-hardware-acceleration(value); }
+                clear-search-history => { AppActions.settings-clear-search-history(); }
+                shutdown-server => { AppActions.shutdown-server(); }
+                change-seeding-enabled(value) => { AppActions.settings-change-seeding-enabled(value); }
+                change-dht-enabled(value) => { AppActions.settings-change-dht-enabled(value); }
+                change-pex-enabled(value) => { AppActions.settings-change-pex-enabled(value); }
+                change-lsd-enabled(value) => { AppActions.settings-change-lsd-enabled(value); }
+                refresh-logs => { AppActions.settings-refresh-logs(); }
+                open-logs-folder => { AppActions.settings-open-logs-folder(); }
+                export-data => { AppActions.settings-export-data(); }
+                change-binge-watching(value) => { AppActions.settings-change-binge-watching(value); }
+                change-discord-rpc-enabled(value) => { AppActions.settings-change-discord-rpc-enabled(value); }
+                change-tidb-api-key(value) => { AppActions.settings-change-tidb-api-key(value); }
+                change-tidb-show-intro(value) => { AppActions.settings-change-tidb-show-intro(value); }
+                change-tidb-show-recap(value) => { AppActions.settings-change-tidb-show-recap(value); }
+                change-tidb-show-credits(value) => { AppActions.settings-change-tidb-show-credits(value); }
+                change-tidb-show-preview(value) => { AppActions.settings-change-tidb-show-preview(value); }
+                change-hide-spoilers(value) => { AppActions.settings-change-hide-spoilers(value); }
+                change-gamepad-support(value) => { AppActions.settings-change-gamepad-support(value); }
+                change-play-in-background(value) => { AppActions.settings-change-play-in-background(value); }
+                change-subtitles-auto-select(value) => { AppActions.settings-change-subtitles-auto-select(value); }
+                change-subtitles-font(value) => { AppActions.settings-change-subtitles-font(value); }
+                change-subtitles-size(value) => { AppActions.settings-change-subtitles-size(value); }
+                change-subtitles-bold(value) => { AppActions.settings-change-subtitles-bold(value); }
+                change-subtitles-offset(value) => { AppActions.settings-change-subtitles-offset(value); }
+                change-seek-duration(value) => { AppActions.settings-change-seek-duration(value); }
+                change-pause-on-minimize(value) => { AppActions.settings-change-pause-on-minimize(value); }
+                change-quit-on-close(value) => { AppActions.settings-change-quit-on-close(value); }
+                open-external-url(url) => { AppActions.open-external-url(url); }
+            }
+
+            if (root.route-index == 5) : CinematicCalendarPage {
+                width: parent.width;
+                height: parent.height;
+                authenticated: AppState.debug-preview-enabled && AppState.debug-preview-page == 5
+                    ? AppState.debug-preview-state != "signed-out" : AppState.username != "" && AppState.username != "Guest";
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 5
+                    ? AppState.debug-preview-state == "loading" : AppState.calendar-loading;
+                selected-year: AppState.calendar-selected-year;
+                selected-month: AppState.calendar-selected-month;
+                previous-month: AppState.calendar-previous-month;
+                next-month: AppState.calendar-next-month;
+                rows: AppState.debug-preview-enabled && AppState.debug-preview-page == 5
+                    && AppState.debug-preview-state == "empty" ? [] : AppState.calendar-rows;
+                previous => { AppActions.calendar-previous(); }
+                next => { AppActions.calendar-next(); }
+                item-selected(id, media-type) => { AppActions.calendar-item-selected(id, media-type); }
+            }
+
+            if (root.route-index == 6) : CinematicSearchPage {
+                width: parent.width;
+                height: parent.height;
+                query: AppState.debug-preview-enabled && AppState.debug-preview-page == 6
+                    && AppState.debug-preview-state == "idle" ? "" : AppState.search-query;
+                sections: AppState.debug-preview-enabled && AppState.debug-preview-page == 6
+                    && (AppState.debug-preview-state == "empty"
+                        || AppState.debug-preview-state == "loading"
+                        || AppState.debug-preview-state == "idle") ? [] : AppState.search-sections;
+                loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 6
+                    ? AppState.debug-preview-state == "loading" : AppState.search-loading;
+                catalog-count: AppState.debug-preview-enabled && AppState.debug-preview-page == 6
+                    && (AppState.debug-preview-state == "empty" || AppState.debug-preview-state == "idle")
+                    ? 0 : AppState.search-catalog-count;
+                item-selected(id, media-type, video-id) => { AppActions.search-item-selected(id, media-type, video-id); }
+                poster-requested(url) => { AppActions.request-poster(url); }
+            }
+    }
+}

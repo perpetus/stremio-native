@@ -1,0 +1,65 @@
+import { Theme } from "../theme.slint";
+import { HorizontalNavBar } from "../components/horizontal_nav.slint";
+import { SearchSuggestion } from "../components/search.slint";
+import { Sidebar } from "../components/sidebar.slint";
+import "../assets/fonts/PlusJakartaSans.ttf";
+
+// Deterministic desktop shell for page screenshots. `parity-size` switches
+// between the 1280x720 working viewport and the supplied 2048x1096 reference.
+export component AppPreviewShell inherits Rectangle {
+    in property <int> active-tab: 0;
+    in-out property <string> search-text: "";
+    in property <[SearchSuggestion]> search-suggestions: [];
+    in property <string> nav-title: "";
+    out property <length> page-x: Theme.vertical-nav-bar-size;
+    out property <length> page-y: 5.5 * root.unit;
+    out property <length> page-width: root.width - root.page-x;
+    out property <length> page-height: root.height - root.page-y;
+
+    background: Theme.main-gradient;
+
+    private property <length> unit: root.width >= 2800px ? 18px
+        : (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
+
+    Sidebar {
+        x: 0px;
+        y: 5.5 * root.unit;
+        height: parent.height - self.y;
+        unit: root.unit;
+        active-tab: root.active-tab;
+    }
+
+    content := Rectangle {
+        x: root.page-x;
+        y: root.page-y;
+        width: root.page-width;
+        height: root.page-height;
+        background: transparent;
+        clip: true;
+
+        @children
+    }
+
+    // Keep this declaration after the slotted page content. Component-local
+    // stacking contexts in page previews can otherwise paint over an earlier
+    // sibling even when the page begins below the navbar.
+    HorizontalNavBar {
+        z: 2000;
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        unit: root.unit;
+        title: root.nav-title;
+        logo-source: @image-url("../assets/images/stremio-logo.svg");
+        avatar-source: @image-url("../assets/images/default_avatar.png");
+        has-avatar: true;
+        search-text <=> root.search-text;
+        search-suggestions: root.search-suggestions;
+    }
+}
+
+export component FullscreenPreviewShell inherits Rectangle {
+    background: Theme.background;
+
+    @children
+}

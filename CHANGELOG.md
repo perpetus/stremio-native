@@ -2,11 +2,12 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
-## Unreleased - 2026-07-16
+## Unreleased - 2026-07-17
 
 ### Highlights
 
 - Reworked the desktop shell and all primary pages around a reusable Slint component system aligned with the official Stremio interaction model.
+- Implemented the Windows-first rendering architecture: Skia OpenGL by default, process-level FemtoVG/software fallback, and selectable native-window, shared-OpenGL, or software MPV video output.
 - Restored end-to-end libmpv playback with direct OpenGL texture composition, full player controls, deterministic first-frame handling, and event coalescing.
 - Added typed navigation, global search, Discord Rich Presence, TheIntroDB skip segments, centralized Turso storage, and Windows media-key handling.
 - Reduced retained image memory and redundant model/UI work; the latest settled native build measured 406.7 MB in Task Manager versus the retained 814.4 MB official Stremio baseline.
@@ -34,7 +35,18 @@ This file records notable changes to Stremio Native relative to the initial sour
 
 ### Playback and libmpv
 
-- Reconnected Stremio Core stream selection to the statically linked libmpv runtime and Slint's shared OpenGL render path.
+- Added `--renderer=auto|skia-opengl|femtovg|software` and `--video-output=auto|native-window|shared-opengl|software`, including split argument forms, legacy `SLINT_BACKEND` precedence, combination validation, and a hidden relaunch-attempt argument.
+- Added a real one-pixel renderer probe with a five-second timeout. OpenGL attempts require Slint's native OpenGL API and inspect framebuffer alpha; software attempts require an actual Winit redraw.
+- Added process-level automatic fallback from Skia OpenGL to FemtoVG OpenGL and then Slint software. Forced renderers receive one attempt, and retry processes append their diagnostics to the original renderer log.
+- Added an unowned, non-activating Win32 video host that remains directly behind the transparent Slint client area, tracks physical client geometry and z-order, and hides while the player is closed, minimized, invisible, or occluded.
+- Added native MPV D3D11 output through `wid` with a strict `gpu-next,gpu,direct3d` VO list, D3D11 GPU context/API, WARP fallback, direct D3D11VA decoding, and direct rendering where supported.
+- Replaced the static MPV archive closure with the checksum-pinned optimized x86-64-v3 `libmpv-2.dll` from shinchiro's MPV-listed Windows builds, eliminating the Skia/SPIRV-Cross duplicate-symbol link failure while retaining D3D11, libplacebo, shaderc, and SPIRV-Cross support.
+- Retained shared OpenGL as an explicit compatibility path with copy-safe hardware decoding, and report `--video-output=shared-opengl` when native VO configuration fails.
+- Added a dedicated MPV software-render worker with a 1280x720 aspect-preserving cap, 100 ms resize debounce, 64-byte buffer/stride alignment, opaque RGB0-to-RGBA normalization, a newest-frame-only mailbox, hidden-surface skipping, and deterministic shutdown.
+- Added a typed Slint player surface mode. Native playback makes the player scene transparent and omits the video image; shared-OpenGL and software playback continue to render an image below Slint controls.
+- Made first-frame handling output-specific: native video waits for `PlaybackRestarted` with a configured VO and video track, while OpenGL and software modes wait for an actual rendered frame.
+- Observe and log `vo-configured`, `current-vo`, `gpu-context`, `hwdec-current`, video-track presence, and MPV's numeric end error code.
+- Reconnected Stremio Core stream selection to the pinned libmpv runtime and Slint's shared OpenGL render path.
 - Passes resume position directly through MPV's per-file `start=` option, removing the delayed second exact seek after `file-loaded`.
 - Distinguishes render-context initialization from a real decoded frame and reveals video only after the first actual MPV render update.
 - Keeps cache buffering separate from initial loading so decoded video is not covered by artwork during later buffering.
@@ -77,7 +89,7 @@ This file records notable changes to Stremio Native relative to the initial sour
 - Avoids rewriting generated icon fonts and Slint font imports when their contents have not changed.
 - Loads independent storage buckets concurrently and keeps blocking stream-server startup off the asynchronous executor.
 - Added scoped profiling modes for UI, I/O, playback, and full traces in debug builds.
-- Compiles tracing out of release builds to minimize production profiling overhead.
+- Retains INFO-level file tracing in release builds so renderer fallback and native-video failures remain diagnosable; debug-only Chrome tracing is still opt-in.
 
 ### Reliability and diagnostics
 
@@ -89,14 +101,22 @@ This file records notable changes to Stremio Native relative to the initial sour
 
 ### Dependencies and build
 
+- Enabled Slint's explicit Winit, Skia OpenGL, FemtoVG, software, Winit 0.30, and raw-window-handle feature set while disabling implicit defaults.
+- Added typed rendering errors, OpenGL capability inspection, and the target-gated Win32 APIs required by the native video host.
+- Kept the static MSVC CRT ABI aligned across Rust, Skia, and the executable's native crates while isolating MPV's MinGW runtime and codec closure behind its DLL C API.
 - Added `discord-rich-presence`, MiMalloc, and the Slint Winit 0.30 integration required for native media-key events.
 - Uses the workspace Turso dependency with default features disabled, reducing the dependency graph and avoiding unwanted default integrations.
 - Updated `Cargo.lock` to the dependency closure used by the current successful release build.
-- Release build command: `cargo build --release --package stremio-native`.
+- Patched `skia-bindings` locally so its Cargo build script selects a complete Windows SDK and gives GN, Ninja, and clang-cl a temporary short source path when no static-CRT prebuilt archive exists.
+- Made `playback-mpv/build.rs` consume and validate the tracked runtime manifest, link the COFF import library, and deploy `libmpv-2.dll` beside debug executables and tests.
+- Replaced the multi-hour MPV source-build sync path with a SHA-256-pinned prebuilt downloader and reproducible packager; ordinary Cargo builds remain offline and never invoke PowerShell.
+- Debug builds now use ordinary Cargo with no PowerShell setup step: `cargo build --locked --package stremio-native`.
 
 ### Known limitations
 
-- The bundled static libmpv SDK and `playback-mpv/build.rs` currently support only `x86_64-pc-windows-msvc`.
+- The bundled optimized libmpv DLL and `playback-mpv/build.rs` currently support only `x86_64-pc-windows-msvc` and require an x86-64-v3-capable processor.
+- The native-window video host is Windows-only; other platforms resolve automatic video output to shared OpenGL until target-specific native hosts and libmpv packages are added.
+- A clean rust-skia build compiles Skia from source because upstream does not publish this static-CRT feature combination; the local Cargo patch handles SDK selection and legacy source-path limits automatically.
 - UI parity work still benefits from manual visual validation at multiple window sizes and DPI scales.
 - Playback, subtitle/audio menu behavior, and real streaming should be smoke-tested with live media after each renderer or player change.
 - The player buffering pulse timer is not yet gated by player-page visibility; the measured minimized CPU use is low, but a dedicated redraw trace is still recommended.

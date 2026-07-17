@@ -26,6 +26,7 @@ See the [detailed changelog](CHANGELOG.md) for the current build's implementatio
 ### ⚡ Rust-Powered Performance & Hardware Acceleration
 * **Custom Open-Source Stream Server**: Unlike the official Stremio client which relies on a separate Node.js-based `server.js` backend, Stremio Rust embeds a custom, open-source **stream server** in-process. This eliminates the separate Node.js runtime and reduces process-management overhead.
 * **Low CPU & Battery Usage**: Leveraging hardware-accelerated video decoding, this client utilizes your computer's GPU for video playback, keeping your CPU cool and extending your laptop's battery life.
+* **Adaptive Native Rendering**: The Windows build starts with a Skia OpenGL UI over direct D3D11 MPV video. Renderer startup can fall back at the process boundary to FemtoVG and software, while shared OpenGL remains available as a compatibility video path.
 
 #### Measured Idle Footprint (Windows x64)
 
@@ -50,7 +51,7 @@ The native values are the refreshed readings from the current minimized, no-play
 
 ## 🚀 How to Build and Run the App
 
-The current release target is **Windows x64** because the repository bundles a Windows x64 static libmpv SDK. The platform abstractions are portable, but Linux and macOS playback packages are not included yet.
+The current release target is **Windows x64-v3** because the repository bundles an optimized x86-64-v3 `libmpv-2.dll`. The platform abstractions are portable, but Linux and macOS playback packages are not included yet. The optimized Windows binary requires an x86-64-v3-capable processor.
 
 ### 1. Prerequisites
 Install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK.
@@ -61,10 +62,24 @@ Install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rus
    ```bash
    cd stremio-native
    ```
-3. Build and run the optimized release:
+3. Build and run the debug application:
    ```powershell
-   cargo build --release --package stremio-native
-   .\target\release\stremio-native.exe
+   cargo build --locked --package stremio-native
+   .\target\debug\stremio-native.exe
    ```
+
+Cargo selects a complete installed Windows SDK, keeps rust-skia's source path
+below the legacy `clang-cl` path limit, links the tracked MPV import library,
+and copies `libmpv-2.dll` beside debug executables and tests. No PowerShell
+setup script or MPV source build is required.
+
+Renderer and video output are selected automatically. Troubleshooting overrides are available when a driver or native VO is incompatible:
+
+```powershell
+.\target\debug\stremio-native.exe --renderer=femtovg --video-output=shared-opengl
+.\target\debug\stremio-native.exe --renderer=software --video-output=software
+```
+
+See the [rendering architecture](docs/rendering_architecture_analysis.md) for the complete selection matrix, native-window design, fallback behavior, and diagnostics.
 
 *All settings, log consoles, and image databases are stored in the local `./storage/` folder inside the project directory.*

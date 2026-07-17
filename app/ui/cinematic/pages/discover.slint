@@ -1,0 +1,231 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { CinematicTheme } from "../theme.slint";
+import { CinematicSelectField } from "../components/select.slint";
+import { CinematicButton } from "../components/cinematic_button.slint";
+import { MediaTile } from "../components/media_tile.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { MetadataLine } from "../components/metadata.slint";
+import { DiscoverRow } from "../../pages/discover.slint";
+
+export component CinematicDiscoverPage inherits Rectangle {
+    in property <[DiscoverRow]> rows: [];
+    in property <int> column-count: 6;
+    in property <bool> loading: false;
+    in property <[string]> available-types: [];
+    in property <string> active-type: "";
+    in property <[string]> available-catalogs: [];
+    in property <string> active-catalog: "";
+    in property <[string]> available-genres: [];
+    in property <string> active-genre: "";
+    in-out property <length> scroll-y: 0px;
+    in property <bool> has-preview: false;
+    in property <string> preview-title: "";
+    in property <string> preview-description: "";
+    in property <string> preview-rating: "";
+    in property <string> preview-year: "";
+    in property <string> preview-runtime: "";
+    in property <[string]> preview-genres: [];
+    in property <[string]> preview-cast: [];
+    in property <[string]> preview-directors: [];
+    in property <image> preview-poster;
+    in property <bool> preview-is-in-library: false;
+    in property <bool> preview-is-watched: false;
+    in property <bool> preview-has-trailer: false;
+    in property <string> preview-trailer-selection-id: "";
+    in-out property <bool> type-open: false;
+    in-out property <bool> catalog-open: false;
+    in-out property <bool> genre-open: false;
+    callback type-changed(string);
+    callback catalog-changed(string);
+    callback genre-changed(string);
+    callback item-selected(string);
+    callback poster-requested(string);
+    callback play-preview;
+    callback toggle-library-preview;
+    callback toggle-watched-preview;
+    callback play-trailer-preview(string);
+
+    private property <bool> preview-visible: root.has-preview && root.preview-title != ""
+        && root.width >= 1180px;
+    private property <length> preview-width: root.preview-visible ? min(420px, root.width * 0.31) : 0px;
+    private property <length> grid-width: root.width - root.preview-width;
+    private property <length> gutter: root.width < 1200px ? 24px : CinematicTheme.page-gutter;
+    private property <length> tile-gap: 14px;
+    private property <length> tile-width: root.column-count > 0
+        ? max(118px, (root.grid-width - 2 * root.gutter - (root.column-count - 1) * root.tile-gap) / root.column-count)
+        : 160px;
+    private property <length> tile-height: root.tile-width * 1.5;
+
+    background: CinematicTheme.canvas;
+
+    Rectangle {
+        width: root.grid-width;
+        height: 82px;
+        background: CinematicTheme.canvas;
+        z: 120;
+        HorizontalLayout {
+            padding-left: root.gutter;
+            padding-right: root.gutter;
+            spacing: 12px;
+            alignment: center;
+            CinematicSelectField {
+                field-width: min(190px, (root.grid-width - 2 * root.gutter - 24px) / 3);
+                value: root.active-type;
+                placeholder: "Type";
+                options: root.available-types;
+                open: root.type-open;
+                toggle => {
+                    root.type-open = !root.type-open;
+                    root.catalog-open = false;
+                    root.genre-open = false;
+                }
+                selected(value) => { root.type-open = false; root.type-changed(value); }
+            }
+            CinematicSelectField {
+                field-width: min(220px, (root.grid-width - 2 * root.gutter - 24px) / 3);
+                value: root.active-catalog;
+                placeholder: "Catalog";
+                options: root.available-catalogs;
+                open: root.catalog-open;
+                toggle => {
+                    root.catalog-open = !root.catalog-open;
+                    root.type-open = false;
+                    root.genre-open = false;
+                }
+                selected(value) => { root.catalog-open = false; root.catalog-changed(value); }
+            }
+            CinematicSelectField {
+                field-width: min(190px, (root.grid-width - 2 * root.gutter - 24px) / 3);
+                value: root.active-genre;
+                placeholder: "Genre";
+                options: root.available-genres;
+                open: root.genre-open;
+                toggle => {
+                    root.genre-open = !root.genre-open;
+                    root.type-open = false;
+                    root.catalog-open = false;
+                }
+                selected(value) => { root.genre-open = false; root.genre-changed(value); }
+            }
+        }
+    }
+
+    if (root.loading) : Rectangle {
+        y: 82px;
+        width: root.grid-width;
+        height: parent.height - 82px;
+        clip: true;
+        HorizontalLayout {
+            x: root.gutter;
+            y: 12px;
+            width: parent.width - 2 * root.gutter;
+            height: root.tile-height;
+            spacing: root.tile-gap;
+            for _column in root.column-count : CinematicSkeleton {
+                width: root.tile-width;
+                height: root.tile-height;
+                radius: CinematicTheme.card-radius;
+            }
+        }
+    }
+
+    if (!root.loading && root.rows.length == 0) : CinematicFeedback {
+        y: 82px;
+        width: root.grid-width;
+        height: parent.height - 82px;
+        title: "No titles found";
+        message: "Try a different catalog, type, or genre.";
+    }
+
+    if (!root.loading && root.rows.length > 0) : ListView {
+        y: 82px;
+        width: root.grid-width;
+        height: parent.height - 82px;
+        viewport-y <=> root.scroll-y;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        for row in root.rows : Rectangle {
+            width: parent.width;
+            height: root.tile-height + root.tile-gap;
+            for item[index] in row.cols : MediaTile {
+                x: root.gutter + index * (root.tile-width + root.tile-gap);
+                y: 0px;
+                width: root.tile-width;
+                height: root.tile-height;
+                title: item.title;
+                artwork: item.poster;
+                artwork-url: item.poster-url;
+                show-progress: item.show-progress;
+                progress: item.progress-value;
+                watched: item.show-checkmark;
+                is-visible: true;
+                clicked => { root.item-selected(item.id); }
+                poster-requested(url) => { root.poster-requested(url); }
+            }
+        }
+    }
+
+    if (root.preview-visible) : Rectangle {
+        x: parent.width - root.preview-width;
+        width: root.preview-width;
+        height: parent.height;
+        background: CinematicTheme.raised;
+        border-width: 1px;
+        border-color: CinematicTheme.divider;
+        clip: true;
+
+        Image {
+            width: parent.width;
+            height: min(330px, parent.height * 0.46);
+            source: root.preview-poster;
+            image-fit: cover;
+            opacity: 0.72;
+        }
+        Rectangle {
+            width: parent.width;
+            height: min(360px, parent.height * 0.52);
+            background: @linear-gradient(0deg, CinematicTheme.raised 0%, #1818187a 55%, transparent 100%);
+        }
+        ScrollView {
+            y: min(210px, parent.height * 0.3);
+            width: parent.width;
+            height: parent.height - self.y;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                width: parent.width;
+                padding: 24px;
+                spacing: 14px;
+                Text { text: root.preview-title; color: CinematicTheme.primary; font-size: 28px; font-weight: 800; wrap: word-wrap; }
+                MetadataLine { rating: root.preview-rating; year: root.preview-year; runtime: root.preview-runtime; }
+                Text { text: root.preview-description; color: CinematicTheme.secondary; font-size: 14px; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    CinematicButton { horizontal-stretch: 1; primary: true; label: "Play"; clicked => { root.play-preview(); } }
+                    CinematicButton { horizontal-stretch: 1; label: root.preview-is-in-library ? "In library" : "Add"; clicked => { root.toggle-library-preview(); } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    CinematicButton { horizontal-stretch: 1; label: root.preview-is-watched ? "Watched" : "Mark watched"; clicked => { root.toggle-watched-preview(); } }
+                    if (root.preview-has-trailer) : CinematicButton { horizontal-stretch: 1; label: "Trailer"; clicked => { root.play-trailer-preview(root.preview-trailer-selection-id); } }
+                }
+                if (root.preview-genres.length > 0) : HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Genres"; color: CinematicTheme.secondary; font-size: 12px; font-weight: 700; }
+                    for genre in root.preview-genres : Text { text: genre; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                }
+                if (root.preview-cast.length > 0) : HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Cast"; color: CinematicTheme.secondary; font-size: 12px; font-weight: 700; }
+                    for person in root.preview-cast : Text { text: person; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                }
+                if (root.preview-directors.length > 0) : HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Directors"; color: CinematicTheme.secondary; font-size: 12px; font-weight: 700; }
+                    for person in root.preview-directors : Text { text: person; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                }
+            }
+        }
+    }
+}

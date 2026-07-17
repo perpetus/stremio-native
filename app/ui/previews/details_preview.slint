@@ -1,0 +1,159 @@
+import { FullscreenPreviewShell } from "preview_shell.slint";
+import { PreviewDebugMenu, PreviewStateOption } from "debug_menu.slint";
+import { DetailsPage, EpisodeItem, StreamLink } from "../pages/details.slint";
+import { Theme } from "../theme.slint";
+
+// Deterministic title-selection preview. The debug states cover the complete
+// movie and series hand-off: metadata -> episodes -> selected episode streams.
+export component DetailsPreview inherits Window {
+    in-out property <string> preview-state: "series-episodes";
+    in-out property <bool> parity-size: false;
+    in-out property <bool> debug-menu-open: false;
+    in-out property <int> active-season: 23;
+    in-out property <int> active-episode-idx: 1;
+    in-out property <bool> stream-filter-open: false;
+    in-out property <string> active-stream-provider: "All";
+    in-out property <string> episode-search-query: "";
+
+    width: root.parity-size ? 2048px : 1280px;
+    height: root.parity-size ? 1096px : 720px;
+    background: Theme.background;
+    default-font-family: "Plus Jakarta Sans";
+
+    private property <length> debug-unit: root.parity-size ? 16px : 14px;
+    private property <bool> series-state: root.preview-state == "series-episodes"
+        || root.preview-state == "series-streams"
+        || root.preview-state == "series-stream-loading"
+        || root.preview-state == "series-no-streams";
+    private property <bool> stream-state: root.preview-state == "series-streams"
+        || root.preview-state == "series-stream-loading"
+        || root.preview-state == "series-no-streams";
+    private property <bool> has-streams: root.preview-state == "movie-streams"
+        || root.preview-state == "movie-filter"
+        || root.preview-state == "series-streams"
+        || root.preview-state == "series-stream-loading";
+    private property <[int]> preview-seasons: [21, 22, 23];
+    private property <[int]> no-seasons: [];
+
+    private property <[PreviewStateOption]> debug-options: [
+        { label: "Loading title", value: "loading" },
+        { label: "Movie streams", value: "movie-streams" },
+        { label: "Movie no streams", value: "movie-no-streams" },
+        { label: "Stream filter open", value: "movie-filter" },
+        { label: "Series episodes", value: "series-episodes" },
+        { label: "Episode streams", value: "series-streams" },
+        { label: "Streams still loading", value: "series-stream-loading" },
+        { label: "Episode no streams", value: "series-no-streams" }
+    ];
+
+    private property <[EpisodeItem]> preview-episodes: [
+        {
+            id: "s23e13", title: "13. Ancient History - The Harley Passed Down by Elbaph",
+            released: "Jun 28, 2026", thumbnail: @image-url("../assets/images/background_1.svg"),
+            season: 23, episode-num: 13, is-upcoming: false, is-watched: true
+        },
+        {
+            id: "s23e14", title: "14. The Legend Lurking in Elbaph",
+            released: "Jul 12, 2026", thumbnail: @image-url("../assets/images/background_2.svg"),
+            season: 23, episode-num: 14, is-upcoming: false, is-watched: false
+        },
+        {
+            id: "s23e15", title: "15. The Truth Behind the Giant Kingdom",
+            released: "Jul 19, 2026", thumbnail: @image-url("../assets/images/intro-background.png"),
+            season: 23, episode-num: 15, is-upcoming: true, is-watched: false
+        },
+        {
+            id: "s23e16", title: "16. The Straw Hats Set Sail",
+            released: "Jul 26, 2026", thumbnail: @image-url("../assets/images/background_1.svg"),
+            season: 23, episode-num: 16, is-upcoming: true, is-watched: false
+        }
+    ];
+
+    private property <[StreamLink]> preview-streams: [
+        { id: "stream-4k", name: "Torrentio 4K", description: "[ToonsHub] One Piece EP114 · 4K · 1.09 GB · Multi Subs", provider: "Torrentio" },
+        { id: "stream-1080-a", name: "Torrentio 1080p", description: "[ToonsHub] One Piece EP114 · 1080p WEB-DL · 551 MB", provider: "Torrentio" },
+        { id: "stream-1080-b", name: "MediaFusion 1080p", description: "One Piece S23E14 · 1080p · 1.35 GB · English", provider: "MediaFusion" },
+        { id: "stream-720", name: "Torrentio 720p", description: "One Piece S23E14 · 720p · 295 MB · Multi Subs", provider: "Torrentio" },
+        { id: "stream-direct", name: "Debrid 1080p", description: "Instant stream · 1080p · 2.1 GB", provider: "Debrid" }
+    ];
+
+    FullscreenPreviewShell {
+        width: parent.width;
+        height: parent.height;
+
+        DetailsPage {
+            width: parent.width;
+            height: parent.height;
+            loading: root.preview-state == "loading";
+            item-title: root.series-state ? "One Piece" : "Dune: Part Two";
+            description: root.series-state
+                ? "Monkey D. Luffy and the Straw Hat crew sail the Grand Line in search of the legendary treasure One Piece."
+                : "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.";
+            background-image: root.series-state
+                ? @image-url("../assets/images/intro-background.png")
+                : @image-url("../assets/images/background_1.svg");
+            poster: root.series-state
+                ? @image-url("../assets/images/intro-background.png")
+                : @image-url("../assets/images/background_1.svg");
+            release-year: root.series-state ? "1999 –" : "2024";
+            runtime: root.series-state ? "25 min" : "166 min";
+            rating: root.series-state ? "9.0" : "8.5";
+            genres: root.series-state
+                ? ["Animation", "Action", "Adventure"]
+                : ["Science Fiction", "Adventure", "Drama"];
+            cast: root.series-state
+                ? ["Mayumi Tanaka", "Akemi Okamura", "Tony Beck"]
+                : ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"];
+            directors: root.series-state ? ["Kōnosuke Uda"] : ["Denis Villeneuve"];
+            is-in-library: true;
+            is-watched: root.series-state;
+            has-trailer: true;
+            trailer-selection-id: "preview-trailer";
+
+            is-series: root.series-state;
+            available-seasons: root.series-state ? root.preview-seasons : root.no-seasons;
+            active-season <=> root.active-season;
+            episode-names: [
+                "S23E13 Ancient History",
+                "S23E14 The Legend Lurking in Elbaph",
+                "S23E15 The Truth Behind the Giant Kingdom",
+                "S23E16 The Straw Hats Set Sail"
+            ];
+            active-episode-idx <=> root.active-episode-idx;
+            episodes: root.series-state ? root.preview-episodes : [];
+            in-stream-view: root.stream-state;
+            episode-search-query <=> root.episode-search-query;
+
+            streams: root.has-streams ? root.preview-streams : [];
+            stream-providers: ["All", "Torrentio", "MediaFusion", "Debrid"];
+            active-stream-provider <=> root.active-stream-provider;
+            stream-filter-open <=> root.stream-filter-open;
+            stream-loading-count: root.preview-state == "series-stream-loading" ? 2 : 0;
+            username: "Preview User";
+            has-avatar-image: true;
+            avatar-image: @image-url("../assets/images/default_avatar.png");
+            default-avatar-icon: @image-url("../assets/images/default_avatar.png");
+            anonymous-icon: @image-url("../assets/images/icons/person.svg");
+
+            episode-changed(index) => {
+                root.active-episode-idx = index;
+                root.preview-state = "series-streams";
+            }
+        }
+
+        PreviewDebugMenu {
+            unit: root.debug-unit;
+            x: root.debug-unit;
+            y: parent.height - self.height - root.debug-unit;
+            title: "Details states";
+            options: root.debug-options;
+            selected-value: root.preview-state;
+            open <=> root.debug-menu-open;
+            state-selected(value) => {
+                root.preview-state = value;
+                root.stream-filter-open = value == "movie-filter";
+                root.active-stream-provider = "All";
+            }
+        }
+    }
+}

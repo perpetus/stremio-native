@@ -1,5 +1,6 @@
 # Rust and generated build output
 /target/
+/vendor/skia/skia/
 
 # Runtime-generated application state and downloaded artwork
 /storage/

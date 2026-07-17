@@ -1,0 +1,35 @@
+import { CinematicTheme } from "../theme.slint";
+import { CinematicInput } from "../components/input.slint";
+import { CinematicButton } from "../components/cinematic_button.slint";
+import { Checkbox } from "../../components/checkbox.slint";
+export component CinematicAuthPage inherits Rectangle {
+    in-out property <string> email: ""; in-out property <string> password: "";
+    in property <string> error-message: ""; in property <bool> loading: false;
+    in-out property <bool> register-mode: false;
+    private property <bool> terms-accepted: false;
+    private property <bool> privacy-accepted: false;
+    private property <bool> marketing-accepted: false;
+    callback submit-login(string, string); callback submit-register(string, string, bool, bool, bool);
+    callback facebook-login; callback apple-login; callback request-password-reset(string); callback guest;
+    background: @linear-gradient(135deg, #08070d, CinematicTheme.canvas);
+    Rectangle { width: min(420px, parent.width - 32px); height: min(root.register-mode ? 660px : 580px, parent.height - 32px); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; background: #181818f5; border-radius: 8px;
+        VerticalLayout { padding: root.register-mode ? 24px : 28px; spacing: root.register-mode ? 8px : 10px;
+            Image { source: @image-url("../../assets/images/stremio-logo.svg"); height: root.register-mode ? 32px : 42px; image-fit: contain; }
+            Text { text: root.register-mode ? "Create account" : "Sign in"; color: CinematicTheme.primary; font-size: 27px; font-weight: 800; }
+            CinematicInput { text <=> root.email; label: "Email"; placeholder: "name@example.com"; }
+            CinematicInput { text <=> root.password; label: "Password"; placeholder: "Enter your password"; input-type: InputType.password; accepted(value) => { if (!root.register-mode) { root.submit-login(root.email, value); } } }
+            if root.register-mode : Checkbox { label: "I accept the Terms of Service"; checked <=> root.terms-accepted; }
+            if root.register-mode : Checkbox { label: "I accept the Privacy Policy"; checked <=> root.privacy-accepted; }
+            if root.register-mode : Checkbox { label: "Send me occasional product updates"; checked <=> root.marketing-accepted; }
+            if root.error-message != "" : Text { text: root.error-message; color: #ff6b6b; wrap: word-wrap; }
+            CinematicButton { primary: true; label: root.loading ? "Please wait" : (root.register-mode ? "Create account" : "Sign in"); enabled: !root.loading && (!root.register-mode || (root.terms-accepted && root.privacy-accepted)); clicked => { if (root.register-mode) { root.submit-register(root.email, root.password, root.terms-accepted, root.privacy-accepted, root.marketing-accepted); } else { root.submit-login(root.email, root.password); } } }
+            CinematicButton { label: root.register-mode ? "Already have an account" : "Create an account"; clicked => { root.register-mode = !root.register-mode; } }
+            if !root.register-mode : HorizontalLayout { spacing: 10px;
+                CinematicButton { horizontal-stretch: 1; label: "Facebook"; clicked => { root.facebook-login(); } }
+                CinematicButton { horizontal-stretch: 1; label: "Apple"; clicked => { root.apple-login(); } }
+            }
+            if !root.register-mode : CinematicButton { label: "Reset password"; clicked => { root.request-password-reset(root.email); } }
+            CinematicButton { label: "Continue as guest"; clicked => { root.guest(); } }
+        }
+    }
+}

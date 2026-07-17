@@ -1,0 +1,49 @@
+import { Theme } from "theme.slint";
+import { Sidebar, NavTabButton } from "components/sidebar.slint";
+import "./assets/fonts/PlusJakartaSans.ttf";
+
+export component SidebarPreview inherits Window {
+    width: 96px;
+    height: 900px;
+    background: #1c1c1c;
+    default-font-family: "Plus Jakarta Sans";
+
+    Sidebar {
+        x: 0px;
+        y: 0px;
+        height: parent.height;
+        unit: 16px;
+        active-tab: 0;
+    }
+}
+
+export component NavTabBoundsPreview inherits Window {
+    width: 144px;
+    height: 144px;
+    background: #1c1c1c;
+    default-font-family: "Plus Jakarta Sans";
+
+    nav := NavTabButton {
+        x: 10px;
+        y: 10px;
+        unit: 16px;
+        label: "Board";
+        icon-source: @image-url("assets/images/icons/home-outline.svg");
+        active-icon-source: @image-url("assets/images/icons/home.svg");
+        selected: true;
+        background: Theme.overlay-hover;
+        border-width: 1px;
+        border-color: Theme.primary-accent;
+    }
+
+    Text {
+        x: 10px;
+        y: 108px;
+        width: 124px;
+        height: 24px;
+        text: nav.label;
+        color: Theme.primary-accent;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+}

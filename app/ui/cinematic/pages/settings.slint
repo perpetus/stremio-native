@@ -1,0 +1,10 @@
+import { CinematicTheme } from "../theme.slint";
+import { SettingsPage } from "../../pages/settings.slint";
+
+// Settings is intentionally built on the optimized Classic implementation.
+// It contains a large behavior-neutral control surface and every setting must
+// remain wired identically; the Cinematic shell supplies the compact top
+// navigation and fixed dark canvas while this component preserves that API.
+export component CinematicSettingsPage inherits SettingsPage {
+    background: CinematicTheme.canvas;
+}

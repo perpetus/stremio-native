@@ -1,78 +1,239 @@
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    io::{self, BufReader, Read},
+    path::{Component, Path, PathBuf},
+};
 
-fn main() {
-    println!("cargo:rerun-if-env-changed=STREMIO_MPV_STATIC_DIR");
+use serde::Deserialize;
 
-    let target_os = env::var("CARGO_CFG_TARGET_OS").expect("Cargo did not provide target OS");
-    let target_arch =
-        env::var("CARGO_CFG_TARGET_ARCH").expect("Cargo did not provide target architecture");
-    let target_env = env::var("CARGO_CFG_TARGET_ENV").expect("Cargo did not provide target ABI");
-    if (
-        target_os.as_str(),
-        target_arch.as_str(),
-        target_env.as_str(),
-    ) != ("windows", "x86_64", "msvc")
-    {
-        panic!(
-            "the bundled MPV SDK currently supports only x86_64-pc-windows-msvc; target was {target_arch}-{target_os}-{target_env}"
-        );
+const SUPPORTED_TARGET: &str = "x86_64-pc-windows-msvc";
+const SUPPORTED_CPU_BASELINE: &str = "x86-64-v3";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeSdk {
+    schema_version: u32,
+    target: String,
+    cpu_baseline: String,
+    link_name: String,
+    import_library: SdkFile,
+    runtime_library: SdkFile,
+}
+
+#[derive(Deserialize)]
+struct SdkFile {
+    file: String,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("cargo:rerun-if-env-changed=STREMIO_MPV_DIR");
+
+    let target = env::var("TARGET")?;
+    if target != SUPPORTED_TARGET {
+        return Err(io::Error::other(format!(
+            "the bundled MPV runtime supports only {SUPPORTED_TARGET}; target was {target}"
+        ))
+        .into());
     }
 
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let sdk_dir = env::var_os("STREMIO_MPV_STATIC_DIR")
+    let manifest_dir = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR")
+            .ok_or_else(|| io::Error::other("Cargo did not provide CARGO_MANIFEST_DIR"))?,
+    );
+    let sdk_dir = env::var_os("STREMIO_MPV_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("../dist/mpv/windows-x86_64-static"));
-    let link_manifest = sdk_dir.join("link-libraries.txt");
-    println!("cargo:rerun-if-changed={}", link_manifest.display());
+        .unwrap_or_else(|| manifest_dir.join("../dist/mpv/windows-x86_64-v3-dynamic"));
+    let sdk_manifest_path = sdk_dir.join("runtime-sdk.json");
+    println!("cargo:rerun-if-changed={}", sdk_manifest_path.display());
 
-    let entries = fs::read_to_string(&link_manifest).unwrap_or_else(|error| {
-        panic!(
-            "the statically linked MPV SDK is missing at {} ({error}); run scripts/sync-mpv.ps1 first",
+    let sdk_manifest = fs::read_to_string(&sdk_manifest_path).map_err(|error| {
+        io::Error::other(format!(
+            "the tracked MPV runtime is missing at {} ({error}); restore dist/mpv/windows-x86_64-v3-dynamic or set STREMIO_MPV_DIR",
             sdk_dir.display()
-        )
-    });
-    let entries = entries.strip_prefix('\u{FEFF}').unwrap_or(&entries);
-    let library_dir = sdk_dir.join("lib");
-    println!("cargo:rustc-link-search=native={}", library_dir.display());
+        ))
+    })?;
+    let sdk_manifest = sdk_manifest
+        .strip_prefix('\u{FEFF}')
+        .unwrap_or(&sdk_manifest);
+    let sdk: RuntimeSdk = serde_json::from_str(sdk_manifest).map_err(|error| {
+        io::Error::other(format!(
+            "invalid MPV runtime manifest {}: {error}",
+            sdk_manifest_path.display()
+        ))
+    })?;
 
-    for (index, line) in entries.lines().enumerate() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
+    if sdk.schema_version != 1 {
+        return Err(io::Error::other(format!(
+            "unsupported MPV runtime schema {} in {}",
+            sdk.schema_version,
+            sdk_manifest_path.display()
+        ))
+        .into());
+    }
+    if sdk.target != target {
+        return Err(io::Error::other(format!(
+            "MPV runtime target mismatch: manifest contains {}, Cargo requested {target}",
+            sdk.target
+        ))
+        .into());
+    }
+    if sdk.cpu_baseline != SUPPORTED_CPU_BASELINE {
+        return Err(io::Error::other(format!(
+            "MPV runtime CPU baseline mismatch: expected {SUPPORTED_CPU_BASELINE}, manifest contains {}",
+            sdk.cpu_baseline
+        ))
+        .into());
+    }
+    validate_link_name(&sdk.link_name)?;
+
+    let import_library = resolve_sdk_file(&sdk_dir, &sdk.import_library.file, "import library")?;
+    let runtime_library =
+        resolve_sdk_file(&sdk_dir, &sdk.runtime_library.file, "runtime library")?;
+    println!("cargo:rerun-if-changed={}", import_library.display());
+    println!("cargo:rerun-if-changed={}", runtime_library.display());
+
+    let library_dir = import_library.parent().ok_or_else(|| {
+        io::Error::other(format!(
+            "MPV import library has no parent directory: {}",
+            import_library.display()
+        ))
+    })?;
+    println!("cargo:rustc-link-search=native={}", library_dir.display());
+    println!("cargo:rustc-link-lib=dylib={}", sdk.link_name);
+
+    let profile_dir = cargo_profile_dir()?;
+    deploy_runtime_library(&runtime_library, &profile_dir)?;
+    deploy_runtime_library(&runtime_library, &profile_dir.join("deps"))?;
+
+    Ok(())
+}
+
+fn resolve_sdk_file(
+    sdk_dir: &Path,
+    relative_path: &str,
+    description: &str,
+) -> Result<PathBuf, io::Error> {
+    let relative_path = Path::new(relative_path);
+    if relative_path.as_os_str().is_empty()
+        || !relative_path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err(io::Error::other(format!(
+            "MPV {description} path must stay inside the SDK: {relative_path:?}"
+        )));
+    }
+
+    let path = sdk_dir.join(relative_path);
+    if !path.is_file() {
+        return Err(io::Error::other(format!(
+            "MPV {description} is missing: {}",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+fn cargo_profile_dir() -> Result<PathBuf, io::Error> {
+    let out_dir = PathBuf::from(
+        env::var_os("OUT_DIR").ok_or_else(|| io::Error::other("Cargo did not provide OUT_DIR"))?,
+    );
+    out_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "could not derive Cargo's profile directory from OUT_DIR {}",
+                out_dir.display()
+            ))
+        })
+}
+
+fn deploy_runtime_library(source: &Path, destination_dir: &Path) -> Result<(), io::Error> {
+    fs::create_dir_all(destination_dir)?;
+    let file_name = source.file_name().ok_or_else(|| {
+        io::Error::other(format!(
+            "MPV runtime library has no file name: {}",
+            source.display()
+        ))
+    })?;
+    let destination = destination_dir.join(file_name);
+    copy_if_changed(source, &destination).map_err(|error| {
+        io::Error::other(format!(
+            "failed to deploy MPV runtime from {} to {}: {error}",
+            source.display(),
+            destination.display()
+        ))
+    })
+}
+
+fn copy_if_changed(source: &Path, destination: &Path) -> Result<(), io::Error> {
+    if files_equal(source, destination)? {
+        return Ok(());
+    }
+
+    let destination_name = destination
+        .file_name()
+        .ok_or_else(|| io::Error::other("runtime destination has no file name"))?
+        .to_string_lossy();
+    let temporary = destination.with_file_name(format!(
+        ".{destination_name}.{}.tmp",
+        std::process::id()
+    ));
+    if temporary.exists() {
+        fs::remove_file(&temporary)?;
+    }
+
+    fs::copy(source, &temporary)?;
+    if destination.exists() {
+        fs::remove_file(destination)?;
+    }
+    if let Err(error) = fs::rename(&temporary, destination) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn files_equal(left: &Path, right: &Path) -> Result<bool, io::Error> {
+    let left_metadata = fs::metadata(left)?;
+    let right_metadata = match fs::metadata(right) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if left_metadata.len() != right_metadata.len() {
+        return Ok(false);
+    }
+
+    let mut left = BufReader::new(fs::File::open(left)?);
+    let mut right = BufReader::new(fs::File::open(right)?);
+    let mut left_buffer = [0_u8; 64 * 1024];
+    let mut right_buffer = [0_u8; 64 * 1024];
+    loop {
+        let left_read = left.read(&mut left_buffer)?;
+        let right_read = right.read(&mut right_buffer)?;
+        if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+            return Ok(false);
         }
-        let (kind, value) = line.split_once('|').unwrap_or_else(|| {
-            panic!(
-                "invalid MPV link manifest entry on line {}: {line}",
-                index + 1
-            )
-        });
-        match kind {
-            "static" => {
-                let archive = library_dir.join(format!("{value}.lib"));
-                assert!(
-                    archive.is_file(),
-                    "MPV static archive is missing: {}",
-                    archive.display()
-                );
-                println!("cargo:rerun-if-changed={}", archive.display());
-                println!("cargo:rustc-link-lib=static={value}");
-            }
-            "whole-static" => {
-                let archive = library_dir.join(format!("{value}.lib"));
-                assert!(
-                    archive.is_file(),
-                    "MPV whole-archive dependency is missing: {}",
-                    archive.display()
-                );
-                println!("cargo:rerun-if-changed={}", archive.display());
-                println!("cargo:rustc-link-lib=static:+whole-archive={value}");
-            }
-            "system" => println!("cargo:rustc-link-lib=dylib={value}"),
-            "link-arg" => println!("cargo:rustc-link-arg={value}"),
-            _ => panic!(
-                "unknown MPV link manifest kind on line {}: {kind}",
-                index + 1
-            ),
+        if left_read == 0 {
+            return Ok(true);
         }
     }
+}
+
+fn validate_link_name(name: &str) -> Result<(), io::Error> {
+    if !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Ok(());
+    }
+
+    Err(io::Error::other(format!(
+        "invalid library name in MPV runtime manifest: {name:?}"
+    )))
 }

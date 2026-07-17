@@ -1,4 +1,4 @@
-use crate::models::details::load_meta_details_for_video;
+use crate::models::details::{load_meta_details_for_video, selected_details_are_ready};
 use crate::models::{Fingerprint, SyncFingerprint, catalog_name_index, sync_fingerprint_changed};
 use crate::{AppModel, MainWindow, NavigationController, NavigationIntent};
 use crate::{BoardSection, MediaCardItem};
@@ -33,8 +33,9 @@ pub fn setup(
         let navigation = navigation.clone();
         move |id, media_type, video_id| {
             let id = id.to_string();
+            let details_ready = selected_details_are_ready(&runtime, &id);
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_details_loading(true);
+                ui.set_details_loading(!details_ready);
                 navigation.dispatch_and_project(
                     &ui,
                     NavigationIntent::OpenDetails {

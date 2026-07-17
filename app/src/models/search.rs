@@ -1,4 +1,4 @@
-use crate::models::details::load_meta_details_for_video;
+use crate::models::details::{load_meta_details_for_video, selected_details_are_ready};
 use crate::models::{Fingerprint, SyncFingerprint, catalog_name_index, sync_fingerprint_changed};
 use crate::{
     AppModel, AppModelField, BoardSection, MainWindow, MediaCardItem, NavigationController,
@@ -115,7 +115,7 @@ fn open_details(
     video_id: Option<slint::SharedString>,
 ) {
     let id = id.to_string();
-    ui.set_details_loading(true);
+    ui.set_details_loading(!selected_details_are_ready(runtime, &id));
     ui.set_search_suggestions(ModelRc::new(VecModel::from(Vec::new())));
     navigation.dispatch_and_project(
         ui,

@@ -3,6 +3,7 @@ import { Theme, IconData } from "../theme.slint";
 import { ButtonSurface, IconAction, MenuButton, PillButton } from "../components/button.slint";
 import { Slider } from "../components/slider.slint";
 import { PopupMenuSurface, ContextMenuSurface, ContextMenuOption } from "../components/overlays.slint";
+import { PlayerVideoSurfaceMode } from "../rendering_types.slint";
 
 component PlayerIconButton inherits IconAction {
     // Kept for the legacy control tree below. The active player chrome uses
@@ -171,6 +172,7 @@ export component PlayerPage inherits Rectangle {
     in property <string> info-hash: "";
     in property <image> poster-image;
     in property <image> video-frame;
+    in property <PlayerVideoSurfaceMode> video-surface-mode: PlayerVideoSurfaceMode.image;
     in property <bool> has-video-frame: false;
     in property <bool> loading: false;
     in property <bool> buffering: false;
@@ -285,11 +287,12 @@ export component PlayerPage inherits Rectangle {
         triggered => { buffer-pulse = !buffer-pulse; }
     }
 
-    background: #000000;
+    background: video-surface-mode == PlayerVideoSurfaceMode.native-window
+        ? transparent : #000000;
 
     // MPV renders into a same-context RGBA texture. Keeping the frame in the
     // Slint scene lets the renderer composite every control above the video.
-    Image {
+    if (video-surface-mode == PlayerVideoSurfaceMode.image) : Image {
         source: video-frame;
         width: 100%;
         height: 100%;

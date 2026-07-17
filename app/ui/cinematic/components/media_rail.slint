@@ -1,0 +1,115 @@
+import { CinematicTheme } from "../theme.slint";
+import { MediaCardItem } from "../../components/media_card.slint";
+import { MediaTile } from "media_tile.slint";
+import { FocusSurface } from "focus_surface.slint";
+import { HorizontalScroll } from "../../components/horizontal_scroll.slint";
+
+export component MediaRail inherits Rectangle {
+    in property <string> title: "";
+    in property <[MediaCardItem]> items: [];
+    in property <bool> show-missing-artwork: false;
+    in property <int> selected-index: -1;
+    callback item-selected(string, string, string);
+    callback poster-requested(string);
+    private property <length> tile-width: root.width < 1100px ? 229px
+        : (root.width > 1900px ? 299px : 259px);
+    private property <length> tile-height: (root.tile-width - 9px) * 0.564;
+    private property <length> scroll-offset: 0px;
+    private property <int> keyboard-index: root.selected-index >= 0 ? root.selected-index : 0;
+    function reveal(index: int) {
+        root.scroll-offset = min(0px, max(
+            root.width - (root.items.length + (root.show-missing-artwork ? 1 : 0)) * root.tile-width,
+            root.width / 2 - (index + 0.5) * root.tile-width
+        ));
+    }
+    changed selected-index => {
+        if (root.selected-index >= 0) {
+            root.keyboard-index = root.selected-index;
+            root.reveal(root.selected-index);
+        }
+    }
+    forward-focus: rail-focus;
+    height: root.tile-height + 54px; background: transparent;
+    Text { x: 0; y: 0; text: root.title; color: CinematicTheme.primary; font-size: 20px; font-weight: 700; }
+    HorizontalScroll { y: 35px; width: parent.width; height: root.tile-height + 8px;
+        content-width: max(root.width, (root.items.length + (root.show-missing-artwork ? 1 : 0)) * root.tile-width);
+        content-height: root.tile-height + 8px; scroll-offset <=> root.scroll-offset;
+        show-edge-fades: true; fade-surface-color: CinematicTheme.canvas;
+        for item[index] in root.items : MediaTile {
+                x: index * root.tile-width; y: 0px;
+                width: root.tile-width - 9px;
+                height: root.tile-height;
+                landscape: true; title: item.title; artwork: item.poster; artwork-url: item.poster-url;
+                selected: index == root.selected-index
+                    || (rail-focus.has-focus && index == root.keyboard-index);
+                show-progress: item.show-progress; progress: item.progress-value; watched: item.show-checkmark;
+                is-visible: self.x + self.width >= -root.scroll-offset - root.tile-width
+                    && self.x <= -root.scroll-offset + root.width + root.tile-width;
+                clicked => { root.item-selected(item.id, item.media-type, item.video-id); }
+                became-focused => { root.reveal(index); }
+                poster-requested(url) => { root.poster-requested(url); }
+        }
+        if root.show-missing-artwork : MediaTile {
+            x: root.items.length * root.tile-width; y: 0px; landscape: true;
+            width: root.tile-width - 9px; height: root.tile-height;
+            title: "Missing artwork"; is-visible: true;
+        }
+    }
+
+    rail-focus := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        focus-on-tab-navigation: root.items.length > 0;
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow && root.keyboard-index + 1 < root.items.length) {
+                root.keyboard-index += 1;
+                root.reveal(root.keyboard-index);
+                return accept;
+            }
+            if (event.text == Key.LeftArrow && root.keyboard-index > 0) {
+                root.keyboard-index -= 1;
+                root.reveal(root.keyboard-index);
+                return accept;
+            }
+            if ((event.text == "\n" || event.text == " ") && root.items.length > 0) {
+                root.item-selected(
+                    root.items[root.keyboard-index].id,
+                    root.items[root.keyboard-index].media-type,
+                    root.items[root.keyboard-index].video-id
+                );
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if (root.items.length > 0 && root.keyboard-index > 0) : FocusSurface {
+        x: 4px;
+        y: 70px;
+        width: 40px;
+        height: 64px;
+        radius: 4px;
+        accessible-name: "Previous titles";
+        Text { text: "‹"; color: CinematicTheme.primary; font-size: 30px; horizontal-alignment: center; vertical-alignment: center; }
+        clicked => {
+            root.keyboard-index = max(0, root.keyboard-index - 1);
+            root.reveal(root.keyboard-index);
+        }
+    }
+
+    if (root.items.length > 0 && root.keyboard-index + 1 < root.items.length) : FocusSurface {
+        x: parent.width - 44px;
+        y: 70px;
+        width: 40px;
+        height: 64px;
+        radius: 4px;
+        accessible-name: "Next titles";
+        Text { text: "›"; color: CinematicTheme.primary; font-size: 30px; horizontal-alignment: center; vertical-alignment: center; }
+        clicked => {
+            root.keyboard-index = min(root.items.length - 1, root.keyboard-index + 1);
+            root.reveal(root.keyboard-index);
+        }
+    }
+}

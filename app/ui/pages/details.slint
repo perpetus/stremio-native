@@ -119,6 +119,19 @@ export component DetailsPage inherits Rectangle {
         background: Theme.background.with-alpha(0.18);
     }
 
+    IconAction {
+        x: root.unit;
+        y: root.unit;
+        width: 3.5 * root.unit;
+        height: 3.5 * root.unit;
+        unit: root.unit;
+        icon-source: @image-url("../assets/images/icons/chevron-back.svg");
+        accessible-name: "Back";
+        surface-color: transparent;
+        z: 20;
+        clicked => { root.close(); }
+    }
+
     if (root.loading) : Rectangle {
         MetaPreviewPlaceholder {
             x: 4 * root.unit;
@@ -160,19 +173,6 @@ export component DetailsPage inherits Rectangle {
         height: parent.height;
         background: transparent;
         clip: true;
-
-        IconAction {
-            x: root.unit;
-            y: root.unit;
-            width: 3.5 * root.unit;
-            height: 3.5 * root.unit;
-            unit: root.unit;
-            icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-            accessible-name: "Back";
-            surface-color: transparent;
-            z: 10;
-            clicked => { root.close(); }
-        }
 
         MetaPreview {
             x: 4 * root.unit;

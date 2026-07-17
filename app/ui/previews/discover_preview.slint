@@ -1,0 +1,122 @@
+import { AppPreviewShell } from "preview_shell.slint";
+import { DiscoverPage, DiscoverRow } from "../pages/discover.slint";
+import { MediaCardItem } from "../components/media_card.slint";
+import { PreviewDebugMenu, PreviewStateOption } from "debug_menu.slint";
+import { Theme } from "../theme.slint";
+
+export component DiscoverPreview inherits Window {
+    in-out property <string> preview-state: "series-selected";
+    in-out property <bool> parity-size: false;
+    in-out property <bool> debug-menu-open: false;
+    in-out property <bool> open-type: false;
+    in-out property <bool> open-catalog: false;
+    in-out property <bool> open-genre: false;
+    width: root.parity-size ? 2048px : 1280px;
+    height: root.parity-size ? 1096px : 720px;
+    background: Theme.main-gradient;
+    default-font-family: "Plus Jakarta Sans";
+
+    private property <length> debug-unit: root.parity-size ? 15px : 14px;
+    private property <bool> catalog-visible: root.preview-state != "loading"
+        && root.preview-state != "empty";
+    private property <bool> details-visible: root.preview-state == "selected"
+        || root.preview-state == "movie-selected"
+        || root.preview-state == "series-selected"
+        || root.preview-state == "series-watched"
+        || root.preview-state == "type-menu"
+        || root.preview-state == "catalog-menu"
+        || root.preview-state == "genre-menu";
+    private property <bool> movie-selected: root.preview-state == "movie-selected";
+    private property <[PreviewStateOption]> debug-options: [
+        { label: "Loading", value: "loading" },
+        { label: "Empty catalog", value: "empty" },
+        { label: "Catalog loaded", value: "catalog" },
+        { label: "Movie selected", value: "movie-selected" },
+        { label: "Series selected", value: "series-selected" },
+        { label: "Series watched", value: "series-watched" },
+        { label: "Type dropdown", value: "type-menu" },
+        { label: "Catalog dropdown", value: "catalog-menu" },
+        { label: "Genre dropdown", value: "genre-menu" }
+    ];
+
+    private property <[MediaCardItem]> preview-cards: [
+        { id: "one-piece", media-type: "series", video-id: "", title: "One Piece", poster-url: "", poster: @image-url("../assets/images/intro-background.png"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+        { id: "dune", media-type: "movie", video-id: "", title: "Dune", poster-url: "", poster: @image-url("../assets/images/background_1.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+        { id: "alien", media-type: "movie", video-id: "", title: "Alien", poster-url: "", poster: @image-url("../assets/images/background_2.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+        { id: "arrival", media-type: "movie", video-id: "", title: "Arrival", poster-url: "", poster: @image-url("../assets/images/intro-background.png"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+        { id: "blade-runner", media-type: "movie", video-id: "", title: "Blade Runner", poster-url: "", poster: @image-url("../assets/images/background_1.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+        { id: "moon", media-type: "movie", video-id: "", title: "Moon", poster-url: "", poster: @image-url("../assets/images/background_2.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 }
+    ];
+    private property <[DiscoverRow]> preview-rows: [
+        { cols: root.preview-cards },
+        { cols: root.preview-cards }
+    ];
+
+    AppPreviewShell {
+        width: parent.width;
+        height: parent.height;
+        active-tab: 1;
+
+        DiscoverPage {
+            width: parent.width;
+            height: parent.height;
+            loading: root.preview-state == "loading";
+            rows: root.catalog-visible ? root.preview-rows : [];
+            column-count: 6;
+            available-types: ["Movie", "Series"];
+            active-type: root.movie-selected ? "Movie" : "Series";
+            type-open <=> root.open-type;
+            available-catalogs: ["Popular", "New", "Featured"];
+            active-catalog: "Popular";
+            catalog-open <=> root.open-catalog;
+            available-genres: ["All", "Action", "Adventure"];
+            active-genre: "All";
+            genre-open <=> root.open-genre;
+            has-preview: root.details-visible;
+            preview-title: root.movie-selected ? "Dune" : "One Piece";
+            preview-description: root.movie-selected
+                ? "A gifted young heir travels to the most dangerous planet in the universe to protect his family and his people."
+                : "Monkey D. Luffy and the Straw Hat crew sail the Grand Line in search of the legendary treasure One Piece.";
+            preview-rating: root.movie-selected ? "8.0" : "9.0";
+            preview-year: root.movie-selected ? "2021" : "1999";
+            preview-runtime: root.movie-selected ? "155 min" : "25 min";
+            preview-genres: root.movie-selected
+                ? ["Science Fiction", "Adventure", "Drama"]
+                : ["Animation", "Action", "Adventure"];
+            preview-cast: root.movie-selected
+                ? ["Timothée Chalamet", "Rebecca Ferguson", "Oscar Isaac"]
+                : ["Mayumi Tanaka", "Akemi Okamura", "Tony Beck"];
+            preview-directors: root.movie-selected
+                ? ["Denis Villeneuve"]
+                : ["Kōnosuke Uda"];
+            preview-poster: root.movie-selected
+                ? @image-url("../assets/images/background_1.svg")
+                : @image-url("../assets/images/intro-background.png");
+            preview-is-in-library: true;
+            preview-is-watched: root.preview-state == "series-watched";
+            preview-has-trailer: true;
+            preview-trailer-selection-id: "preview-trailer";
+            item-selected(id) => {
+                root.preview-state = id == "dune" ? "movie-selected" : "series-selected";
+                root.open-type = false;
+                root.open-catalog = false;
+                root.open-genre = false;
+            }
+        }
+
+        PreviewDebugMenu {
+            unit: root.debug-unit;
+            x: root.debug-unit;
+            y: parent.height - self.height - root.debug-unit;
+            options: root.debug-options;
+            selected-value: root.preview-state;
+            open <=> root.debug-menu-open;
+            state-selected(value) => {
+                root.preview-state = value;
+                root.open-type = value == "type-menu";
+                root.open-catalog = value == "catalog-menu";
+                root.open-genre = value == "genre-menu";
+            }
+        }
+    }
+}

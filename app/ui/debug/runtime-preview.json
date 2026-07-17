@@ -1,0 +1,389 @@
+{
+  "ui-style": "cinematic",
+  "debug-missing-artwork-path": "docs/ui/posters/intentionally-missing.jpg",
+  "debug-show-missing-artwork": true,
+  "debug-preview-enabled": true,
+  "debug-menu-open": true,
+  "debug-preview-page": 7,
+  "debug-preview-state": "series-streams",
+  "profile-menu-open": false,
+  "username": "Preview User",
+  "server-status": "Online",
+  "server-url": "http://127.0.0.1:11470",
+  "search-query": "one piece",
+  "search-catalog-count": 2,
+  "search-suggestions": [
+    {
+      "id": "tt0388629",
+      "media-type": "series",
+      "title": "One Piece",
+      "release-info": "1999 –",
+      "poster-url": "",
+      "poster": "docs/ui/posters/poster_02.png"
+    },
+    {
+      "id": "tt15239678",
+      "media-type": "movie",
+      "title": "Dune: Part Two",
+      "release-info": "2024",
+      "poster-url": "",
+      "poster": "docs/ui/posters/poster_01.png"
+    }
+  ],
+  "board-continue-watching": [
+    {
+      "id": "tt0111161",
+      "media-type": "movie",
+      "video-id": "tt0111161",
+      "title": "The Shawshank Redemption",
+      "poster": "docs/ui/posters/poster_00.png", "poster-url": "",
+      "description": "",
+      "show-checkmark": false,
+      "show-progress": true,
+      "progress-value": 0.63
+    },
+    {
+      "id": "tt1375666",
+      "media-type": "movie",
+      "video-id": "tt1375666",
+      "title": "Inception",
+      "poster": "docs/ui/posters/poster_01.png", "poster-url": "",
+      "description": "",
+      "show-checkmark": false,
+      "show-progress": true,
+      "progress-value": 0.28
+    }
+  ],
+  "board-sections": [
+    {
+      "title": "Continue watching",
+      "r-type": "",
+      "catalog-id": "",
+      "addon-base": "",
+      "is-continue-watching": true,
+      "items": [
+        { "id": "tt0111161", "media-type": "movie", "video-id": "tt0111161", "title": "The Shawshank Redemption", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": true, "progress-value": 0.63 },
+        { "id": "tt1375666", "media-type": "movie", "video-id": "tt1375666", "title": "Inception", "poster": "docs/ui/posters/poster_01.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": true, "progress-value": 0.28 }
+      ]
+    },
+    {
+      "title": "Popular Movies",
+      "r-type": "movie",
+      "catalog-id": "top",
+      "addon-base": "debug",
+      "is-continue-watching": false,
+      "items": [
+        { "id": "dune", "media-type": "movie", "video-id": "", "title": "Dune", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "alien", "media-type": "movie", "video-id": "", "title": "Alien", "poster": "docs/ui/posters/poster_01.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "arrival", "media-type": "movie", "video-id": "", "title": "Arrival", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "blade-runner", "media-type": "movie", "video-id": "", "title": "Blade Runner", "poster": "docs/ui/posters/poster_03.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "moon", "media-type": "movie", "video-id": "", "title": "Moon", "poster": "docs/ui/posters/poster_04.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "solaris", "media-type": "movie", "video-id": "", "title": "Solaris", "poster": "docs/ui/posters/poster_05.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "metropolis", "media-type": "movie", "video-id": "", "title": "A Very Long Localized Movie Title for Overlay and Focus Testing", "poster": "docs/ui/posters/poster_06.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "stalker", "media-type": "movie", "video-id": "", "title": "Stalker", "poster": "docs/ui/posters/poster_07.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    },
+    {
+      "title": "Popular Series",
+      "r-type": "series",
+      "catalog-id": "series-top",
+      "addon-base": "debug",
+      "is-continue-watching": false,
+      "items": [
+        { "id": "one-piece", "media-type": "series", "video-id": "", "title": "One Piece", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": true, "show-progress": false, "progress-value": 0 },
+        { "id": "severance", "media-type": "series", "video-id": "", "title": "Severance", "poster": "docs/ui/posters/poster_03.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "andor", "media-type": "series", "video-id": "", "title": "Andor", "poster": "docs/ui/posters/poster_04.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "shogun", "media-type": "series", "video-id": "", "title": "Shōgun", "poster": "docs/ui/posters/poster_05.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "dark", "media-type": "series", "video-id": "", "title": "Dark", "poster": "docs/ui/posters/poster_06.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "arcane", "media-type": "series", "video-id": "", "title": "Arcane", "poster": "docs/ui/posters/poster_07.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    }
+  ],
+  "search-sections": [
+    {
+      "title": "Movies",
+      "r-type": "movie",
+      "catalog-id": "search-movies",
+      "addon-base": "debug",
+      "is-continue-watching": false,
+      "items": [
+        { "id": "dune", "media-type": "movie", "video-id": "", "title": "Dune", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "dune-2", "media-type": "movie", "video-id": "", "title": "Dune: Part Two", "poster": "docs/ui/posters/poster_01.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "jodorowsky", "media-type": "movie", "video-id": "", "title": "Jodorowsky's Dune", "poster": "docs/ui/posters/poster_05.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    },
+    {
+      "title": "Series",
+      "r-type": "series",
+      "catalog-id": "search-series",
+      "addon-base": "debug",
+      "is-continue-watching": false,
+      "items": [
+        { "id": "one-piece", "media-type": "series", "video-id": "", "title": "One Piece", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "one-piece-live", "media-type": "series", "video-id": "", "title": "One Piece (Live Action)", "poster": "docs/ui/posters/poster_06.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    }
+  ],
+  "discover-types": ["Movie", "Series"],
+  "discover-active-type": "Series",
+  "discover-catalogs": ["Popular", "New", "Featured"],
+  "discover-active-catalog": "Popular",
+  "discover-genres": ["All", "Action", "Adventure", "Animation"],
+  "discover-active-genre": "All",
+  "discover-column-count": 6,
+  "discover-rows": [
+    {
+      "cols": [
+        { "id": "one-piece", "media-type": "series", "video-id": "", "title": "One Piece", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "dune", "media-type": "movie", "video-id": "", "title": "Dune", "poster": "docs/ui/posters/poster_01.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "alien", "media-type": "movie", "video-id": "", "title": "Alien", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "arrival", "media-type": "movie", "video-id": "", "title": "Arrival", "poster": "docs/ui/posters/poster_03.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "blade-runner", "media-type": "movie", "video-id": "", "title": "Blade Runner", "poster": "docs/ui/posters/poster_04.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "moon", "media-type": "movie", "video-id": "", "title": "Moon", "poster": "docs/ui/posters/poster_05.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    },
+    {
+      "cols": [
+        { "id": "one-piece-2", "media-type": "series", "video-id": "", "title": "One Piece Film Red", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "dune-2", "media-type": "movie", "video-id": "", "title": "Dune: Part Two", "poster": "docs/ui/posters/poster_01.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "prometheus", "media-type": "movie", "video-id": "", "title": "Prometheus", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "contact", "media-type": "movie", "video-id": "", "title": "Contact", "poster": "docs/ui/posters/poster_03.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "2049", "media-type": "movie", "video-id": "", "title": "Blade Runner 2049", "poster": "docs/ui/posters/poster_06.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "sunshine", "media-type": "movie", "video-id": "", "title": "Sunshine", "poster": "docs/ui/posters/poster_07.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    }
+  ],
+  "discover-has-preview": true,
+  "discover-preview-title": "One Piece",
+  "discover-preview-description": "Monkey D. Luffy and the Straw Hat crew sail the Grand Line in search of the legendary treasure One Piece.",
+  "discover-preview-rating": "9.0",
+  "discover-preview-year": "1999 –",
+  "discover-preview-runtime": "25 min",
+  "discover-preview-genres": ["Animation", "Action", "Adventure"],
+  "discover-preview-cast": ["Mayumi Tanaka", "Akemi Okamura", "Tony Beck"],
+  "discover-preview-directors": ["Kōnosuke Uda"],
+  "discover-preview-is-in-library": true,
+  "discover-preview-is-watched": false,
+  "discover-preview-has-trailer": true,
+  "discover-preview-poster": "docs/ui/posters/poster_02.png",
+  "library-column-count": 6,
+  "library-active-type": "All",
+  "library-active-sort": "Last Watched",
+  "library-rows": [
+    {
+      "cols": [
+        { "id": "dune", "media-type": "movie", "video-id": "", "title": "Dune", "poster": "docs/ui/posters/poster_03.png", "poster-url": "", "description": "", "show-checkmark": true, "show-progress": true, "progress-value": 0.35 },
+        { "id": "alien", "media-type": "movie", "video-id": "", "title": "Alien", "poster": "docs/ui/posters/poster_04.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "arrival", "media-type": "movie", "video-id": "", "title": "Arrival", "poster": "docs/ui/posters/poster_07.jpg", "poster-url": "", "description": "", "show-checkmark": true, "show-progress": false, "progress-value": 0 },
+        { "id": "blade-runner", "media-type": "movie", "video-id": "", "title": "Blade Runner", "poster": "docs/ui/posters/poster_00.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": true, "progress-value": 0.72 },
+        { "id": "moon", "media-type": "movie", "video-id": "", "title": "Moon", "poster": "docs/ui/posters/poster_05.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "solaris", "media-type": "movie", "video-id": "", "title": "Solaris", "poster": "docs/ui/posters/poster_06.jpg", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 }
+      ]
+    },
+    {
+      "cols": [
+        { "id": "one-piece", "media-type": "series", "video-id": "", "title": "One Piece", "poster": "docs/ui/posters/poster_02.png", "poster-url": "", "description": "", "show-checkmark": true, "show-progress": true, "progress-value": 0.81 },
+        { "id": "severance", "media-type": "series", "video-id": "", "title": "Severance", "poster": "docs/ui/posters/poster_04.png", "poster-url": "", "description": "", "show-checkmark": false, "show-progress": false, "progress-value": 0 },
+        { "id": "dark", "media-type": "series", "video-id": "", "title": "Dark", "poster": "docs/ui/posters/poster_07.jpg", "poster-url": "", "description": "", "show-checkmark": true, "show-progress": false, "progress-value": 0 }
+      ]
+    }
+  ],
+  "addons-list": [
+    {
+      "id": "torrentio",
+      "name": "Torrentio",
+      "version": "0.0.15",
+      "description": "Streams movies and series from multiple providers.",
+      "logo": "app/ui/assets/images/icons/addons.svg",
+      "is_installed": true,
+      "transport-url": "https://torrentio.strem.fun/manifest.json",
+      "types-label": "Movies, Series, Anime",
+      "configurable": true,
+      "configuration-required": false,
+      "supports-movie": true,
+      "supports-series": true,
+      "supports-anime": true,
+      "supports-tv": false
+    },
+    {
+      "id": "watchhub",
+      "name": "WatchHub",
+      "version": "2.0.0",
+      "description": "Find where movies and series are available to stream.",
+      "logo": "app/ui/assets/images/icons/addons.svg",
+      "is_installed": true,
+      "transport-url": "https://watchhub.strem.io/manifest.json",
+      "types-label": "Movies, Series",
+      "configurable": false,
+      "configuration-required": false,
+      "supports-movie": true,
+      "supports-series": true,
+      "supports-anime": false,
+      "supports-tv": false
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "version": "1.2.3",
+      "description": "Official trailers, channels, and public videos.",
+      "logo": "app/ui/assets/images/icons/addons.svg",
+      "is_installed": false,
+      "transport-url": "https://youtube.strem.io/manifest.json",
+      "types-label": "Movies, TV Channels",
+      "configurable": false,
+      "configuration-required": false,
+      "supports-movie": true,
+      "supports-series": false,
+      "supports-anime": false,
+      "supports-tv": true
+    }
+  ],
+  "addon-details-addon": {
+    "id": "torrentio",
+    "name": "Torrentio",
+    "version": "0.0.15",
+    "description": "Streams movies and series from multiple providers.",
+    "logo": "app/ui/assets/images/icons/addons.svg",
+    "is_installed": true,
+    "transport-url": "https://torrentio.strem.fun/manifest.json",
+    "types-label": "Movies, Series, Anime",
+    "configurable": true,
+    "configuration-required": false,
+    "supports-movie": true,
+    "supports-series": true,
+    "supports-anime": true,
+    "supports-tv": false
+  },
+  "addon-details-configurable": true,
+  "calendar-selected-year": 2026,
+  "calendar-selected-month": "July",
+  "calendar-previous-month": "June",
+  "calendar-next-month": "August",
+  "calendar-rows": [
+    { "cells": [
+      { "blank": true, "day": 0, "today": false, "items": [] },
+      { "blank": true, "day": 0, "today": false, "items": [] },
+      { "blank": false, "day": 1, "today": false, "items": [] },
+      { "blank": false, "day": 2, "today": false, "items": [{ "meta-id": "one-piece", "media-type": "series", "title": "One Piece", "poster": "docs/ui/posters/poster_00.png" }] },
+      { "blank": false, "day": 3, "today": false, "items": [] },
+      { "blank": false, "day": 4, "today": false, "items": [{ "meta-id": "severance", "media-type": "series", "title": "Severance", "poster": "docs/ui/posters/poster_01.png" }] },
+      { "blank": false, "day": 5, "today": false, "items": [] }
+    ] },
+    { "cells": [
+      { "blank": false, "day": 6, "today": false, "items": [] },
+      { "blank": false, "day": 7, "today": false, "items": [{ "meta-id": "andor", "media-type": "series", "title": "Andor", "poster": "docs/ui/posters/poster_02.png" }] },
+      { "blank": false, "day": 8, "today": false, "items": [] },
+      { "blank": false, "day": 9, "today": false, "items": [] },
+      { "blank": false, "day": 10, "today": false, "items": [{ "meta-id": "one-piece", "media-type": "series", "title": "One Piece", "poster": "docs/ui/posters/poster_03.png" }] },
+      { "blank": false, "day": 11, "today": false, "items": [] },
+      { "blank": false, "day": 12, "today": false, "items": [] }
+    ] },
+    { "cells": [
+      { "blank": false, "day": 13, "today": false, "items": [] },
+      { "blank": false, "day": 14, "today": false, "items": [] },
+      { "blank": false, "day": 15, "today": true, "items": [{ "meta-id": "one-piece", "media-type": "series", "title": "One Piece", "poster": "docs/ui/posters/poster_04.png" }, { "meta-id": "dark", "media-type": "series", "title": "Dark", "poster": "docs/ui/posters/poster_05.jpg" }] },
+      { "blank": false, "day": 16, "today": false, "items": [] },
+      { "blank": false, "day": 17, "today": false, "items": [] },
+      { "blank": false, "day": 18, "today": false, "items": [] },
+      { "blank": false, "day": 19, "today": false, "items": [{ "meta-id": "arcane", "media-type": "series", "title": "Arcane", "poster": "docs/ui/posters/poster_06.jpg" }] }
+    ] },
+    { "cells": [
+      { "blank": false, "day": 20, "today": false, "items": [] },
+      { "blank": false, "day": 21, "today": false, "items": [] },
+      { "blank": false, "day": 22, "today": false, "items": [{ "meta-id": "one-piece", "media-type": "series", "title": "One Piece", "poster": "docs/ui/posters/poster_07.jpg" }] },
+      { "blank": false, "day": 23, "today": false, "items": [] },
+      { "blank": false, "day": 24, "today": false, "items": [] },
+      { "blank": false, "day": 25, "today": false, "items": [] },
+      { "blank": false, "day": 26, "today": false, "items": [] }
+    ] },
+    { "cells": [
+      { "blank": false, "day": 27, "today": false, "items": [] },
+      { "blank": false, "day": 28, "today": false, "items": [] },
+      { "blank": false, "day": 29, "today": false, "items": [{ "meta-id": "one-piece", "media-type": "series", "title": "One Piece", "poster": "docs/ui/posters/poster_00.png" }] },
+      { "blank": false, "day": 30, "today": false, "items": [] },
+      { "blank": false, "day": 31, "today": false, "items": [] },
+      { "blank": true, "day": 0, "today": false, "items": [] },
+      { "blank": true, "day": 0, "today": false, "items": [] }
+    ] }
+  ],
+  "detail-title": "One Piece",
+  "detail-poster": "docs/ui/posters/poster_03.png",
+  "detail-background": "docs/ui/cinematic_hero_backdrop.jpg",
+  "detail-description": "Monkey D. Luffy and the Straw Hat crew sail the Grand Line in search of the legendary treasure One Piece.",
+  "detail-year": "1999 –",
+  "detail-runtime": "25 min",
+  "detail-rating": "9.0",
+  "detail-genres": ["Animation", "Action", "Adventure"],
+  "detail-cast": ["Mayumi Tanaka", "Akemi Okamura", "Tony Beck"],
+  "detail-directors": ["Kōnosuke Uda"],
+  "detail-is-watched": false,
+  "detail-is-in-library": true,
+  "detail-has-trailer": true,
+  "detail-trailer-selection-id": "preview-trailer",
+  "detail-is-series": true,
+  "detail-seasons": [21, 22, 23],
+  "detail-active-season": 23,
+  "detail-active-episode-idx": 1,
+  "detail-episode-names": [
+    "S23E13 Ancient History",
+    "S23E14 The Legend Lurking in Elbaph",
+    "S23E15 The Truth Behind the Giant Kingdom",
+    "S23E16 The Straw Hats Set Sail"
+  ],
+  "detail-episodes": [
+    { "id": "s23e13", "title": "Ancient History - The Harley Passed Down by Elbaph", "released": "Jun 28, 2026", "thumbnail": "docs/ui/other_assets/component_00_3e256fa61783fe5df017e65b5df5b6f253112e2b.png", "season": 23, "episode-num": 13, "is-upcoming": false, "is-watched": true },
+    { "id": "s23e14", "title": "The Legend Lurking in Elbaph", "released": "Jul 12, 2026", "thumbnail": "docs/ui/other_assets/component_01_0bb41d47ae1f6f8c25190752d1af6152c152018d.png", "season": 23, "episode-num": 14, "is-upcoming": false, "is-watched": false },
+    { "id": "s23e15", "title": "The Truth Behind the Giant Kingdom", "released": "Jul 19, 2026", "thumbnail": "docs/ui/other_assets/component_05_4e2ea6dc25215d08ee402801d8a8eb89dcf0bb6b.jpg", "season": 23, "episode-num": 15, "is-upcoming": true, "is-watched": false },
+    { "id": "s23e16", "title": "The Straw Hats Set Sail", "released": "Jul 26, 2026", "thumbnail": "docs/ui/other_assets/component_06_69b580bf28447721cc611dd30f4cea991b4737c9.jpg", "season": 23, "episode-num": 16, "is-upcoming": true, "is-watched": false }
+  ],
+  "detail-stream-providers": ["All", "Torrentio", "MediaFusion", "Debrid"],
+  "stream-links": [
+    { "id": "stream-4k", "name": "Torrentio 4K", "description": "[ToonsHub] One Piece EP114 · 4K · 1.09 GB · Multi Subs", "provider": "Torrentio" },
+    { "id": "stream-1080-a", "name": "Torrentio 1080p", "description": "[ToonsHub] One Piece EP114 · 1080p WEB-DL · 551 MB", "provider": "Torrentio" },
+    { "id": "stream-1080-b", "name": "MediaFusion 1080p", "description": "One Piece S23E14 · 1080p · 1.35 GB · English", "provider": "MediaFusion" },
+    { "id": "stream-720", "name": "Torrentio 720p", "description": "One Piece S23E14 · 720p · 295 MB · Multi Subs", "provider": "Torrentio" },
+    { "id": "stream-direct", "name": "Debrid 1080p", "description": "Instant stream · 1080p · 2.1 GB", "provider": "Debrid" }
+  ],
+  "player-title": "One Piece · S23E14 · The Legend Lurking in Elbaph",
+  "player-stream-name": "Torrentio 1080p WEB-DL",
+  "player-poster-image": "docs/ui/posters/poster_04.png",
+  "player-video-frame": "docs/ui/cinematic_hero_backdrop.jpg",
+  "player-has-video-frame": true,
+  "player-buffering-percent": 67,
+  "player-volume": 0.72,
+  "player-progress": 0.42,
+  "player-elapsed-time-str": "10:31",
+  "player-total-time-str": "25:00",
+  "player-video-format": "H.265 / HEVC Main 10",
+  "player-audio-format": "E-AC-3 5.1",
+  "player-file-format": "Matroska",
+  "player-hwdec": "D3D11VA",
+  "player-buffered-percent": 71,
+  "player-download-speed": "12.8 MB/s",
+  "player-upload-speed": "1.3 MB/s",
+  "player-peer-count": 184,
+  "player-stream-progress": 67,
+  "player-subtitles-tracks": ["English · embedded", "English · OpenSubtitles", "Spanish", "French"],
+  "player-subtitle-track-languages": ["English", "English", "Spanish", "French"],
+  "player-subtitle-track-origins": ["Embedded", "OpenSubtitles", "OpenSubtitles", "OpenSubtitles"],
+  "player-subtitle-languages": ["English", "Spanish", "French"],
+  "player-subtitle-language-track-indices": [0, 2, 3],
+  "player-active-subtitle-idx": 0,
+  "player-audio-tracks": ["Japanese · 5.1", "English · Stereo"],
+  "player-audio-track-languages": ["Japanese", "English"],
+  "player-audio-track-labels": ["Original", "Dub"],
+  "player-active-audio-idx": 0,
+  "player-is-series": true,
+  "player-episode-names": [
+    "Ancient History - The Harley Passed Down by Elbaph",
+    "The Legend Lurking in Elbaph",
+    "The Truth Behind the Giant Kingdom",
+    "The Straw Hats Set Sail"
+  ],
+  "player-active-episode-idx": 1,
+  "player-playback-speed": 1,
+  "player-video-scale-mode": 0,
+  "player-skip-button-label": "Skip Intro",
+  "settings-streaming-logs-text": "[12:41:08] Streaming server started\n[12:41:09] DHT bootstrap complete\n[12:41:11] Ready for playback"
+}
+

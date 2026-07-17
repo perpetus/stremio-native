@@ -1,5 +1,5 @@
 use crate::config::AppConfig;
-use crate::{AppModel, AppModelField, MainWindow};
+use crate::{AppModel, AppModelField, MainWindow, UiStyle};
 use core_env::DesktopEnv;
 use server_connector::AppServerConnector;
 use settings_gui::ServerConnector;
@@ -84,6 +84,21 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
         .map(|model| model.ctx.profile.settings.streaming_server_url.to_string())
         .unwrap_or_else(|| config.server_url.clone());
     let connector = Arc::new(AppServerConnector::new(server_url));
+
+    ui.on_settings_change_ui_style({
+        let ui_weak = ui.as_weak();
+        move |style| {
+            let mut config = crate::config::load_config();
+            config.ui_style = match style {
+                UiStyle::Classic => crate::config::UiStyle::Classic,
+                UiStyle::Cinematic => crate::config::UiStyle::Cinematic,
+            };
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_ui_style(style);
+            }
+            crate::config::save_config(&config);
+        }
+    });
 
     // Fetch initial streaming server settings and coordinate with Turso DB
     let conn_init = connector.clone();

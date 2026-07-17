@@ -1,9 +1,10 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "../theme.slint";
-import { MenuButton, PillButton } from "../components/button.slint";
+import { ButtonSurface, MenuButton, PillButton } from "../components/button.slint";
 import { NativeTextField } from "../components/text_input.slint";
 import { ToggleSwitch } from "../components/toggle.slint";
 import { Slider } from "../components/slider.slint";
+import { UiStyle } from "../cinematic/types.slint";
 
 component SettingsSection inherits VerticalLayout {
     in property <length> unit: 16px;
@@ -99,6 +100,109 @@ component SettingsOption inherits Rectangle {
     }
 }
 
+component InterfaceStyleChoice inherits ButtonSurface {
+    in property <length> unit: 16px;
+    in property <string> title;
+    in property <string> description;
+    in property <bool> selected: false;
+
+    height: 6.5 * root.unit;
+    border-radius: Theme.compact-radius;
+    border-width: root.has-focus ? 2px : 1px;
+    border-color: root.has-focus ? Theme.focus
+        : (root.selected ? Theme.accent : Theme.divider);
+    background: root.pressed ? Theme.overlay-pressed
+        : (root.has-hover ? Theme.overlay-hover : Theme.control-background);
+    accessible-name: root.title + ". " + root.description;
+
+    VerticalLayout {
+        padding: root.unit;
+        spacing: 0.35 * root.unit;
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: root.unit;
+            font-weight: root.selected ? 700 : 500;
+        }
+        Text {
+            text: root.description;
+            color: Theme.text-secondary;
+            font-size: 0.78 * root.unit;
+            wrap: word-wrap;
+            overflow: elide;
+        }
+    }
+
+    if (root.selected) : Rectangle {
+        x: parent.width - 1.65 * root.unit;
+        y: 0.65 * root.unit;
+        width: root.unit;
+        height: root.unit;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+        Text {
+            text: "✓";
+            color: Theme.text-primary;
+            font-size: 0.7 * root.unit;
+            font-weight: 800;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component InterfaceStyleSelector inherits Rectangle {
+    in property <length> unit: 16px;
+    in property <UiStyle> value: UiStyle.classic;
+    callback changed(UiStyle);
+
+    height: 10 * root.unit;
+    background: transparent;
+
+    restore-focus := Timer {
+        interval: 1ms;
+        running: true;
+        triggered => {
+            self.stop();
+            if (root.value == UiStyle.classic) {
+                classic-choice.focus();
+            } else {
+                cinematic-choice.focus();
+            }
+        }
+    }
+
+    VerticalLayout {
+        spacing: 0.75 * root.unit;
+        Text {
+            height: 1.5 * root.unit;
+            text: "Interface style";
+            color: Theme.text-primary;
+            font-size: root.unit;
+            font-weight: 500;
+        }
+        HorizontalLayout {
+            spacing: root.unit;
+            classic-choice := InterfaceStyleChoice {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                title: "Classic";
+                description: "The original Stremio desktop interface.";
+                selected: root.value == UiStyle.classic;
+                clicked => { root.changed(UiStyle.classic); }
+            }
+            cinematic-choice := InterfaceStyleChoice {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                title: "Cinematic";
+                description: "Artwork-led browsing with a compact top navigation.";
+                selected: root.value == UiStyle.cinematic;
+                clicked => { root.changed(UiStyle.cinematic); }
+            }
+        }
+    }
+}
+
 export component SettingsPage inherits Rectangle {
     width: 1280px;
     height: 720px;
@@ -173,14 +277,16 @@ export component SettingsPage inherits Rectangle {
     callback change-quit-on-close(bool);
 
     in property <length> unit: Theme.root-font-size;
+    in property <UiStyle> ui-style: UiStyle.classic;
+    callback change-ui-style(UiStyle);
     in-out property <int> active-category: 0;
     background: transparent;
 
     function update-active-category(offset: length) {
         root.active-category = (offset < 30 * root.unit) ? 0 :
-            ((offset < 65 * root.unit) ? 1 :
-            ((offset < 155 * root.unit) ? 2 :
-            ((offset < 205 * root.unit) ? 3 : 4)));
+            ((offset < 75 * root.unit) ? 1 :
+            ((offset < 165 * root.unit) ? 2 :
+            ((offset < 215 * root.unit) ? 3 : 4)));
     }
 
     HorizontalLayout {
@@ -196,9 +302,9 @@ export component SettingsPage inherits Rectangle {
 
             MenuButton { unit: root.unit; label: "General"; selected: root.active-category == 0; clicked => { scroll.viewport-y = 0px; root.active-category = 0; } }
             MenuButton { unit: root.unit; label: "Interface"; selected: root.active-category == 1; clicked => { scroll.viewport-y = -35 * root.unit; root.active-category = 1; } }
-            MenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { scroll.viewport-y = -70 * root.unit; root.active-category = 2; } }
-            MenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { scroll.viewport-y = -165 * root.unit; root.active-category = 3; } }
-            MenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { scroll.viewport-y = -215 * root.unit; root.active-category = 4; } }
+            MenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { scroll.viewport-y = -80 * root.unit; root.active-category = 2; } }
+            MenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { scroll.viewport-y = -175 * root.unit; root.active-category = 3; } }
+            MenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { scroll.viewport-y = -225 * root.unit; root.active-category = 4; } }
             Rectangle { vertical-stretch: 1; }
             Text {
                 height: 2 * root.unit;
@@ -300,6 +406,11 @@ export component SettingsPage inherits Rectangle {
                 interface-sec := SettingsSection {
                     unit: root.unit;
                     title: "Interface";
+                    InterfaceStyleSelector {
+                        unit: root.unit;
+                        value: root.ui-style;
+                        changed(style) => { root.change-ui-style(style); }
+                    }
                     SettingsOption {
                         unit: root.unit;
                         label: "Interface language";

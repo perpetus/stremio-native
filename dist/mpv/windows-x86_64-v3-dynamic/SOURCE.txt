@@ -1,0 +1,18 @@
+libmpv Windows binary provenance
+================================
+
+Distribution: shinchiro/mpv-winbuild-cmake release 20260610
+MPV version: v0.41.0-744-g304426c39
+MPV revision: 304426c390901436fb1d4a63efbd582ae80c88f4
+CPU baseline: x86-64-v3
+Archive: mpv-dev-x86_64-v3-20260610-git-304426c.7z
+Archive SHA-256: d4b3d6df9fdb33d5591c4ece7d0cc24d2f7822b298f6a1528595e0ccff7424a6
+Archive URL: https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-v3-20260610-git-304426c.7z
+Build scripts and dependency revisions: https://github.com/shinchiro/mpv-winbuild-cmake/tree/20260610
+MPV source: https://github.com/mpv-player/mpv/commit/304426c390901436fb1d4a63efbd582ae80c88f4
+
+The mpv project lists shinchiro's builds on its Windows installation page:
+https://mpv.io/installation/
+
+The upstream GNU-style COFF import archive is stored as lib/mpv.lib so Cargo's
+MSVC target can discover it by link name. Its bytes are otherwise unchanged.

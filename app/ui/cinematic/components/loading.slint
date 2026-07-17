@@ -1,0 +1,7 @@
+import { CinematicTheme } from "../theme.slint";
+export component CinematicSkeleton inherits Rectangle {
+    in property <length> radius: 4px;
+    border-radius: root.radius; background: CinematicTheme.raised;
+    opacity: 0.65;
+}
+

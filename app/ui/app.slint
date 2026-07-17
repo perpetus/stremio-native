@@ -1,62 +1,381 @@
 import { Theme, IconData } from "theme.slint";
-import { Sidebar } from "components/sidebar.slint";
+import { AppActions, AppState } from "app_contract.slint";
 import { MediaCardItem } from "components/media_card.slint";
-import { SearchBox, SearchSuggestion } from "components/search.slint";
-import { ButtonSurface, MenuButton, PillButton, IconAction, IconActionPair } from "components/button.slint";
-import { Checkbox } from "components/checkbox.slint";
-import { RadioButton } from "components/radio_button.slint";
-import { NumberInput } from "components/number_input.slint";
-import { StremioTextInput, NativeTextField, SearchBar, SearchField } from "components/text_input.slint";
-import { Slider } from "components/slider.slint";
-import { PopupMenuSurface, ModalDialog, BottomSheet, ContextMenuSurface } from "components/overlays.slint";
-import { ActionsGroup } from "components/action_group.slint";
-import { HorizontalScroll } from "components/horizontal_scroll.slint";
-import { FallbackImage } from "components/fallback_image.slint";
-import { DelayedRenderer, VisibilityTransition } from "components/transition.slint";
-import { HorizontalNavBar, HorizontalNavButton, NavMenuPanel } from "components/horizontal_nav.slint";
-import { KeyCap, ShortcutComboView, ShortcutCombosView, ShortcutsGroup } from "components/shortcuts.slint";
-import { SharePrompt } from "components/share_prompt.slint";
-import { ColorInput, ColorPicker } from "components/color_input.slint";
-import { SeeAllButton, MetaRow, MetaRowPlaceholder } from "components/meta_row.slint";
-import { MetaActionButton, MetaLinkChip, MetaLinks, MetaPreview, MetaPreviewPlaceholder } from "components/meta_preview.slint";
-import { AuthPage } from "pages/auth.slint";
-import { BoardPage, BoardSection } from "pages/board.slint";
-import { DiscoverPage, DiscoverRow } from "pages/discover.slint";
-import { LibraryPage, LibraryRow } from "pages/library.slint";
-import { AddonsPage, AddonItem } from "pages/addons.slint";
-import { DetailsPage, StreamLink, EpisodeItem } from "pages/details.slint";
-import { SettingsPage } from "pages/settings.slint";
-import { PlayerPage } from "pages/player.slint";
-import { CalendarPage, CalendarRow, CalendarCell, CalendarMediaItem } from "pages/calendar.slint";
-import { SearchPage } from "pages/search.slint";
+import { SearchSuggestion } from "components/search.slint";
+import { BoardSection } from "pages/board.slint";
+import { DiscoverRow } from "pages/discover.slint";
+import { LibraryRow } from "pages/library.slint";
+import { AddonItem } from "pages/addons.slint";
+import { StreamLink, EpisodeItem } from "pages/details.slint";
+import { CalendarRow, CalendarCell, CalendarMediaItem } from "pages/calendar.slint";
 import { AppDebugMenu, DebugPageOption, DebugStateOption } from "components/app_debug_menu.slint";
+import { UiStyle } from "cinematic/types.slint";
+import { CinematicTheme } from "cinematic/theme.slint";
+import { CinematicRoutes } from "cinematic/routes.slint";
+import { AuthLayer } from "layers/auth_layer.slint";
+import { DetailsLayer } from "layers/details_layer.slint";
+import { PlayerLayer } from "layers/player_layer.slint";
+import { ClassicShell } from "shells/classic_shell.slint";
+import { PlayerVideoSurfaceMode } from "rendering_types.slint";
 
 import { Fonts } from "imported_fonts.slint";
 import "./assets/fonts/PlusJakartaSans.ttf";
 
-export { Theme, IconData, MediaCardItem, StreamLink, EpisodeItem, BoardSection, DiscoverRow, LibraryRow, AddonItem, CalendarRow, CalendarCell, CalendarMediaItem, SearchSuggestion }
+export { Theme, IconData, UiStyle, PlayerVideoSurfaceMode, AppActions, MediaCardItem, StreamLink, EpisodeItem, BoardSection, DiscoverRow, LibraryRow, AddonItem, CalendarRow, CalendarCell, CalendarMediaItem, SearchSuggestion }
 
 export component MainWindow inherits Window {
+    in-out property profile-menu-open <=> AppState.profile-menu-open;
+    in-out property ui-style <=> AppState.ui-style;
+    // Native shortcut handling reads these presentation signals so editable
+    // controls retain standard keyboard behavior.
+    out property <bool> application-shortcuts-focused;
+    out property <bool> shortcut-player-active;
+    in-out property settings-active-category <=> AppState.settings-active-category;
+    in-out property debug-preview-enabled <=> AppState.debug-preview-enabled;
+    in-out property debug-menu-open <=> AppState.debug-menu-open;
+    in property debug-missing-artwork-path <=> AppState.debug-missing-artwork-path;
+    in property debug-show-missing-artwork <=> AppState.debug-show-missing-artwork;
+    in-out property debug-preview-page <=> AppState.debug-preview-page;
+    in-out property debug-preview-state <=> AppState.debug-preview-state;
+    in property active-tab <=> AppState.active-tab;
+    in-out property username <=> AppState.username;
+    in-out property avatar-letter <=> AppState.avatar-letter;
+    in-out property avatar-image <=> AppState.avatar-image;
+    in-out property has-avatar-image <=> AppState.has-avatar-image;
+    in property default-avatar-icon <=> AppState.default-avatar-icon;
+    in property anonymous-icon <=> AppState.anonymous-icon;
+    in-out property loading <=> AppState.loading;
+    in-out property error-message <=> AppState.error-message;
+    in-out property server-status <=> AppState.server-status;
+    in-out property server-url <=> AppState.server-url;
+    in-out property board-continue-watching <=> AppState.board-continue-watching;
+    in-out property board-sections <=> AppState.board-sections;
+    in-out property search-sections <=> AppState.search-sections;
+    in-out property search-suggestions <=> AppState.search-suggestions;
+    in-out property search-query <=> AppState.search-query;
+    in-out property search-loading <=> AppState.search-loading;
+    in-out property search-catalog-count <=> AppState.search-catalog-count;
+    in-out property discover-rows <=> AppState.discover-rows;
+    in-out property discover-column-count <=> AppState.discover-column-count;
+    in property discover-types <=> AppState.discover-types;
+    in-out property discover-active-type <=> AppState.discover-active-type;
+    in property discover-catalogs <=> AppState.discover-catalogs;
+    in-out property discover-active-catalog <=> AppState.discover-active-catalog;
+    in property discover-genres <=> AppState.discover-genres;
+    in-out property discover-active-genre <=> AppState.discover-active-genre;
+    in-out property discover-scroll-y <=> AppState.discover-scroll-y;
+    in-out property discover-has-preview <=> AppState.discover-has-preview;
+    in-out property discover-preview-title <=> AppState.discover-preview-title;
+    in-out property discover-preview-description <=> AppState.discover-preview-description;
+    in-out property discover-preview-rating <=> AppState.discover-preview-rating;
+    in-out property discover-preview-year <=> AppState.discover-preview-year;
+    in-out property discover-preview-runtime <=> AppState.discover-preview-runtime;
+    in-out property discover-preview-genres <=> AppState.discover-preview-genres;
+    in-out property discover-preview-cast <=> AppState.discover-preview-cast;
+    in-out property discover-preview-directors <=> AppState.discover-preview-directors;
+    in-out property discover-preview-is-in-library <=> AppState.discover-preview-is-in-library;
+    in-out property discover-preview-is-watched <=> AppState.discover-preview-is-watched;
+    in-out property discover-preview-has-trailer <=> AppState.discover-preview-has-trailer;
+    in-out property discover-preview-poster <=> AppState.discover-preview-poster;
+    in-out property discover-preview-poster-url <=> AppState.discover-preview-poster-url;
+    in-out property library-rows <=> AppState.library-rows;
+    in-out property library-column-count <=> AppState.library-column-count;
+    in-out property library-active-type <=> AppState.library-active-type;
+    in-out property library-active-sort <=> AppState.library-active-sort;
+    in-out property library-scroll-y <=> AppState.library-scroll-y;
+    in-out property addons-list <=> AppState.addons-list;
+    in-out property addons-search-query <=> AppState.addons-search-query;
+    in-out property addons-active-filter <=> AppState.addons-active-filter;
+    in-out property addons-active-type <=> AppState.addons-active-type;
+    in property addon-details-open <=> AppState.addon-details-open;
+    in-out property addon-details-addon <=> AppState.addon-details-addon;
+    in-out property addon-details-loading <=> AppState.addon-details-loading;
+    in-out property addon-details-error <=> AppState.addon-details-error;
+    in-out property addon-details-configurable <=> AppState.addon-details-configurable;
+    in-out property addon-details-configuration-required <=> AppState.addon-details-configuration-required;
+    in-out property detail-title <=> AppState.detail-title;
+    in-out property detail-description <=> AppState.detail-description;
+    in-out property detail-poster <=> AppState.detail-poster;
+    in-out property detail-poster-url <=> AppState.detail-poster-url;
+    in-out property detail-background <=> AppState.detail-background;
+    in-out property detail-background-url <=> AppState.detail-background-url;
+    in-out property detail-year <=> AppState.detail-year;
+    in-out property detail-runtime <=> AppState.detail-runtime;
+    in-out property detail-rating <=> AppState.detail-rating;
+    in-out property detail-genres <=> AppState.detail-genres;
+    in-out property detail-cast <=> AppState.detail-cast;
+    in-out property detail-directors <=> AppState.detail-directors;
+    in-out property detail-is-watched <=> AppState.detail-is-watched;
+    in-out property detail-is-in-library <=> AppState.detail-is-in-library;
+    in-out property detail-has-trailer <=> AppState.detail-has-trailer;
+    in-out property detail-trailer-selection-id <=> AppState.detail-trailer-selection-id;
+    in property show-details <=> AppState.show-details;
+    in-out property details-loading <=> AppState.details-loading;
+    in-out property stream-links <=> AppState.stream-links;
+    in-out property detail-stream-providers <=> AppState.detail-stream-providers;
+    in-out property detail-stream-loading-count <=> AppState.detail-stream-loading-count;
+    in-out property detail-active-stream-provider <=> AppState.detail-active-stream-provider;
+    in-out property detail-stream-filter-open <=> AppState.detail-stream-filter-open;
+    in-out property detail-is-series <=> AppState.detail-is-series;
+    in-out property detail-seasons <=> AppState.detail-seasons;
+    in-out property detail-active-season <=> AppState.detail-active-season;
+    in-out property detail-episode-names <=> AppState.detail-episode-names;
+    in-out property detail-active-episode-idx <=> AppState.detail-active-episode-idx;
+    in-out property detail-episodes <=> AppState.detail-episodes;
+    in-out property detail-in-stream-view <=> AppState.detail-in-stream-view;
+    in-out property detail-episode-search-query <=> AppState.detail-episode-search-query;
+    in-out property calendar-selected-year <=> AppState.calendar-selected-year;
+    in-out property calendar-selected-month <=> AppState.calendar-selected-month;
+    in-out property calendar-previous-month <=> AppState.calendar-previous-month;
+    in-out property calendar-next-month <=> AppState.calendar-next-month;
+    in-out property calendar-rows <=> AppState.calendar-rows;
+    in-out property calendar-loading <=> AppState.calendar-loading;
+    in property show-player <=> AppState.show-player;
+    in-out property <PlayerVideoSurfaceMode> player-video-surface-mode: PlayerVideoSurfaceMode.image;
+    in-out property player-title <=> AppState.player-title;
+    in-out property player-stream-name <=> AppState.player-stream-name;
+    in-out property player-poster-image <=> AppState.player-poster-image;
+    in-out property player-video-frame <=> AppState.player-video-frame;
+    in-out property player-has-video-frame <=> AppState.player-has-video-frame;
+    in-out property player-loading <=> AppState.player-loading;
+    in-out property player-buffering <=> AppState.player-buffering;
+    in-out property player-buffering-percent <=> AppState.player-buffering-percent;
+    in-out property player-paused <=> AppState.player-paused;
+    in-out property player-volume <=> AppState.player-volume;
+    in-out property player-muted <=> AppState.player-muted;
+    in-out property player-progress <=> AppState.player-progress;
+    in-out property player-elapsed-time-str <=> AppState.player-elapsed-time-str;
+    in-out property player-total-time-str <=> AppState.player-total-time-str;
+    in-out property player-subtitles-tracks <=> AppState.player-subtitles-tracks;
+    in-out property player-subtitle-track-languages <=> AppState.player-subtitle-track-languages;
+    in-out property player-subtitle-track-origins <=> AppState.player-subtitle-track-origins;
+    in-out property player-subtitle-languages <=> AppState.player-subtitle-languages;
+    in-out property player-subtitle-language-track-indices <=> AppState.player-subtitle-language-track-indices;
+    in-out property player-audio-tracks <=> AppState.player-audio-tracks;
+    in-out property player-audio-track-languages <=> AppState.player-audio-track-languages;
+    in-out property player-audio-track-labels <=> AppState.player-audio-track-labels;
+    in-out property player-active-subtitle-idx <=> AppState.player-active-subtitle-idx;
+    in-out property player-active-audio-idx <=> AppState.player-active-audio-idx;
+    in-out property player-subtitle-delay-seconds <=> AppState.player-subtitle-delay-seconds;
+    in-out property player-subtitle-size-percent <=> AppState.player-subtitle-size-percent;
+    in-out property player-subtitle-offset-percent <=> AppState.player-subtitle-offset-percent;
+    in-out property player-is-series <=> AppState.player-is-series;
+    in-out property player-episode-names <=> AppState.player-episode-names;
+    in-out property player-active-episode-idx <=> AppState.player-active-episode-idx;
+    in-out property player-playback-speed <=> AppState.player-playback-speed;
+    in-out property player-video-scale-mode <=> AppState.player-video-scale-mode;
+    in-out property player-error <=> AppState.player-error;
+    in-out property player-video-format <=> AppState.player-video-format;
+    in-out property player-audio-format <=> AppState.player-audio-format;
+    in-out property player-file-format <=> AppState.player-file-format;
+    in-out property player-hwdec <=> AppState.player-hwdec;
+    in-out property player-buffered-percent <=> AppState.player-buffered-percent;
+    in-out property player-download-speed <=> AppState.player-download-speed;
+    in-out property player-upload-speed <=> AppState.player-upload-speed;
+    in-out property player-peer-count <=> AppState.player-peer-count;
+    in-out property player-stream-progress <=> AppState.player-stream-progress;
+    in-out property player-seek-step-seconds <=> AppState.player-seek-step-seconds;
+    in-out property player-short-seek-step-seconds <=> AppState.player-short-seek-step-seconds;
+    in-out property player-show-skip-button <=> AppState.player-show-skip-button;
+    in-out property player-skip-button-label <=> AppState.player-skip-button-label;
+    in-out property player-controls-visible <=> AppState.player-controls-visible;
+    in-out property player-show-subtitles-menu <=> AppState.player-show-subtitles-menu;
+    in-out property player-show-audio-menu <=> AppState.player-show-audio-menu;
+    in-out property player-show-speed-menu <=> AppState.player-show-speed-menu;
+    in-out property player-show-stats-menu <=> AppState.player-show-stats-menu;
+    in-out property player-show-options-menu <=> AppState.player-show-options-menu;
+    in-out property player-show-playlist-drawer <=> AppState.player-show-playlist-drawer;
+    in-out property player-show-context-menu <=> AppState.player-show-context-menu;
+    in-out property torrent-cache-size <=> AppState.torrent-cache-size;
+    in-out property settings-interface-language <=> AppState.settings-interface-language;
+    in-out property settings-subtitles-language <=> AppState.settings-subtitles-language;
+    in-out property settings-torrent-profile <=> AppState.settings-torrent-profile;
+    in-out property settings-hardware-acceleration <=> AppState.settings-hardware-acceleration;
+    in-out property settings-binge-watching <=> AppState.settings-binge-watching;
+    in-out property settings-discord-rpc-enabled <=> AppState.settings-discord-rpc-enabled;
+    in-out property settings-tidb-api-key <=> AppState.settings-tidb-api-key;
+    in-out property settings-tidb-show-intro <=> AppState.settings-tidb-show-intro;
+    in-out property settings-tidb-show-recap <=> AppState.settings-tidb-show-recap;
+    in-out property settings-tidb-show-credits <=> AppState.settings-tidb-show-credits;
+    in-out property settings-tidb-show-preview <=> AppState.settings-tidb-show-preview;
+    in-out property settings-hide-spoilers <=> AppState.settings-hide-spoilers;
+    in-out property settings-gamepad-support <=> AppState.settings-gamepad-support;
+    in-out property settings-play-in-background <=> AppState.settings-play-in-background;
+    in-out property settings-subtitles-auto-select <=> AppState.settings-subtitles-auto-select;
+    in-out property settings-subtitles-font <=> AppState.settings-subtitles-font;
+    in-out property settings-subtitles-size <=> AppState.settings-subtitles-size;
+    in-out property settings-subtitles-bold <=> AppState.settings-subtitles-bold;
+    in-out property settings-subtitles-offset <=> AppState.settings-subtitles-offset;
+    in-out property settings-seek-duration <=> AppState.settings-seek-duration;
+    in-out property settings-pause-on-minimize <=> AppState.settings-pause-on-minimize;
+    in-out property settings-quit-on-close <=> AppState.settings-quit-on-close;
+    in-out property settings-export-loading <=> AppState.settings-export-loading;
+    in-out property settings-export-status <=> AppState.settings-export-status;
+    in-out property settings-streaming-seeding <=> AppState.settings-streaming-seeding;
+    in-out property settings-streaming-dht <=> AppState.settings-streaming-dht;
+    in-out property settings-streaming-pex <=> AppState.settings-streaming-pex;
+    in-out property settings-streaming-lsd <=> AppState.settings-streaming-lsd;
+    in-out property settings-streaming-remote-url <=> AppState.settings-streaming-remote-url;
+    in-out property settings-streaming-logs-text <=> AppState.settings-streaming-logs-text;
+    in property board-icon <=> AppState.board-icon;
+    in property discover-icon <=> AppState.discover-icon;
+    in property library-icon <=> AppState.library-icon;
+    in property calendar-icon <=> AppState.calendar-icon;
+    in property addons-icon <=> AppState.addons-icon;
+    in property settings-icon <=> AppState.settings-icon;
+    in property logout-icon <=> AppState.logout-icon;
+    in property mail-icon <=> AppState.mail-icon;
+    in property lock-icon <=> AppState.lock-icon;
+    in property search-icon <=> AppState.search-icon;
+    in property facebook-icon <=> AppState.facebook-icon;
+    in property apple-icon <=> AppState.apple-icon;
+    in property icon-play <=> AppState.icon-play;
+    in property icon-pause <=> AppState.icon-pause;
+    in property icon-next <=> AppState.icon-next;
+    in property icon-volume-high <=> AppState.icon-volume-high;
+    in property icon-volume-low <=> AppState.icon-volume-low;
+    in property icon-volume-mute <=> AppState.icon-volume-mute;
+    in property icon-fullscreen <=> AppState.icon-fullscreen;
+    in property icon-subtitles <=> AppState.icon-subtitles;
+    in property icon-audio <=> AppState.icon-audio;
+    in property icon-speed <=> AppState.icon-speed;
+    in property icon-stats <=> AppState.icon-stats;
+    in property icon-options <=> AppState.icon-options;
+    in property icon-menu <=> AppState.icon-menu;
+    in property icon-back <=> AppState.icon-back;
+    in property icon-link <=> AppState.icon-link;
+    in property icon-magnet <=> AppState.icon-magnet;
+    in property icon-download <=> AppState.icon-download;
+    in property icon-eye <=> AppState.icon-eye;
+    in property icon-eye-off <=> AppState.icon-eye-off;
+    in property icon-clapperboard <=> AppState.icon-clapperboard;
+    in property refresh-icon <=> AppState.refresh-icon;
+    in property folder-icon <=> AppState.folder-icon;
+    in-out property is-fullscreen <=> AppState.is-fullscreen;
+    callback toggle-fullscreen;
+    callback open-external-url(string);
+    callback submit-login(string, string);
+    callback submit-register(string, string, bool, bool, bool);
+    callback facebook-login;
+    callback apple-login;
+    callback cancel-auth;
+    callback request-password-reset(string);
+    callback guest-login;
+    callback logout;
+    callback board-item-selected(string, string, string);
+    callback remove-continue-watching(string);
+    callback board-see-all-continue-watching;
+    callback board-see-all-clicked(string, string, string);
+    callback global-search-edited(string);
+    callback global-search-submitted(string);
+    callback global-search-suggestion-selected(string, string);
+    callback search-item-selected(string, string, string);
+    callback request-poster(string);
+    callback discover-type-changed(string);
+    callback discover-catalog-changed(string);
+    callback discover-genre-changed(string);
+    callback discover-search-changed(string);
+    callback discover-item-selected(string);
+    callback play-preview;
+    callback toggle-library-preview;
+    callback library-type-changed(string);
+    callback library-sort-changed(string);
+    callback library-search-changed(string);
+    callback library-item-selected(string, string);
+    callback install-addon(string);
+    callback uninstall-addon(string);
+    callback open-addon-details(string);
+    callback close-addon-details;
+    callback configure-addon(string);
+    callback share-addon(string);
+    callback addons-search-changed(string);
+    callback details-toggle-library;
+    callback details-toggle-watched;
+    callback details-season-changed(int);
+    callback details-episode-changed(int);
+    callback details-episode-search-changed(string);
+    callback details-toggle-episode-watched(string);
+    callback details-copy-stream-link(string);
+    callback details-copy-magnet-link(string);
+    callback details-copy-download-link(string);
+    callback details-toggle-season-watched(int);
+    callback play-stream(string);
+    callback apply-cache-settings(float);
+    callback settings-change-interface-language(string);
+    callback settings-change-ui-style(UiStyle);
+    callback settings-change-subtitles-language(string);
+    callback settings-change-torrent-profile(string);
+    callback settings-change-hardware-acceleration(bool);
+    callback settings-clear-search-history;
+    callback shutdown-server;
+    callback settings-change-seeding-enabled(bool);
+    callback settings-change-dht-enabled(bool);
+    callback settings-change-pex-enabled(bool);
+    callback settings-change-lsd-enabled(bool);
+    callback settings-refresh-logs;
+    callback settings-open-logs-folder;
+    callback settings-export-data;
+    callback settings-change-binge-watching(bool);
+    callback settings-change-discord-rpc-enabled(bool);
+    callback settings-change-tidb-api-key(string);
+    callback settings-change-tidb-show-intro(bool);
+    callback settings-change-tidb-show-recap(bool);
+    callback settings-change-tidb-show-credits(bool);
+    callback settings-change-tidb-show-preview(bool);
+    callback settings-change-hide-spoilers(bool);
+    callback settings-change-gamepad-support(bool);
+    callback settings-change-play-in-background(bool);
+    callback settings-change-subtitles-auto-select(bool);
+    callback settings-change-subtitles-font(string);
+    callback settings-change-subtitles-size(string);
+    callback settings-change-subtitles-bold(bool);
+    callback settings-change-subtitles-offset(string);
+    callback settings-change-seek-duration(string);
+    callback settings-change-pause-on-minimize(bool);
+    callback settings-change-quit-on-close(bool);
+    callback tab-changed(int);
+    callback navigation-back;
+    callback navigation-forward;
+    callback calendar-previous;
+    callback calendar-next;
+    callback calendar-item-selected(string, string);
+    callback player-toggle-pause;
+    callback player-seek(float);
+    callback player-seek-relative(float);
+    callback player-change-volume(float);
+    callback player-toggle-mute;
+    callback player-change-subtitle(int);
+    callback player-change-audio(int);
+    callback player-skip-segment;
+    callback player-change-subtitle-delay(float);
+    callback player-change-subtitle-size(float);
+    callback player-change-subtitle-offset(float);
+    callback player-change-speed(float);
+    callback player-change-video-scale(int);
+    callback player-copy-stream-link;
+    callback player-download-video;
+    callback player-play-episode(int);
+    callback player-toggle-fullscreen;
+    callback player-close;
+    callback player-activity;
+    callback player-surface-state-changed(bool, PlayerVideoSurfaceMode);
     title: "Stremio";
     preferred-width: 1280px;
     preferred-height: 720px;
     min-width: 1000px;
     min-height: 600px;
-    background: Theme.background;
+    background: root.effective-show-player
+        && root.player-video-surface-mode == PlayerVideoSurfaceMode.native-window
+        ? transparent : Theme.background;
     default-font-family: "Plus Jakarta Sans";
     forward-focus: app-shortcuts;
     property <length> ui-unit: root.width >= 2800px ? 18px :
         (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
-    in-out property <bool> profile-menu-open: false;
-
     // Disabled by default. `slint-viewer --load-data` can enable this harness
     // without replacing MainWindow, so every state uses the production shell,
     // routing bounds, overlays, and page components.
-    in-out property <bool> debug-preview-enabled: false;
-    in-out property <bool> debug-menu-open: false;
-    in-out property <int> debug-preview-page: 0;
-    in-out property <string> debug-preview-state: "loaded";
-
+    // A string rather than an image keeps the intentional failure isolated:
+    // invalid image values would reject the entire repeated fixture model.
     private property <[DebugPageOption]> debug-pages: [
         { label: "Auth", page: -1 },
         { label: "Board", page: 0 },
@@ -81,6 +400,10 @@ export component MainWindow inherits Window {
         { label: "Empty", value: "empty" },
         { label: "Continue watching only", value: "continue-only" },
         { label: "Catalogs only", value: "catalogs-only" },
+        { label: "Hero fallback", value: "hero-fallback" },
+        { label: "Rail focus start", value: "rail-focus-start" },
+        { label: "Rail focus middle", value: "rail-focus-middle" },
+        { label: "Rail focus end", value: "rail-focus-end" },
         { label: "Profile menu", value: "profile-menu" }
     ];
     private property <[DebugStateOption]> debug-discover-states: [
@@ -186,603 +509,29 @@ export component MainWindow inherits Window {
         ? root.debug-preview-page >= 0 && root.debug-preview-page <= 6
         : root.username != "";
 
-    // Bindings / API exposed to Rust code
-    in property <int> active-tab: 0; // 0: Board, 1: Discover, 2: Library, 3: Addons, 4: Settings, 5: Calendar, 6: Search
-    in-out property <string> username: "";
-    in-out property <string> avatar-letter: "U";
-    in-out property <image> avatar-image;
-    in-out property <bool> has-avatar-image: false;
-    in property <image> default-avatar-icon: @image-url("assets/images/default_avatar.png");
-    in property <image> anonymous-icon: @image-url("assets/images/anonymous.png");
-    in-out property <bool> loading: false;
-    in-out property <string> error-message: "";
-
-    // Stats (Footer stats)
-    in-out property <string> server-status: "Offline";
-    in-out property <string> server-url: "";
-
-    // Data lists
-    in-out property <[MediaCardItem]> board-continue-watching: [];
-    in-out property <[BoardSection]> board-sections: [];
-    in-out property <[BoardSection]> search-sections: [];
-    in-out property <[SearchSuggestion]> search-suggestions: [];
-    in-out property <string> search-query: "";
-    in-out property <bool> search-loading: false;
-    in-out property <int> search-catalog-count: 0;
-    
-    in-out property <[DiscoverRow]> discover-rows: [];
-    in-out property <int> discover-column-count: 6;
-    in-out property <[LibraryRow]> library-rows: [];
-    in-out property <int> library-column-count: 6;
-    in-out property <string> library-active-type: "All";
-    in-out property <string> library-active-sort: "Last Watched";
-    in-out property <[AddonItem]> addons-list: [];
-    in-out property <string> addons-search-query: "";
-    in property <bool> addon-details-open: false;
-    in-out property <AddonItem> addon-details-addon;
-    in-out property <bool> addon-details-loading: false;
-    in-out property <string> addon-details-error: "";
-    in-out property <bool> addon-details-configurable: false;
-    in-out property <bool> addon-details-configuration-required: false;
-    in-out property <[StreamLink]> stream-links: [];
-    in-out property <[string]> detail-stream-providers: ["All"];
-    in-out property <int> detail-stream-loading-count: 0;
-    in-out property <int> calendar-selected-year: 0;
-    in-out property <string> calendar-selected-month: "";
-    in-out property <string> calendar-previous-month: "";
-    in-out property <string> calendar-next-month: "";
-    in-out property <[CalendarRow]> calendar-rows: [];
-    in-out property <bool> calendar-loading: false;
-
-    // Filters lists & values for Discover
-    in property <[string]> discover-types: [];
-    in-out property <string> discover-active-type: "";
-    in property <[string]> discover-catalogs: [];
-    in-out property <string> discover-active-catalog: "";
-    in property <[string]> discover-genres: [];
-    in-out property <string> discover-active-genre: "";
-    in-out property <length> discover-scroll-y: 0px;
-
-    // Discover preview drawer parameters
-    in-out property <bool> discover-has-preview: false;
-    in-out property <string> discover-preview-title: "";
-    in-out property <string> discover-preview-description: "";
-    in-out property <string> discover-preview-rating: "";
-    in-out property <string> discover-preview-year: "";
-    in-out property <string> discover-preview-runtime: "";
-    in-out property <[string]> discover-preview-genres: [];
-    in-out property <[string]> discover-preview-cast: [];
-    in-out property <[string]> discover-preview-directors: [];
-    in-out property <bool> discover-preview-is-in-library: false;
-    in-out property <bool> discover-preview-is-watched: false;
-    in-out property <bool> discover-preview-has-trailer: false;
-    in-out property <image> discover-preview-poster;
-    in-out property <string> discover-preview-poster-url: "";
-
-    // Detailed view parameters
-    in-out property <string> detail-title: "";
-    in-out property <string> detail-description: "";
-    in-out property <image> detail-poster;
-    in-out property <string> detail-poster-url: "";
-    in-out property <string> detail-year: "";
-    in-out property <string> detail-runtime: "";
-    in-out property <string> detail-rating: "";
-    in-out property <[string]> detail-genres: [];
-    in-out property <[string]> detail-cast: [];
-    in-out property <[string]> detail-directors: [];
-    in-out property <bool> detail-is-watched: false;
-    in-out property <bool> detail-has-trailer: false;
-    in-out property <string> detail-trailer-selection-id: "";
-    in property <bool> show-details: false;
-    in-out property <bool> details-loading: false;
-    
-    // Details Series View bindings
-    in-out property <bool> detail-is-series: false;
-    in-out property <[int]> detail-seasons: [];
-    in-out property <int> detail-active-season: 1;
-    in-out property <[string]> detail-episode-names: [];
-    in-out property <int> detail-active-episode-idx: 0;
-    in-out property <bool> detail-is-in-library: false;
-    in-out property <image> detail-background;
-    in-out property <string> detail-background-url: "";
-    in-out property <[EpisodeItem]> detail-episodes: [];
-    in-out property <bool> detail-in-stream-view: false;
-    in-out property <string> detail-episode-search-query: "";
-
-    callback details-episode-search-changed(string);
-    callback details-toggle-episode-watched(string);
-    callback details-copy-stream-link(string);
-    callback details-copy-magnet-link(string);
-    callback details-copy-download-link(string);
-    callback details-toggle-season-watched(int);
-
-    // Player Page parameters
-    in property <bool> show-player: false;
-    in-out property <string> player-title: "";
-    in-out property <string> player-stream-name: "";
-    in-out property <image> player-poster-image;
-    in-out property <image> player-video-frame;
-    in-out property <bool> player-has-video-frame: false;
-    in-out property <bool> player-loading: false;
-    in-out property <bool> player-buffering: false;
-    in-out property <float> player-buffering-percent: 0.0;
-    in-out property <bool> player-paused: true;
-    in-out property <float> player-volume: 1.0;
-    in-out property <bool> player-muted: false;
-    in-out property <float> player-progress: 0.0;
-    in-out property <string> player-elapsed-time-str: "00:00";
-    in-out property <string> player-total-time-str: "00:00";
-    in-out property <[string]> player-subtitles-tracks: [];
-    in-out property <[string]> player-subtitle-track-languages: [];
-    in-out property <[string]> player-subtitle-track-origins: [];
-    in-out property <[string]> player-subtitle-languages: [];
-    in-out property <[int]> player-subtitle-language-track-indices: [];
-    in-out property <[string]> player-audio-tracks: [];
-    in-out property <[string]> player-audio-track-languages: [];
-    in-out property <[string]> player-audio-track-labels: [];
-    in-out property <int> player-active-subtitle-idx: -1;
-    in-out property <int> player-active-audio-idx: 0;
-    in-out property <float> player-subtitle-delay-seconds: 0.0;
-    in-out property <float> player-subtitle-size-percent: 100.0;
-    in-out property <float> player-subtitle-offset-percent: 100.0;
-    in-out property <bool> player-is-series: false;
-    in-out property <[string]> player-episode-names: [];
-    in-out property <int> player-active-episode-idx: 0;
-    in-out property <float> player-playback-speed: 1.0;
-    in-out property <int> player-video-scale-mode: 0;
-    in-out property <string> player-error: "";
-    in-out property <string> player-video-format: "";
-    in-out property <string> player-audio-format: "";
-    in-out property <string> player-file-format: "";
-    in-out property <string> player-hwdec: "";
-    in-out property <float> player-buffered-percent: 0.0;
-    in-out property <string> player-download-speed: "";
-    in-out property <string> player-upload-speed: "";
-    in-out property <int> player-peer-count: 0;
-    in-out property <float> player-stream-progress: 0.0;
-    in-out property <float> player-seek-step-seconds: 10.0;
-    in-out property <float> player-short-seek-step-seconds: 3.0;
-    in-out property <bool> player-show-skip-button: false;
-    in-out property <string> player-skip-button-label: "Skip Intro";
-    in-out property <bool> player-controls-visible: true;
-    in-out property <bool> player-show-subtitles-menu: false;
-    in-out property <bool> player-show-audio-menu: false;
-    in-out property <bool> player-show-speed-menu: false;
-    in-out property <bool> player-show-stats-menu: false;
-    in-out property <bool> player-show-options-menu: false;
-    in-out property <bool> player-show-playlist-drawer: false;
-    in-out property <bool> player-show-context-menu: false;
-    private property <int> player-last-subtitle-idx: 0;
-    private property <bool> player-menu-open: player-show-subtitles-menu
-        || player-show-audio-menu
-        || player-show-speed-menu
-        || player-show-stats-menu
-        || player-show-options-menu
-        || player-show-playlist-drawer
-        || player-show-context-menu;
-    private property <int> settings-active-category: 0;
-
-    // Player Icons
-    in property <IconData> icon-play;
-    in property <IconData> icon-pause;
-    in property <IconData> icon-next;
-    in property <IconData> icon-volume-high;
-    in property <IconData> icon-volume-low;
-    in property <IconData> icon-volume-mute;
-    in property <IconData> icon-fullscreen;
-    in property <IconData> icon-subtitles;
-    in property <IconData> icon-audio;
-    in property <IconData> icon-speed;
-    in property <IconData> icon-stats;
-    in property <IconData> icon-options;
-    in property <IconData> icon-menu;
-    in property <IconData> icon-back;
-
-    // Settings Page values
-    in-out property <string> torrent-cache-size: "2.0 GB";
-    in-out property <string> settings-interface-language: "English";
-    in-out property <string> settings-subtitles-language: "English";
-    in-out property <string> settings-torrent-profile: "Default";
-    in-out property <bool> settings-hardware-acceleration: true;
-    in-out property <bool> settings-binge-watching: true;
-    in-out property <bool> settings-discord-rpc-enabled: false;
-    in-out property <string> settings-tidb-api-key: "";
-    in-out property <bool> settings-tidb-show-intro: true;
-    in-out property <bool> settings-tidb-show-recap: true;
-    in-out property <bool> settings-tidb-show-credits: true;
-    in-out property <bool> settings-tidb-show-preview: true;
-    in-out property <bool> settings-hide-spoilers: false;
-    in-out property <bool> settings-gamepad-support: false;
-    in-out property <bool> settings-play-in-background: true;
-    in-out property <bool> settings-subtitles-auto-select: true;
-    in-out property <string> settings-subtitles-font: "Roboto";
-    in-out property <string> settings-subtitles-size: "100";
-    in-out property <bool> settings-subtitles-bold: false;
-    in-out property <string> settings-subtitles-offset: "5";
-    in-out property <string> settings-seek-duration: "10";
-    in-out property <bool> settings-pause-on-minimize: false;
-    in-out property <bool> settings-quit-on-close: true;
-    in-out property <bool> settings-export-loading: false;
-    in-out property <string> settings-export-status: "";
-    in-out property <bool> settings-streaming-seeding: false;
-    in-out property <bool> settings-streaming-dht: true;
-    in-out property <bool> settings-streaming-pex: true;
-    in-out property <bool> settings-streaming-lsd: true;
-    in-out property <string> settings-streaming-remote-url: "";
-    in-out property <string> settings-streaming-logs-text: "No logs loaded. Click Refresh.";
-    in property <IconData> refresh-icon;
-    in property <IconData> folder-icon;
-
-    callback settings-change-seeding-enabled(bool);
-    callback settings-change-dht-enabled(bool);
-    callback settings-change-pex-enabled(bool);
-    callback settings-change-lsd-enabled(bool);
-    callback settings-refresh-logs();
-    callback settings-open-logs-folder();
-    callback settings-export-data();
-    callback settings-change-binge-watching(bool);
-    callback settings-change-discord-rpc-enabled(bool);
-    callback settings-change-tidb-api-key(string);
-    callback settings-change-tidb-show-intro(bool);
-    callback settings-change-tidb-show-recap(bool);
-    callback settings-change-tidb-show-credits(bool);
-    callback settings-change-tidb-show-preview(bool);
-    callback settings-change-hide-spoilers(bool);
-    callback settings-change-gamepad-support(bool);
-    callback settings-change-play-in-background(bool);
-    callback settings-change-subtitles-auto-select(bool);
-    callback settings-change-subtitles-font(string);
-    callback settings-change-subtitles-size(string);
-    callback settings-change-subtitles-bold(bool);
-    callback settings-change-subtitles-offset(string);
-    callback settings-change-seek-duration(string);
-    callback settings-change-pause-on-minimize(bool);
-    callback settings-change-quit-on-close(bool);
-    in-out property <length> library-scroll-y: 0px;
-
-    // Icons from Rust Iconflow
-    in property <IconData> board-icon;
-    in property <IconData> discover-icon;
-    in property <IconData> library-icon;
-    in property <IconData> calendar-icon;
-    in property <IconData> addons-icon;
-    in property <IconData> settings-icon;
-    in property <IconData> logout-icon;
-    in property <IconData> mail-icon;
-    in property <IconData> lock-icon;
-    in property <IconData> search-icon;
-    in property <IconData> facebook-icon;
-    in property <IconData> apple-icon;
-    in property <IconData> icon-link;
-    in property <IconData> icon-magnet;
-    in property <IconData> icon-download;
-    in property <IconData> icon-eye;
-    in property <IconData> icon-eye-off;
-    in property <IconData> icon-clapperboard;
-    in-out property <bool> is-fullscreen: false;
-
-    // Callbacks
-    callback toggle-fullscreen();
-    callback open-external-url(string);
-    callback submit-login(string, string);
-    callback submit-register(string, string, bool, bool, bool);
-    callback facebook-login();
-    callback apple-login();
-    callback cancel-auth();
-    callback request-password-reset(string);
-    callback guest-login();
-    callback logout();
-    
-    // Board page callback
-    callback board-item-selected(string, string, string);
-    callback remove-continue-watching(string);
-    callback board-see-all-continue-watching();
-    callback board-see-all-clicked(string, string, string);
-
-    // Global search callbacks
-    callback global-search-edited(string);
-    callback global-search-submitted(string);
-    callback global-search-suggestion-selected(string, string);
-    callback search-item-selected(string, string, string);
-    callback request-poster(string);
-
-    // Discover page callbacks
-    callback discover-type-changed(string);
-    callback discover-catalog-changed(string);
-    callback discover-genre-changed(string);
-    callback discover-search-changed(string);
-    callback discover-item-selected(string);
-    callback play-preview();
-    callback toggle-library-preview();
-    
-    // Library page callbacks
-    callback library-type-changed(string);
-    callback library-sort-changed(string);
-    callback library-search-changed(string);
-    callback library-item-selected(string, string);
-
-    // Addons page callbacks
-    callback install-addon(string);
-    callback uninstall-addon(string);
-    callback open-addon-details(string);
-    callback close-addon-details();
-    callback configure-addon(string);
-    callback share-addon(string);
-    callback addons-search-changed(string);
-
-    // Details callbacks
-    callback details-toggle-library();
-    callback details-toggle-watched();
-    callback details-season-changed(int);
-    callback details-episode-changed(int);
-    callback play-stream(string);
-    
-    // Settings callbacks
-    callback apply-cache-settings(float);
-    callback settings-change-interface-language(string);
-    callback settings-change-subtitles-language(string);
-    callback settings-change-torrent-profile(string);
-    callback settings-change-hardware-acceleration(bool);
-    callback settings-clear-search-history();
-    callback shutdown-server();
-    callback tab-changed(int);
-    callback navigation-back();
-    callback navigation-forward();
-    callback calendar-previous();
-    callback calendar-next();
-    callback calendar-item-selected(string, string);
-
-    // Player Callbacks
-    callback player-toggle-pause();
-    callback player-seek(float);
-    callback player-seek-relative(float);
-    callback player-change-volume(float);
-    callback player-toggle-mute();
-    callback player-change-subtitle(int);
-    callback player-change-audio(int);
-    callback player-skip-segment();
-    callback player-change-subtitle-delay(float);
-    callback player-change-subtitle-size(float);
-    callback player-change-subtitle-offset(float);
-    callback player-change-speed(float);
-    callback player-change-video-scale(int);
-    callback player-copy-stream-link();
-    callback player-download-video();
-    callback player-play-episode(int);
-    callback player-toggle-fullscreen();
-    callback player-close();
-    callback player-activity();
-
-    function close-player-menus() {
-        root.player-show-subtitles-menu = false;
-        root.player-show-audio-menu = false;
-        root.player-show-speed-menu = false;
-        root.player-show-stats-menu = false;
-        root.player-show-options-menu = false;
-        root.player-show-playlist-drawer = false;
-        root.player-show-context-menu = false;
-    }
-
-    function toggle-player-menu(menu: string) {
-        let was-open = (menu == "subtitles" && root.player-show-subtitles-menu)
-            || (menu == "audio" && root.player-show-audio-menu)
-            || (menu == "speed" && root.player-show-speed-menu)
-            || (menu == "stats" && root.player-show-stats-menu)
-            || (menu == "info" && root.player-show-playlist-drawer);
-        root.close-player-menus();
-        if (!was-open) {
-            root.player-show-subtitles-menu = menu == "subtitles";
-            root.player-show-audio-menu = menu == "audio";
-            root.player-show-speed-menu = menu == "speed";
-            root.player-show-stats-menu = menu == "stats";
-            root.player-show-playlist-drawer = menu == "info";
-        }
-        root.player-controls-visible = true;
-        root.player-activity();
-    }
-
-    function adjust-player-subtitle-size(direction: int) {
-        let current = root.player-subtitle-size-percent;
-        let next = direction > 0
-            ? (current < 75 ? 75 : (current < 100 ? 100 : (current < 125 ? 125
-                : (current < 150 ? 150 : (current < 175 ? 175 : (current < 200 ? 200 : 250))))))
-            : (current > 200 ? 200 : (current > 175 ? 175 : (current > 150 ? 150
-                : (current > 125 ? 125 : (current > 100 ? 100 : 75)))));
-        root.player-subtitle-size-percent = next;
-        root.player-change-subtitle-size(next);
-        root.player-activity();
-    }
+    // Rust owns shortcut policy. This focus scope only tells the native
+    // handler when no editable or transient control has captured the keyboard.
+    application-shortcuts-focused: app-shortcuts.has-focus;
+    shortcut-player-active: root.effective-show-player;
 
     changed effective-show-player => {
         if (root.effective-show-player) {
             app-shortcuts.focus();
         }
+        root.player-surface-state-changed(
+            root.effective-show-player,
+            root.player-video-surface-mode,
+        );
     }
 
-    app-shortcuts := FocusScope {
-        property <bool> space-held: false;
-        property <bool> space-long-press: false;
-        property <float> space-restore-speed: 1.0;
-
-        key-pressed(event) => {
-            if (root.effective-show-player && !root.player-menu-open
-                && event.text == Key.Space && !event.repeat) {
-                self.space-held = true;
-                self.space-long-press = false;
-                self.space-restore-speed = root.player-playback-speed;
-                space-hold-timer.start();
-                root.player-controls-visible = true;
-                root.player-activity();
-                return accept;
-            }
-            reject
-        }
-
-        key-released(event) => {
-            if (event.text == Key.Space && self.space-held) {
-                space-hold-timer.stop();
-                self.space-held = false;
-                if (self.space-long-press) {
-                    root.player-playback-speed = self.space-restore-speed;
-                    root.player-change-speed(self.space-restore-speed);
-                } else {
-                    root.player-toggle-pause();
-                }
-                return accept;
-            }
-            reject
-        }
-
-        space-hold-timer := Timer {
-            interval: 400ms;
-            triggered => {
-                self.stop();
-                if (app-shortcuts.space-held && root.effective-show-player
-                    && !root.player-menu-open) {
-                    app-shortcuts.space-long-press = true;
-                    root.player-playback-speed = 2.0;
-                    root.player-change-speed(2.0);
-                }
-            }
-        }
-
-        KeyBinding { keys: @keys("1"); enabled: !root.effective-show-player; activated => { root.tab-changed(0); } }
-        KeyBinding { keys: @keys("2"); enabled: !root.effective-show-player; activated => { root.tab-changed(1); } }
-        KeyBinding { keys: @keys("3"); enabled: !root.effective-show-player; activated => { root.tab-changed(2); } }
-        KeyBinding { keys: @keys("4"); enabled: !root.effective-show-player; activated => { root.tab-changed(5); } }
-        KeyBinding { keys: @keys("5"); enabled: !root.effective-show-player; activated => { root.tab-changed(3); } }
-        KeyBinding { keys: @keys("6"); enabled: !root.effective-show-player; activated => { root.tab-changed(4); } }
-        KeyBinding { keys: @keys("0"); enabled: !root.effective-show-player; activated => { root.tab-changed(6); } }
-        KeyBinding { keys: @keys(Backspace); enabled: !root.effective-show-player; activated => { root.navigation-back(); } }
-        KeyBinding { keys: @keys(Control + Backspace); enabled: !root.effective-show-player; activated => { root.navigation-forward(); } }
-        KeyBinding {
-            keys: @keys(Control + "/");
-            enabled: !root.effective-show-player;
-            activated => {
-                root.settings-active-category = 4;
-                root.tab-changed(4);
-            }
-        }
-        KeyBinding { keys: @keys(F); activated => { root.toggle-fullscreen(); } }
-
-        KeyBinding {
-            keys: @keys(K);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => { root.player-toggle-pause(); root.player-activity(); }
-        }
-        KeyBinding {
-            keys: @keys(LeftArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => { root.player-seek-relative(-root.player-seek-step-seconds); root.player-activity(); }
-        }
-        KeyBinding {
-            keys: @keys(Shift + LeftArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => { root.player-seek-relative(-root.player-short-seek-step-seconds); root.player-activity(); }
-        }
-        KeyBinding {
-            keys: @keys(RightArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => { root.player-seek-relative(root.player-seek-step-seconds); root.player-activity(); }
-        }
-        KeyBinding {
-            keys: @keys(Shift + RightArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => { root.player-seek-relative(root.player-short-seek-step-seconds); root.player-activity(); }
-        }
-        KeyBinding {
-            keys: @keys(UpArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-volume = min(1.0, root.player-volume + 0.05);
-                root.player-change-volume(root.player-volume);
-                root.player-activity();
-            }
-        }
-        KeyBinding {
-            keys: @keys(DownArrow);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-volume = max(0.0, root.player-volume - 0.05);
-                root.player-change-volume(root.player-volume);
-                root.player-activity();
-            }
-        }
-        KeyBinding { keys: @keys(M); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.player-toggle-mute(); root.player-activity(); } }
-        KeyBinding { keys: @keys("-"); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.adjust-player-subtitle-size(-1); } }
-        KeyBinding { keys: @keys("="); enabled: root.effective-show-player && !root.player-menu-open; activated => { root.adjust-player-subtitle-size(1); } }
-        KeyBinding {
-            keys: @keys(G);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-subtitle-delay-seconds -= 0.25;
-                root.player-change-subtitle-delay(root.player-subtitle-delay-seconds);
-                root.player-activity();
-            }
-        }
-        KeyBinding {
-            keys: @keys(H);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-subtitle-delay-seconds += 0.25;
-                root.player-change-subtitle-delay(root.player-subtitle-delay-seconds);
-                root.player-activity();
-            }
-        }
-        KeyBinding {
-            keys: @keys("[");
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-playback-speed = max(0.25, root.player-playback-speed - 0.25);
-                root.player-change-speed(root.player-playback-speed);
-                root.player-activity();
-            }
-        }
-        KeyBinding {
-            keys: @keys("]");
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                root.player-playback-speed = min(2.0, root.player-playback-speed + 0.25);
-                root.player-change-speed(root.player-playback-speed);
-                root.player-activity();
-            }
-        }
-        KeyBinding {
-            keys: @keys(C);
-            enabled: root.effective-show-player && !root.player-menu-open;
-            activated => {
-                if (root.player-active-subtitle-idx >= 0) {
-                    root.player-last-subtitle-idx = root.player-active-subtitle-idx;
-                    root.player-change-subtitle(-1);
-                } else if (root.player-subtitles-tracks.length > 0) {
-                    root.player-change-subtitle(root.player-last-subtitle-idx);
-                }
-                root.player-activity();
-            }
-        }
-        KeyBinding { keys: @keys(S); enabled: root.effective-show-player; activated => { if (root.player-subtitles-tracks.length > 0) { root.toggle-player-menu("subtitles"); } } }
-        KeyBinding { keys: @keys(A); enabled: root.effective-show-player; activated => { if (root.player-audio-tracks.length > 0) { root.toggle-player-menu("audio"); } } }
-        KeyBinding { keys: @keys(I); enabled: root.effective-show-player && root.player-is-series; activated => { root.toggle-player-menu("info"); } }
-        KeyBinding { keys: @keys(R); enabled: root.effective-show-player; activated => { root.toggle-player-menu("speed"); } }
-        KeyBinding { keys: @keys(D); enabled: root.effective-show-player; activated => { root.toggle-player-menu("stats"); } }
-        KeyBinding {
-            keys: @keys(Shift + N);
-            enabled: root.effective-show-player && root.player-is-series;
-            activated => { root.close-player-menus(); root.player-play-episode(root.player-active-episode-idx + 1); }
-        }
-        KeyBinding {
-            keys: @keys(Escape);
-            enabled: root.effective-show-player;
-            activated => {
-                if (root.player-menu-open) {
-                    root.close-player-menus();
-                    root.player-activity();
-                } else {
-                    root.player-close();
-                }
-            }
-        }
+    changed player-video-surface-mode => {
+        root.player-surface-state-changed(
+            root.effective-show-player,
+            root.player-video-surface-mode,
+        );
     }
+
+    app-shortcuts := FocusScope {}
 
     // Visual layout routing
     Rectangle {
@@ -790,960 +539,47 @@ export component MainWindow inherits Window {
         y: 0px;
         width: 100%;
         height: 100%;
+        background: root.effective-show-player
+            && root.player-video-surface-mode == PlayerVideoSurfaceMode.native-window
+            ? transparent
+            : (root.ui-style == UiStyle.cinematic ? CinematicTheme.canvas
+                : (root.show-auth-page ? Theme.background : Theme.main-gradient));
 
-        app-shell := Rectangle {
-            x: 0px;
-            y: 0px;
+        AuthLayer {
             width: 100%;
             height: 100%;
-            visible: !root.effective-show-player;
-            background: root.show-auth-page ? Theme.background : Theme.main-gradient;
+            show-auth-layer: root.show-auth-page && !root.effective-show-player;
+        }
 
-            Rectangle {
-                width: 100%;
-                height: 100%;
-
-        if (root.show-auth-page) : AuthPage {
+        if (root.show-main-shell && !root.effective-show-player
+            && root.ui-style == UiStyle.classic) : ClassicShell {
             width: 100%;
             height: 100%;
-            unit: root.ui-unit;
-            error-message: root.debug-preview-enabled && root.debug-preview-page == -1
-                ? (root.debug-preview-state == "auth-error" ? "The email or password is incorrect." : "")
-                : error-message;
-            loading: root.debug-preview-enabled && root.debug-preview-page == -1
-                ? root.debug-preview-state == "auth-loading"
-                : loading;
-            register-mode: root.debug-preview-enabled && root.debug-preview-page == -1
-                && root.debug-preview-state == "register";
-            mail-icon: mail-icon;
-            lock-icon: lock-icon;
-            facebook-icon: facebook-icon;
-            apple-icon: apple-icon;
-            submit-login(email, pass) => { submit-login(email, pass); }
-            submit-register(email, pass, tos, priv, mkt) => { submit-register(email, pass, tos, priv, mkt); }
-            facebook-login => { facebook-login(); }
-            apple-login => { apple-login(); }
-            cancel-auth => { cancel-auth(); }
-            request-password-reset(email) => { request-password-reset(email); }
-            guest-login => { guest-login(); }
+            route-index: root.effective-active-tab;
+            show-details-layer: root.effective-show-details;
+            settings-active-category <=> root.settings-active-category;
         }
 
-        if (root.show-main-shell) : VerticalLayout {
+        if (root.show-main-shell && !root.effective-show-player
+            && root.ui-style == UiStyle.cinematic
+            && !root.effective-show-details) : CinematicRoutes {
             width: 100%;
             height: 100%;
-            visible: !root.effective-show-details;
-            spacing: 0;
-            padding: 0;
-
-            // Official horizontal navigation bar.
-            Rectangle {
-                height: 5.5 * root.ui-unit;
-                visible: !root.effective-show-details;
-                background: transparent;
-                z: 100;
-
-                HorizontalLayout {
-                    padding-right: root.ui-unit;
-                    alignment: space-between;
-
-                    // Left Block: Logo symbol
-                    Rectangle {
-                        width: 6 * root.ui-unit;
-                        height: 5.5 * root.ui-unit;
-                        
-                        Image {
-                            source: @image-url("assets/images/stremio-logo.svg");
-                            width: 2.5 * root.ui-unit;
-                            height: 2.5 * root.ui-unit;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            opacity: 0.9;
-                        }
-                    }
-
-                    // Center Search pill (starts next to logo, left-ish aligned)
-                    VerticalLayout {
-                        alignment: center;
-                        
-                        search-input := SearchBox {
-                            width: 30 * root.ui-unit;
-                            height: 3.25 * root.ui-unit;
-                            unit: root.ui-unit;
-                            text <=> root.search-query;
-                            suggestions: root.search-suggestions;
-                            edited(value) => {
-                                global-search-edited(value);
-                                if (root.effective-active-tab == 1) {
-                                    discover-search-changed(value);
-                                } else if (root.effective-active-tab == 2) {
-                                    library-search-changed(value);
-                                }
-                            }
-                            accepted(value) => {
-                                if (value != "") {
-                                    global-search-submitted(value);
-                                }
-                            }
-                            cleared => { global-search-edited(""); }
-                            suggestion-selected(id, media-type, title) => {
-                                root.search-query = title;
-                                root.global-search-suggestion-selected(id, media-type);
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 0.5 * root.ui-unit;
-                        alignment: center;
-                        padding-top: 0.5 * root.ui-unit;
-
-                        Rectangle {
-                            width: 3.5 * root.ui-unit;
-                            height: 3.5 * root.ui-unit;
-                            border-radius: 0.75 * root.ui-unit;
-                            background: top-fullscreen.has-hover ? Theme.overlay : transparent;
-                            top-fullscreen := TouchArea {
-                                clicked => { root.player-toggle-fullscreen(); }
-                            }
-                             Image {
-                                source: @image-url("assets/images/icons/maximize.svg");
-                                width: 2 * root.ui-unit;
-                                height: 2 * root.ui-unit;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2;
-                                opacity: 0.6;
-                                image-fit: contain;
-                            }
-                        }
-
-                        Rectangle {
-                            width: 5.5 * root.ui-unit;
-                            height: 3.5 * root.ui-unit;
-                            border-radius: 0.75 * root.ui-unit;
-                            background: profile-area.has-hover ? Theme.overlay : transparent;
-
-                            profile-area := TouchArea {
-                                clicked => { root.profile-menu-open = !root.profile-menu-open; }
-                            }
-
-                            Rectangle {
-                                x: 0.55 * root.ui-unit;
-                                y: 0.55 * root.ui-unit;
-                                width: 2.4 * root.ui-unit;
-                                height: 2.4 * root.ui-unit;
-                                background: Theme.accent;
-                                border-radius: self.width / 2;
-                                border-width: 0.15 * root.ui-unit;
-                                border-color: Theme.accent;
-                                clip: true;
-                            
-                                if (username == "" || username == "Guest") : Image {
-                                    source: anonymous-icon;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                            
-                                if (username != "" && username != "Guest" && has-avatar-image) : Image {
-                                    source: avatar-image;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                            
-                                if (username != "" && username != "Guest" && !has-avatar-image) : Image {
-                                    source: default-avatar-icon;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                            }
-
-                            Image {
-                                x: parent.width - self.width - 0.55 * root.ui-unit;
-                                y: (parent.height - self.height) / 2;
-                                width: root.ui-unit;
-                                height: root.ui-unit;
-                                source: @image-url("assets/images/icons/caret-down.svg");
-                                colorize: Theme.text-primary;
-                                opacity: 0.6;
-                                image-fit: contain;
-                            }
-                        }
-                    }
-                }
-
-                if (root.profile-menu-open) : Rectangle {
-                    x: 0px;
-                    y: 0px;
-                    width: root.width;
-                    height: root.height;
-                    background: transparent;
-                    z: 190;
-
-                    TouchArea {
-                        clicked => { root.profile-menu-open = false; }
-                    }
-                }
-
-                if (root.profile-menu-open) : Rectangle {
-                    x: parent.width - 23 * root.ui-unit;
-                    y: 6.5 * root.ui-unit;
-                    width: 22 * root.ui-unit;
-                    height: layout.preferred-height;
-                    border-radius: 0.75 * root.ui-unit;
-                    background: Theme.modal-background;
-                    clip: true;
-                    z: 200;
-
-                    layout := VerticalLayout {
-                        spacing: 0px;
-
-                        HorizontalLayout {
-                            height: 7 * root.ui-unit;
-                            padding-left: root.ui-unit;
-                            padding-right: root.ui-unit;
-                            spacing: root.ui-unit;
-                            alignment: start;
-
-                            Rectangle {
-                                width: 4 * root.ui-unit;
-                                height: 4 * root.ui-unit;
-                                border-radius: self.width / 2;
-                                background: Theme.text-primary;
-                                clip: true;
-                                y: (parent.height - self.height) / 2;
-
-                                if (username == "" || username == "Guest") : Image {
-                                    source: anonymous-icon;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                                if (username != "" && username != "Guest" && has-avatar-image) : Image {
-                                    source: avatar-image;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                                if (username != "" && username != "Guest" && !has-avatar-image) : Image {
-                                    source: default-avatar-icon;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    image-fit: cover;
-                                }
-                            }
-
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 0.5 * root.ui-unit;
-                                Text {
-                                    text: username == "" || username == "Guest" ? "Anonymous user" : username;
-                                    color: Theme.text-primary;
-                                    font-size: root.ui-unit;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: username == "" || username == "Guest" ? "Log in / Sign up" : "Log out";
-                                    color: Theme.accent;
-                                    font-size: 0.9 * root.ui-unit;
-                                    font-weight: 600;
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.profile-menu-open = false;
-                                            if (username == "" || username == "Guest") {
-                                                username = "";
-                                            } else {
-                                                root.logout();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Rectangle { height: 1px; background: Theme.overlay; }
-
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: root.is-fullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
-                            show-icon: true;
-                            icon-source: root.is-fullscreen ? @image-url("assets/images/icons/minimize.svg") : @image-url("assets/images/icons/maximize.svg");
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.toggle-fullscreen();
-                            }
-                        }
-
-                        Rectangle { height: 1px; background: Theme.overlay; }
-
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Settings";
-                            show-icon: true;
-                            icon-source: @image-url("assets/images/icons/settings.svg");
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.tab-changed(4);
-                            }
-                        }
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Addons";
-                            show-icon: true;
-                            icon-source: @image-url("assets/images/icons/addons.svg");
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.tab-changed(3);
-                            }
-                        }
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Play URL or magnet link";
-                            show-icon: true;
-                            icon-source: @image-url("assets/images/icons/magnet-link.svg");
-                            clicked => {
-                                root.profile-menu-open = false;
-                                search-input.focus-input();
-                            }
-                        }
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Help & Feedback";
-                            show-icon: true;
-                            icon-source: @image-url("assets/images/icons/help.svg");
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.open-external-url("https://stremio.zendesk.com/");
-                            }
-                        }
-
-                        Rectangle { height: 1px; background: Theme.overlay; }
-
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Terms of Service";
-                            show-icon: false;
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.open-external-url("https://www.stremio.com/tos");
-                            }
-                        }
-                        MenuButton {
-                            unit: root.ui-unit;
-                            label: "Privacy Policy";
-                            show-icon: false;
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.open-external-url("https://www.stremio.com/privacy");
-                            }
-                        }
-                        if (username != "" && username != "Guest") : MenuButton {
-                            unit: root.ui-unit;
-                            label: "User Panel";
-                            show-icon: false;
-                            clicked => {
-                                root.profile-menu-open = false;
-                                root.open-external-url("https://www.stremio.com/acc-settings");
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Lower Content Area (Sidebar on left, main content page on right)
-            HorizontalLayout {
-                spacing: 0;
-                padding: 0;
-                vertical-stretch: 1;
-
-                Sidebar {
-                    unit: root.ui-unit;
-                    visible: !root.effective-show-details;
-                    active-tab: root.effective-active-tab;
-                    server-status: server-status;
-                    username: username;
-                    avatar-letter: avatar-letter;
-                    
-                    board-icon: board-icon;
-                    discover-icon: discover-icon;
-                    library-icon: library-icon;
-                    calendar-icon: calendar-icon;
-                    addons-icon: addons-icon;
-                    settings-icon: settings-icon;
-                    logout-icon: logout-icon;
-
-                    change-tab(tab) => {
-                        root.tab-changed(tab);
-                    }
-                    logout => { logout(); }
-                }
-
-                // Inner content area
-                Rectangle {
-                    min-width: 0px;
-                    horizontal-stretch: 1;
-                    vertical-stretch: 1;
-                    background: transparent;
-                    clip: true;
-                    
-                    if (root.effective-active-tab == 0) : BoardPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        continue-watching: root.debug-preview-enabled && root.debug-preview-page == 0
-                            && (root.debug-preview-state == "empty"
-                                || root.debug-preview-state == "loading"
-                                || root.debug-preview-state == "catalogs-only")
-                            ? [] : board-continue-watching;
-                        sections: root.debug-preview-enabled && root.debug-preview-page == 0
-                            && (root.debug-preview-state == "empty"
-                                || root.debug-preview-state == "loading"
-                                || root.debug-preview-state == "continue-only")
-                            ? [] : board-sections;
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 0
-                            ? root.debug-preview-state == "loading"
-                            : loading;
-                        item-selected(id, media-type, video-id) => {
-                            board-item-selected(id, media-type, video-id);
-                        }
-                        remove-continue-watching(id) => { remove-continue-watching(id); }
-                        see-all-continue-watching() => { board-see-all-continue-watching(); }
-                        see-all-clicked(t, id, base) => { board-see-all-clicked(t, id, base); }
-                        poster-requested(url) => { request-poster(url); }
-                    }
-
-                    if (root.effective-active-tab == 1) : DiscoverPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        rows: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
-                            ? [] : discover-rows;
-                        column-count: discover-column-count;
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 1
-                            ? root.debug-preview-state == "loading"
-                            : loading;
-
-                        available-types: discover-types;
-                        active-type: discover-active-type;
-                        available-catalogs: discover-catalogs;
-                        active-catalog: discover-active-catalog;
-                        available-genres: discover-genres;
-                        active-genre: discover-active-genre;
-
-                        has-preview: root.debug-preview-enabled && root.debug-preview-page == 1
-                            ? (root.debug-preview-state == "movie-selected"
-                                || root.debug-preview-state == "series-selected")
-                            : discover-has-preview;
-                        preview-title: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected"
-                            ? "Dune: Part Two" : discover-preview-title;
-                        preview-description: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected"
-                            ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
-                            : discover-preview-description;
-                        preview-rating: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected" ? "8.5" : discover-preview-rating;
-                        preview-year: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected" ? "2024" : discover-preview-year;
-                        preview-runtime: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected" ? "166 min" : discover-preview-runtime;
-                        preview-genres: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected"
-                            ? ["Science Fiction", "Adventure", "Drama"] : discover-preview-genres;
-                        preview-cast: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected"
-                            ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : discover-preview-cast;
-                        preview-directors: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "movie-selected"
-                            ? ["Denis Villeneuve"] : discover-preview-directors;
-                        preview-is-in-library: discover-preview-is-in-library;
-                        preview-is-watched: discover-preview-is-watched;
-                        preview-has-trailer: discover-preview-has-trailer;
-                        preview-trailer-selection-id: detail-trailer-selection-id;
-                        preview-poster: discover-preview-poster;
-                        type-open: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "type-dropdown";
-                        catalog-open: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "catalog-dropdown";
-                        genre-open: root.debug-preview-enabled && root.debug-preview-page == 1
-                            && root.debug-preview-state == "genre-dropdown";
-
-                        type-changed(t) => { discover-type-changed(t); }
-                        catalog-changed(c) => { discover-catalog-changed(c); }
-                        genre-changed(g) => { discover-genre-changed(g); }
-                        item-selected(id) => { discover-item-selected(id); }
-                        poster-requested(url) => { request-poster(url); }
-                        play-preview => { play-preview(); }
-                        toggle-library-preview => { toggle-library-preview(); }
-                        toggle-watched-preview => { details-toggle-watched(); }
-                        play-trailer-preview(selection-id) => { play-stream(selection-id); }
-                        scroll-y: discover-scroll-y;
-                    }
-
-                    if (root.effective-active-tab == 2) : LibraryPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        rows: root.debug-preview-enabled && root.debug-preview-page == 2
-                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
-                            ? [] : library-rows;
-                        column-count: library-column-count;
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 2
-                            ? root.debug-preview-state == "loading"
-                            : loading;
-                        active-type: library-active-type;
-                        active-sort: library-active-sort;
-                        type-open: root.debug-preview-enabled && root.debug-preview-page == 2
-                            && root.debug-preview-state == "type-dropdown";
-                        sort-open: root.debug-preview-enabled && root.debug-preview-page == 2
-                            && root.debug-preview-state == "sort-dropdown";
-
-                        type-changed(t) => { library-type-changed(t); }
-                        sort-changed(s) => { library-sort-changed(s); }
-                        item-selected(id, media-type) => { library-item-selected(id, media-type); }
-                        poster-requested(url) => { request-poster(url); }
-                        scroll-y: library-scroll-y;
-                    }
-
-                    if (root.effective-active-tab == 3) : AddonsPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        addons: root.debug-preview-enabled && root.debug-preview-page == 3
-                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "loading")
-                            ? [] : addons-list;
-                        search-query: addons-search-query;
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 3
-                            ? root.debug-preview-state == "loading"
-                            : loading;
-                        details-open: root.debug-preview-enabled && root.debug-preview-page == 3
-                            ? (root.debug-preview-state == "addon-details"
-                                || root.debug-preview-state == "addon-details-loading"
-                                || root.debug-preview-state == "addon-details-error")
-                            : addon-details-open;
-                        details-addon: addon-details-addon;
-                        details-loading: root.debug-preview-enabled && root.debug-preview-page == 3
-                            ? root.debug-preview-state == "addon-details-loading"
-                            : addon-details-loading;
-                        details-error: root.debug-preview-enabled && root.debug-preview-page == 3
-                            ? (root.debug-preview-state == "addon-details-error" ? "Unable to load the addon manifest." : "")
-                            : addon-details-error;
-                        details-configurable: addon-details-configurable;
-                        details-configuration-required: addon-details-configuration-required;
-                        filter-open: root.debug-preview-enabled && root.debug-preview-page == 3
-                            && root.debug-preview-state == "filter-dropdown";
-                        type-open: root.debug-preview-enabled && root.debug-preview-page == 3
-                            && root.debug-preview-state == "type-dropdown";
-                        add-modal-open: root.debug-preview-enabled && root.debug-preview-page == 3
-                            && root.debug-preview-state == "add-addon";
-                        install-addon(url) => { install-addon(url); }
-                        uninstall-addon(url) => { uninstall-addon(url); }
-                        open-addon-details(url) => { open-addon-details(url); }
-                        close-addon-details => { close-addon-details(); }
-                        configure-addon(url) => { configure-addon(url); }
-                        share-addon(url) => { share-addon(url); }
-                        search-changed(query) => { addons-search-changed(query); }
-                    }
-
-                    if (root.effective-active-tab == 4) : SettingsPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        active-category: root.debug-preview-enabled && root.debug-preview-page == 4
-                            ? (root.debug-preview-state == "interface" ? 1
-                                : (root.debug-preview-state == "player-settings" ? 2
-                                : (root.debug-preview-state == "streaming" ? 3
-                                : (root.debug-preview-state == "shortcuts" ? 4
-                                : (root.debug-preview-state == "diagnostics" ? 5 : 0)))))
-                            : root.settings-active-category;
-                        changed active-category => {
-                            if (!root.debug-preview-enabled) {
-                                root.settings-active-category = self.active-category;
-                            }
-                        }
-                        torrent-cache-size: torrent-cache-size;
-                        server-url: server-url;
-                        interface-language: settings-interface-language;
-                        subtitles-language: settings-subtitles-language;
-                        torrent-profile: settings-torrent-profile;
-                        hardware-acceleration: settings-hardware-acceleration;
-                        binge-watching: settings-binge-watching;
-                        discord-rpc-enabled: settings-discord-rpc-enabled;
-                        tidb-api-key: settings-tidb-api-key;
-                        tidb-show-intro: settings-tidb-show-intro;
-                        tidb-show-recap: settings-tidb-show-recap;
-                        tidb-show-credits: settings-tidb-show-credits;
-                        tidb-show-preview: settings-tidb-show-preview;
-                        hide-spoilers: settings-hide-spoilers;
-                        gamepad-support: settings-gamepad-support;
-                        play-in-background: settings-play-in-background;
-                        subtitles-auto-select: settings-subtitles-auto-select;
-                        subtitles-font: settings-subtitles-font;
-                        subtitles-size: settings-subtitles-size;
-                        subtitles-bold: settings-subtitles-bold;
-                        subtitles-offset: settings-subtitles-offset;
-                        seek-duration: settings-seek-duration;
-                        pause-on-minimize: settings-pause-on-minimize;
-                        quit-on-close: settings-quit-on-close;
-                        export-loading: root.debug-preview-enabled && root.debug-preview-page == 4
-                            ? root.debug-preview-state == "exporting"
-                            : settings-export-loading;
-                        export-status: root.debug-preview-enabled && root.debug-preview-page == 4
-                            && root.debug-preview-state == "exporting"
-                            ? "Exporting profile data…"
-                            : settings-export-status;
-
-                        streaming-seeding: settings-streaming-seeding;
-                        streaming-dht: settings-streaming-dht;
-                        streaming-pex: settings-streaming-pex;
-                        streaming-lsd: settings-streaming-lsd;
-                        streaming-remote-url: settings-streaming-remote-url;
-                        streaming-logs-text: settings-streaming-logs-text;
-                        refresh-icon: refresh-icon;
-                        folder-icon: folder-icon;
-
-                        apply-cache-settings(val) => { apply-cache-settings(val); }
-                        change-interface-language(lang) => { settings-change-interface-language(lang); }
-                        change-subtitles-language(lang) => { settings-change-subtitles-language(lang); }
-                        change-torrent-profile(prof) => { settings-change-torrent-profile(prof); }
-                        change-hardware-acceleration(val) => { settings-change-hardware-acceleration(val); }
-                        clear-search-history => { settings-clear-search-history(); }
-                        shutdown-server => { shutdown-server(); }
-
-                        change-seeding-enabled(val) => { settings-change-seeding-enabled(val); }
-                        change-dht-enabled(val) => { settings-change-dht-enabled(val); }
-                        change-pex-enabled(val) => { settings-change-pex-enabled(val); }
-                        change-lsd-enabled(val) => { settings-change-lsd-enabled(val); }
-                        refresh-logs => { settings-refresh-logs(); }
-                        open-logs-folder => { settings-open-logs-folder(); }
-                        export-data => { settings-export-data(); }
-                        change-binge-watching(val) => { settings-change-binge-watching(val); }
-                        change-discord-rpc-enabled(val) => { settings-change-discord-rpc-enabled(val); }
-                        change-tidb-api-key(val) => { settings-change-tidb-api-key(val); }
-                        change-tidb-show-intro(val) => { settings-change-tidb-show-intro(val); }
-                        change-tidb-show-recap(val) => { settings-change-tidb-show-recap(val); }
-                        change-tidb-show-credits(val) => { settings-change-tidb-show-credits(val); }
-                        change-tidb-show-preview(val) => { settings-change-tidb-show-preview(val); }
-                        change-hide-spoilers(val) => { settings-change-hide-spoilers(val); }
-                        change-gamepad-support(val) => { settings-change-gamepad-support(val); }
-                        change-play-in-background(val) => { settings-change-play-in-background(val); }
-                        change-subtitles-auto-select(val) => { settings-change-subtitles-auto-select(val); }
-                        change-subtitles-font(val) => { settings-change-subtitles-font(val); }
-                        change-subtitles-size(val) => { settings-change-subtitles-size(val); }
-                        change-subtitles-bold(val) => { settings-change-subtitles-bold(val); }
-                        change-subtitles-offset(val) => { settings-change-subtitles-offset(val); }
-                        change-seek-duration(val) => { settings-change-seek-duration(val); }
-                        change-pause-on-minimize(val) => { settings-change-pause-on-minimize(val); }
-                        change-quit-on-close(val) => { settings-change-quit-on-close(val); }
-                        open-external-url(url) => { root.open-external-url(url); }
-                    }
-
-                    if (root.effective-active-tab == 5) : CalendarPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        authenticated: root.debug-preview-enabled && root.debug-preview-page == 5
-                            ? root.debug-preview-state != "signed-out"
-                            : username != "" && username != "Guest";
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 5
-                            ? root.debug-preview-state == "loading"
-                            : calendar-loading;
-                        selected-year: calendar-selected-year;
-                        selected-month: calendar-selected-month;
-                        previous-month: calendar-previous-month;
-                        next-month: calendar-next-month;
-                        rows: root.debug-preview-enabled && root.debug-preview-page == 5
-                            && root.debug-preview-state == "empty" ? [] : calendar-rows;
-                        previous => { calendar-previous(); }
-                        next => { calendar-next(); }
-                        item-selected(id, media-type) => { calendar-item-selected(id, media-type); }
-                    }
-
-                    if (root.effective-active-tab == 6) : SearchPage {
-                        width: parent.width;
-                        height: parent.height;
-                        unit: root.ui-unit;
-                        query: root.debug-preview-enabled && root.debug-preview-page == 6
-                            && root.debug-preview-state == "idle" ? "" : search-query;
-                        sections: root.debug-preview-enabled && root.debug-preview-page == 6
-                            && (root.debug-preview-state == "empty"
-                                || root.debug-preview-state == "loading"
-                                || root.debug-preview-state == "idle")
-                            ? [] : search-sections;
-                        loading: root.debug-preview-enabled && root.debug-preview-page == 6
-                            ? root.debug-preview-state == "loading"
-                            : search-loading;
-                        catalog-count: root.debug-preview-enabled && root.debug-preview-page == 6
-                            && (root.debug-preview-state == "empty" || root.debug-preview-state == "idle")
-                            ? 0 : search-catalog-count;
-                        item-selected(id, media-type, video-id) => {
-                            search-item-selected(id, media-type, video-id);
-                        }
-                        poster-requested(url) => { request-poster(url); }
-                    }
-                }
-            }
+            route-index: root.effective-active-tab;
+            settings-active-category <=> root.settings-active-category;
         }
 
-        if (root.effective-show-details) : DetailsPage {
-            x: 0px;
-            y: 0px;
+        DetailsLayer {
             width: 100%;
             height: 100%;
-            z: 500;
-            unit: root.ui-unit;
-            item-title: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? "Dune: Part Two" : detail-title;
-            description: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
-                : detail-description;
-            poster: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? @image-url("assets/images/background_1.svg") : detail-poster;
-            background-image: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? @image-url("assets/images/background_1.svg") : detail-background;
-            release-year: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter") ? "2024" : detail-year;
-            runtime: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter") ? "166 min" : detail-runtime;
-            rating: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter") ? "8.5" : detail-rating;
-            genres: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? ["Science Fiction", "Adventure", "Drama"] : detail-genres;
-            cast: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : detail-cast;
-            directors: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-streams"
-                    || root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "movie-filter")
-                ? ["Denis Villeneuve"] : detail-directors;
-            streams: root.debug-preview-enabled && root.debug-preview-page == 7
-                && (root.debug-preview-state == "movie-no-streams"
-                    || root.debug-preview-state == "series-no-streams"
-                    || root.debug-preview-state == "details-loading")
-                ? [] : stream-links;
-            stream-providers: detail-stream-providers;
-            stream-loading-count: root.debug-preview-enabled && root.debug-preview-page == 7
-                ? (root.debug-preview-state == "series-stream-loading" ? 2 : 0)
-                : detail-stream-loading-count;
-            stream-filter-open: root.debug-preview-enabled && root.debug-preview-page == 7
-                && root.debug-preview-state == "movie-filter";
-            loading: root.debug-preview-enabled && root.debug-preview-page == 7
-                ? root.debug-preview-state == "details-loading"
-                : details-loading;
-            username: root.username;
-            avatar-image: root.avatar-image;
-            has-avatar-image: root.has-avatar-image;
-            default-avatar-icon: root.default-avatar-icon;
-            anonymous-icon: root.anonymous-icon;
-
-            is-in-library: detail-is-in-library;
-            is-watched: detail-is-watched;
-            has-trailer: detail-has-trailer;
-            trailer-selection-id: detail-trailer-selection-id;
-            toggle-library => { details-toggle-library(); }
-            toggle-watched => { details-toggle-watched(); }
-            play-trailer(selection-id) => { play-stream(selection-id); }
-
-            is-series: root.debug-preview-enabled && root.debug-preview-page == 7
-                ? (root.debug-preview-state == "series-episodes"
-                    || root.debug-preview-state == "series-season-menu"
-                    || root.debug-preview-state == "series-streams"
-                    || root.debug-preview-state == "series-stream-loading"
-                    || root.debug-preview-state == "series-no-streams")
-                : detail-is-series;
-            available-seasons: detail-seasons;
-            active-season: detail-active-season;
-            season-menu-open: root.debug-preview-enabled && root.debug-preview-page == 7
-                && root.debug-preview-state == "series-season-menu";
-            episode-names: detail-episode-names;
-            active-episode-idx: detail-active-episode-idx;
-            episodes: detail-episodes;
-            in-stream-view: root.debug-preview-enabled && root.debug-preview-page == 7
-                ? (root.debug-preview-state == "series-streams"
-                    || root.debug-preview-state == "series-stream-loading"
-                    || root.debug-preview-state == "series-no-streams")
-                : detail-in-stream-view;
-            episode-search-query: detail-episode-search-query;
-
-            icon-play: root.icon-play;
-            icon-link: root.icon-link;
-            icon-magnet: root.icon-magnet;
-            icon-download: root.icon-download;
-            icon-eye: root.icon-eye;
-            icon-eye-off: root.icon-eye-off;
-            icon-clapperboard: root.icon-clapperboard;
-
-            season-changed(s) => { details-season-changed(s); }
-            episode-changed(idx) => {
-                if (root.debug-preview-enabled && root.debug-preview-page == 7) {
-                    root.detail-active-episode-idx = idx;
-                    root.debug-preview-state = "series-streams";
-                } else {
-                    details-episode-changed(idx);
-                }
-            }
-            toggle-episode-watched(id) => { details-toggle-episode-watched(id); }
-            episode-search-changed(q) => {
-                detail-episode-search-query = q;
-                details-episode-search-changed(q);
-            }
-            copy-stream-link(id) => { details-copy-stream-link(id); }
-            copy-magnet-link(id) => { details-copy-magnet-link(id); }
-            copy-download-link(id) => { details-copy-download-link(id); }
-            toggle-season-watched(s) => { details-toggle-season-watched(s); }
-            play-stream(selection-id) => { play-stream(selection-id); }
-            toggle-fullscreen => { root.player-toggle-fullscreen(); }
-            close => {
-                if (root.debug-preview-enabled && root.debug-preview-page == 7
-                    && (root.debug-preview-state == "series-streams"
-                        || root.debug-preview-state == "series-stream-loading"
-                        || root.debug-preview-state == "series-no-streams")) {
-                    root.debug-preview-state = "series-episodes";
-                } else if (detail-in-stream-view) {
-                    detail-in-stream-view = false;
-                } else {
-                    root.navigation-back();
-                }
-            }
-        }
-        }
+            show-details-layer: root.effective-show-details && !root.effective-show-player;
         }
 
-        if (root.effective-show-player) : PlayerPage {
+        PlayerLayer {
             width: 100%;
             height: 100%;
-            z: 1000;
-            
-            item-title: player-title;
-            stream-name: player-stream-name;
-            poster-image: player-poster-image;
-            video-frame: player-video-frame;
-            has-video-frame: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? root.debug-preview-state != "player-loading"
-                : player-has-video-frame;
-            loading: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? root.debug-preview-state == "player-loading"
-                : player-loading;
-            buffering: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? root.debug-preview-state == "buffering"
-                : player-buffering;
-            buffering-percent: player-buffering-percent;
-            paused: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? (root.debug-preview-state == "paused" || root.debug-preview-state == "player-error")
-                : player-paused;
-            volume: player-volume;
-            muted: player-muted;
-            progress: player-progress;
-            elapsed-time-str: player-elapsed-time-str;
-            total-time-str: player-total-time-str;
-            subtitles-tracks: player-subtitles-tracks;
-            subtitle-track-languages: player-subtitle-track-languages;
-            subtitle-track-origins: player-subtitle-track-origins;
-            subtitle-languages: player-subtitle-languages;
-            subtitle-language-track-indices: player-subtitle-language-track-indices;
-            audio-tracks: player-audio-tracks;
-            audio-track-languages: player-audio-track-languages;
-            audio-track-labels: player-audio-track-labels;
-            active-subtitle-idx: player-active-subtitle-idx;
-            active-audio-idx: player-active-audio-idx;
-            subtitle-delay-seconds: player-subtitle-delay-seconds;
-            subtitle-size-percent: player-subtitle-size-percent;
-            subtitle-offset-percent: player-subtitle-offset-percent;
-            is-series: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? true : player-is-series;
-            episode-names: player-episode-names;
-            active-episode-idx: player-active-episode-idx;
-            playback-speed: player-playback-speed;
-            video-scale-mode: player-video-scale-mode;
-            error-message: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? (root.debug-preview-state == "player-error"
-                    ? "The stream stopped unexpectedly. Select another stream and try again."
-                    : "")
-                : player-error;
-            video-format: player-video-format;
-            audio-format: player-audio-format;
-            file-format: player-file-format;
-            hardware-decoder: player-hwdec;
-            buffered-percent: player-buffered-percent;
-            download-speed: player-download-speed;
-            upload-speed: player-upload-speed;
-            peer-count: player-peer-count;
-            stream-progress: player-stream-progress;
-            seek-step-seconds: player-seek-step-seconds;
-            show-skip-button: root.debug-preview-enabled && root.debug-preview-page == 8
-                ? root.debug-preview-state == "skip-intro"
-                : player-show-skip-button;
-            skip-button-label: player-skip-button-label;
-            controls-visible <=> root.player-controls-visible;
-            show-subtitles-menu <=> root.player-show-subtitles-menu;
-            show-audio-menu <=> root.player-show-audio-menu;
-            show-speed-menu <=> root.player-show-speed-menu;
-            show-stats-menu <=> root.player-show-stats-menu;
-            show-options-menu <=> root.player-show-options-menu;
-            show-context-menu <=> root.player-show-context-menu;
-            show-playlist-drawer <=> root.player-show-playlist-drawer;
-            
-            icon-play: icon-play;
-            icon-pause: icon-pause;
-            icon-next: icon-next;
-            icon-volume-high: icon-volume-high;
-            icon-volume-low: icon-volume-low;
-            icon-volume-mute: icon-volume-mute;
-            icon-fullscreen: icon-fullscreen;
-            icon-subtitles: icon-subtitles;
-            icon-audio: icon-audio;
-            icon-speed: icon-speed;
-            icon-stats: icon-stats;
-            icon-options: icon-options;
-            icon-menu: icon-menu;
-            icon-back: icon-back;
-            
-            toggle-pause => { player-toggle-pause(); }
-            seek(val) => { player-seek(val); }
-            seek-relative(seconds) => { player-seek-relative(seconds); }
-            change-volume(val) => { player-change-volume(val); }
-            toggle-mute => { player-toggle-mute(); }
-            change-subtitle(idx) => { player-change-subtitle(idx); }
-            change-audio(idx) => { player-change-audio(idx); }
-            change-subtitle-delay(value) => { player-change-subtitle-delay(value); }
-            change-subtitle-size(value) => { player-change-subtitle-size(value); }
-            change-subtitle-offset(value) => { player-change-subtitle-offset(value); }
-            change-speed(val) => { player-change-speed(val); }
-            change-video-scale(mode) => { player-change-video-scale(mode); }
-            skip-segment => { player-skip-segment(); }
-            copy-stream-link => { player-copy-stream-link(); }
-            download-video => { player-download-video(); }
-            play-episode(idx) => { player-play-episode(idx); }
-            toggle-fullscreen => { player-toggle-fullscreen(); }
-            close => { player-close(); }
-            activity => { player-activity(); }
+            show-player-layer: root.effective-show-player;
+            video-surface-mode: root.player-video-surface-mode;
         }
 
         if (root.debug-preview-enabled) : AppDebugMenu {
@@ -1754,7 +590,9 @@ export component MainWindow inherits Window {
             states: root.debug-state-options;
             selected-page: root.debug-preview-page;
             selected-state: root.debug-preview-state;
+            selected-style: root.ui-style;
             open <=> root.debug-menu-open;
+            style-selected(style) => { root.ui-style = style; }
             page-selected(page) => {
                 root.profile-menu-open = false;
                 root.debug-preview-page = page;

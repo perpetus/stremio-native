@@ -1,5 +1,6 @@
 use std::{
     ffi::{CStr, c_char, c_int, c_void},
+    num::NonZeroU32,
     path::PathBuf,
     sync::{
         Arc, Condvar, Mutex,
@@ -10,7 +11,6 @@ use std::{
 };
 
 use crate::{
-    RenderSource,
     ffi::{
         END_FILE_EOF, END_FILE_ERROR, END_FILE_QUIT, END_FILE_REDIRECT, END_FILE_STOP,
         EVENT_END_FILE, EVENT_FILE_LOADED, EVENT_NONE, EVENT_PLAYBACK_RESTART,
@@ -19,6 +19,8 @@ use crate::{
         FORMAT_NONE, FORMAT_STRING, MpvApi, MpvClient, MpvError, MpvEvent, MpvEventEndFile,
         MpvEventProperty, MpvNode, MpvNodeList,
     },
+    render::RenderSource,
+    software::{SoftwareFrameSource, SoftwareRenderConfig, SoftwareRenderRuntime},
 };
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -64,6 +66,11 @@ pub struct PlaybackState {
     pub video_format: Option<String>,
     pub audio_format: Option<String>,
     pub hardware_decoder: Option<String>,
+    pub has_video_track: bool,
+    pub vo_configured: bool,
+    pub current_vo: Option<String>,
+    pub current_gpu_context: Option<String>,
+    pub current_hwdec: Option<String>,
 }
 
 impl Default for PlaybackState {
@@ -91,6 +98,11 @@ impl Default for PlaybackState {
             video_format: None,
             audio_format: None,
             hardware_decoder: None,
+            has_video_track: false,
+            vo_configured: false,
+            current_vo: None,
+            current_gpu_context: None,
+            current_hwdec: None,
         }
     }
 }
@@ -109,8 +121,10 @@ pub enum EndReason {
 pub enum PlaybackEvent {
     State(Box<PlaybackState>),
     FileLoaded,
+    PlaybackRestarted,
     Ended {
         reason: EndReason,
+        error_code: Option<i32>,
         error: Option<String>,
     },
     Warning(String),
@@ -144,6 +158,29 @@ pub enum PlaybackCommand {
 pub struct PlayerConfig {
     pub config_dir: Option<PathBuf>,
     pub hardware_decoding: bool,
+    pub video_output: PlayerVideoOutput,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum NativeWindowTarget {
+    Win32(NonZeroU32),
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum PlayerVideoOutput {
+    NativeWindow(NativeWindowTarget),
+    OpenGlRenderApi,
+    SoftwareRenderApi(SoftwareRenderConfig),
+}
+
+#[derive(Clone)]
+#[non_exhaustive]
+pub enum PlaybackVideoSource {
+    NativeWindow,
+    OpenGl(RenderSource),
+    Software(SoftwareFrameSource),
 }
 
 #[derive(Clone)]
@@ -174,7 +211,8 @@ impl PlaybackController {
 
 pub struct PlaybackRuntime {
     controller: PlaybackController,
-    render_source: RenderSource,
+    video_source: PlaybackVideoSource,
+    software_render: Option<SoftwareRenderRuntime>,
     actor: Option<JoinHandle<()>>,
 }
 
@@ -195,7 +233,6 @@ impl PlaybackRuntime {
         client.set_option("input-default-bindings", "no")?;
         client.set_option("input-vo-keyboard", "no")?;
         client.set_option("osc", "no")?;
-        client.set_option("vo", "libmpv")?;
         client.set_option("idle", "yes")?;
         client.set_option("keep-open", "no")?;
         client.set_option("cache", "no")?;
@@ -209,13 +246,22 @@ impl PlaybackRuntime {
         client.set_option("audio-fallback-to-null", "yes")?;
         client.set_option("audio-client-name", "Stremio")?;
         client.set_option("title", "Stremio")?;
-        // Slint supplies a desktop WGL/OpenGL context on Windows. Direct
-        // D3D11 hardware surfaces require ANGLE in libmpv, so use copy-safe
-        // decoding and keep decoder-to-texture direct rendering disabled.
-        client.set_option("vd-lavc-dr", "no")?;
-        client.set_option("hwdec", hardware_decoding_option(config.hardware_decoding))?;
+        configure_video_output(&client, &config.video_output, config.hardware_decoding)?;
         client.initialize()?;
         observe_properties(&client)?;
+
+        let (video_source, software_render) = match config.video_output {
+            PlayerVideoOutput::NativeWindow(_) => (PlaybackVideoSource::NativeWindow, None),
+            PlayerVideoOutput::OpenGlRenderApi => (
+                PlaybackVideoSource::OpenGl(RenderSource::new(client.clone())),
+                None,
+            ),
+            PlayerVideoOutput::SoftwareRenderApi(config) => {
+                let runtime = SoftwareRenderRuntime::start(client.clone(), config)?;
+                let source = runtime.source();
+                (PlaybackVideoSource::Software(source), Some(runtime))
+            }
+        };
 
         let (sender, receiver) = mpsc::sync_channel(128);
         let wake = Arc::new(ActorWake::default());
@@ -227,7 +273,6 @@ impl PlaybackRuntime {
             sender,
             wake: wake.clone(),
         };
-        let render_source = RenderSource::new(client.clone());
         let sink = Arc::new(event_sink);
         wake.signal();
         let actor = thread::Builder::new()
@@ -237,7 +282,8 @@ impl PlaybackRuntime {
 
         Ok(Self {
             controller,
-            render_source,
+            video_source,
+            software_render,
             actor: Some(actor),
         })
     }
@@ -246,11 +292,14 @@ impl PlaybackRuntime {
         self.controller.clone()
     }
 
-    pub fn render_source(&self) -> RenderSource {
-        self.render_source.clone()
+    pub fn video_source(&self) -> PlaybackVideoSource {
+        self.video_source.clone()
     }
 
     pub fn shutdown(mut self) -> Result<(), MpvError> {
+        if let Some(software_render) = self.software_render.take() {
+            software_render.shutdown()?;
+        }
         self.controller.shutdown();
         if let Some(actor) = self.actor.take() {
             actor.join().map_err(|_| MpvError::ActorPanicked)?;
@@ -259,10 +308,62 @@ impl PlaybackRuntime {
     }
 }
 
-fn hardware_decoding_option(enabled: bool) -> &'static str {
-    if !enabled {
-        return "no";
+fn configure_video_output(
+    client: &MpvClient,
+    output: &PlayerVideoOutput,
+    hardware_decoding: bool,
+) -> Result<(), MpvError> {
+    for (name, value) in video_options(output, hardware_decoding) {
+        client.set_option(name, &value)?;
     }
+    Ok(())
+}
+
+fn video_options(
+    output: &PlayerVideoOutput,
+    hardware_decoding: bool,
+) -> Vec<(&'static str, String)> {
+    match output {
+        PlayerVideoOutput::NativeWindow(NativeWindowTarget::Win32(hwnd)) => vec![
+            ("wid", hwnd.get().to_string()),
+            ("vo", "gpu-next,gpu,direct3d".to_owned()),
+            ("gpu-context", "d3d11".to_owned()),
+            ("gpu-api", "d3d11".to_owned()),
+            ("d3d11-warp", "auto".to_owned()),
+            ("vd-lavc-dr", "auto".to_owned()),
+            (
+                "hwdec",
+                if hardware_decoding {
+                    "d3d11va,auto-safe"
+                } else {
+                    "no"
+                }
+                .to_owned(),
+            ),
+        ],
+        PlayerVideoOutput::OpenGlRenderApi => vec![
+            ("vo", "libmpv".to_owned()),
+            ("vd-lavc-dr", "no".to_owned()),
+            (
+                "hwdec",
+                if hardware_decoding {
+                    copy_safe_hardware_decoding()
+                } else {
+                    "no"
+                }
+                .to_owned(),
+            ),
+        ],
+        PlayerVideoOutput::SoftwareRenderApi(_) => vec![
+            ("vo", "libmpv".to_owned()),
+            ("profile", "sw-fast".to_owned()),
+            ("vd-lavc-dr", "no".to_owned()),
+            ("hwdec", "no".to_owned()),
+        ],
+    }
+}
+
+fn copy_safe_hardware_decoding() -> &'static str {
     #[cfg(target_os = "windows")]
     {
         "d3d11va-copy,auto-copy"
@@ -275,6 +376,9 @@ fn hardware_decoding_option(enabled: bool) -> &'static str {
 
 impl Drop for PlaybackRuntime {
     fn drop(&mut self) {
+        if let Some(software_render) = self.software_render.take() {
+            let _ = software_render.shutdown();
+        }
         if let Some(actor) = self.actor.take() {
             self.controller.shutdown();
             let _ = actor.join();
@@ -303,6 +407,9 @@ fn observe_properties(client: &MpvClient) -> Result<(), MpvError> {
         (17, "audio-codec-name", FORMAT_STRING),
         (18, "hwdec-current", FORMAT_STRING),
         (19, "cache-buffering-state", FORMAT_INT64),
+        (20, "vo-configured", FORMAT_FLAG),
+        (21, "current-vo", FORMAT_STRING),
+        (22, "gpu-context", FORMAT_STRING),
     ];
     for (id, name, format) in properties {
         client.observe(id, name, format)?;
@@ -503,6 +610,7 @@ fn drain_events(
             EVENT_PLAYBACK_RESTART => {
                 state.buffering = false;
                 sink(PlaybackEvent::State(Box::new(state.clone())));
+                sink(PlaybackEvent::PlaybackRestarted);
             }
             EVENT_PROPERTY_CHANGE => {
                 update_property(event, state);
@@ -540,12 +648,16 @@ fn handle_end_file(
         END_FILE_REDIRECT => EndReason::Redirect,
         _ => EndReason::Unknown,
     };
-    let error =
-        (data.reason == END_FILE_ERROR).then(|| client.api.operation_error(data.error).to_string());
+    let error_code = (data.reason == END_FILE_ERROR).then_some(data.error);
+    let error = error_code.map(|code| client.api.operation_error(code).to_string());
     state.loading = false;
     state.loaded = false;
     sink(PlaybackEvent::State(Box::new(state.clone())));
-    sink(PlaybackEvent::Ended { reason, error });
+    sink(PlaybackEvent::Ended {
+        reason,
+        error_code,
+        error,
+    });
 }
 
 fn update_property(event: &MpvEvent, state: &mut PlaybackState) {
@@ -585,7 +697,16 @@ fn update_property(event: &MpvEvent, state: &mut PlaybackState) {
         "file-format" => state.file_format = property_string(property),
         "video-format" => state.video_format = property_string(property),
         "audio-codec-name" => state.audio_format = property_string(property),
-        "hwdec-current" => state.hardware_decoder = property_string(property),
+        "hwdec-current" => {
+            let value = property_string(property);
+            state.hardware_decoder = value.clone();
+            state.current_hwdec = value;
+        }
+        "vo-configured" => {
+            state.vo_configured = property_flag(property).unwrap_or(state.vo_configured)
+        }
+        "current-vo" => state.current_vo = property_string(property),
+        "gpu-context" => state.current_gpu_context = property_string(property),
         "cache-buffering-state" => {
             state.cache_buffering_percent = property_int64(property)
                 .map(|percent| percent as f64)
@@ -594,9 +715,10 @@ fn update_property(event: &MpvEvent, state: &mut PlaybackState) {
         }
         "track-list" => {
             if let Some(node) = property_node(property) {
-                let (audio, subtitles) = parse_tracks(node);
+                let (audio, subtitles, has_video) = parse_tracks(node);
                 state.audio_tracks = audio;
                 state.subtitle_tracks = subtitles;
+                state.has_video_track = has_video;
             }
         }
         _ => {}
@@ -656,23 +778,44 @@ fn property_node(property: &MpvEventProperty) -> Option<&MpvNode> {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::{PlaybackRuntime, PlayerConfig, hardware_decoding_option};
+    use super::{
+        NativeWindowTarget, PlaybackRuntime, PlayerConfig, PlayerVideoOutput,
+        copy_safe_hardware_decoding, video_options,
+    };
+    use std::num::NonZeroU32;
 
     #[test]
     fn hardware_decoding_should_use_copy_safe_windows_backends() {
-        assert_eq!(hardware_decoding_option(true), "d3d11va-copy,auto-copy");
+        assert_eq!(copy_safe_hardware_decoding(), "d3d11va-copy,auto-copy");
     }
 
     #[test]
-    fn playback_runtime_should_start_with_static_engine() {
+    fn native_output_uses_strict_vos_and_direct_d3d11_decoding() {
+        let target = NonZeroU32::new(42).expect("test HWND");
+        let options = video_options(
+            &PlayerVideoOutput::NativeWindow(NativeWindowTarget::Win32(target)),
+            true,
+        );
+        assert!(options.contains(&("vo", "gpu-next,gpu,direct3d".to_owned())));
+        assert!(options.contains(&("hwdec", "d3d11va,auto-safe".to_owned())));
+        assert!(
+            !options
+                .iter()
+                .any(|(name, value)| name == &"vo" && value.ends_with(','))
+        );
+    }
+
+    #[test]
+    fn playback_runtime_should_start_with_pinned_dll() {
         let runtime = PlaybackRuntime::start(
             PlayerConfig {
                 config_dir: None,
                 hardware_decoding: false,
+                video_output: PlayerVideoOutput::OpenGlRenderApi,
             },
             |_| {},
         )
-        .expect("the statically linked MPV runtime should start");
+        .expect("the pinned MPV DLL runtime should start");
 
         runtime
             .shutdown()
@@ -680,12 +823,13 @@ mod tests {
     }
 }
 
-fn parse_tracks(node: &MpvNode) -> (Vec<AudioTrack>, Vec<SubtitleTrack>) {
+fn parse_tracks(node: &MpvNode) -> (Vec<AudioTrack>, Vec<SubtitleTrack>, bool) {
     let Some(entries) = node_list(node, FORMAT_NODE_ARRAY) else {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), false);
     };
     let mut audio = Vec::new();
     let mut subtitles = Vec::new();
+    let mut has_video = false;
     for entry in entries {
         let Some(map) = node_map(entry) else {
             continue;
@@ -694,6 +838,7 @@ fn parse_tracks(node: &MpvNode) -> (Vec<AudioTrack>, Vec<SubtitleTrack>) {
         let id = map_int(map, "id").map(|id| id.to_string());
         let Some(id) = id else { continue };
         match kind.as_deref() {
+            Some("video") => has_video = true,
             Some("audio") => audio.push(AudioTrack {
                 id,
                 title: map_string(map, "title"),
@@ -712,7 +857,7 @@ fn parse_tracks(node: &MpvNode) -> (Vec<AudioTrack>, Vec<SubtitleTrack>) {
             _ => {}
         }
     }
-    (audio, subtitles)
+    (audio, subtitles, has_video)
 }
 
 fn node_list(node: &MpvNode, expected_format: c_int) -> Option<&[MpvNode]> {

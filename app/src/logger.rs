@@ -11,12 +11,19 @@ pub struct LoggerGuards {
     pub _chrome_guard: Option<tracing_chrome::FlushGuard>,
 }
 
-pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
+pub fn init_logger(profile: &ProfileConfig, append: bool) -> anyhow::Result<LoggerGuards> {
     let log_dir = PathBuf::from("storage").join("logs");
     std::fs::create_dir_all(&log_dir)?;
     let log_path = log_dir.join("stremio.log");
-    // A fixed, truncated file makes each report correspond to exactly one run.
-    let log_file = std::fs::File::create(&log_path)?;
+    // Renderer fallback is process-level. The first attempt starts a fresh
+    // report and replacement processes append their diagnostics to that same
+    // report so the complete fallback chain remains visible.
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(&log_path)?;
     let (file_writer, file_guard) = tracing_appender::non_blocking(log_file);
 
     #[cfg(debug_assertions)]
@@ -83,7 +90,7 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
         default_panic_hook(panic_info);
     }));
 
-    tracing::info!(path = %log_path.display(), "file logging initialized");
+    tracing::info!(path = %log_path.display(), append, "file logging initialized");
     if profile.mode.enabled() {
         tracing::info!(mode = ?profile.mode, output = ?profile.output, "performance profiling enabled");
         tracing::info!(

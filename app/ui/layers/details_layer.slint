@@ -1,0 +1,282 @@
+import { AppState, AppActions } from "../app_contract.slint";
+import { DetailsPage } from "../pages/details.slint";
+import { CinematicDetailsPage } from "../cinematic/pages/details.slint";
+import { UiStyle } from "../cinematic/types.slint";
+
+export component DetailsLayer inherits Rectangle {
+    in property <bool> show-details-layer: false;
+    private property <length> ui-unit: root.width >= 2800px ? 18px
+        : (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
+    background: transparent;
+    if (root.show-details-layer && AppState.ui-style == UiStyle.classic) : DetailsPage {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        z: 500;
+        unit: root.ui-unit;
+        item-title: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? "Dune: Part Two" : AppState.detail-title;
+        description: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+            : AppState.detail-description;
+        poster: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? AppState.detail-poster : AppState.detail-poster;
+        background-image: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? AppState.detail-background : AppState.detail-background;
+        release-year: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "2024" : AppState.detail-year;
+        runtime: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "166 min" : AppState.detail-runtime;
+        rating: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "8.5" : AppState.detail-rating;
+        genres: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Science Fiction", "Adventure", "Drama"] : AppState.detail-genres;
+        cast: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : AppState.detail-cast;
+        directors: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Denis Villeneuve"] : AppState.detail-directors;
+        streams: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "series-no-streams"
+                || AppState.debug-preview-state == "details-loading")
+            ? [] : AppState.stream-links;
+        stream-providers: AppState.detail-stream-providers;
+        stream-loading-count: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? (AppState.debug-preview-state == "series-stream-loading" ? 2 : 0)
+            : AppState.detail-stream-loading-count;
+        stream-filter-open <=> AppState.detail-stream-filter-open;
+        active-stream-provider <=> AppState.detail-active-stream-provider;
+        loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? AppState.debug-preview-state == "details-loading"
+            : AppState.details-loading;
+        username: AppState.username;
+        avatar-image: AppState.avatar-image;
+        has-avatar-image: AppState.has-avatar-image;
+        default-avatar-icon: AppState.default-avatar-icon;
+        anonymous-icon: AppState.anonymous-icon;
+
+        is-in-library: AppState.detail-is-in-library;
+        is-watched: AppState.detail-is-watched;
+        has-trailer: AppState.detail-has-trailer;
+        trailer-selection-id: AppState.detail-trailer-selection-id;
+        toggle-library => { AppActions.details-toggle-library(); }
+        toggle-watched => { AppActions.details-toggle-watched(); }
+        play-trailer(selection-id) => { AppActions.play-stream(selection-id); }
+
+        is-series: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? (AppState.debug-preview-state == "series-episodes"
+                || AppState.debug-preview-state == "series-season-menu"
+                || AppState.debug-preview-state == "series-streams"
+                || AppState.debug-preview-state == "series-stream-loading"
+                || AppState.debug-preview-state == "series-no-streams")
+            : AppState.detail-is-series;
+        available-seasons: AppState.detail-seasons;
+        active-season <=> AppState.detail-active-season;
+        season-menu-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && AppState.debug-preview-state == "series-season-menu";
+        episode-names: AppState.detail-episode-names;
+        active-episode-idx <=> AppState.detail-active-episode-idx;
+        episodes: AppState.detail-episodes;
+        in-stream-view: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? (AppState.debug-preview-state == "series-streams"
+                || AppState.debug-preview-state == "series-stream-loading"
+                || AppState.debug-preview-state == "series-no-streams")
+            : AppState.detail-in-stream-view;
+        episode-search-query: AppState.detail-episode-search-query;
+
+        icon-play: AppState.icon-play;
+        icon-link: AppState.icon-link;
+        icon-magnet: AppState.icon-magnet;
+        icon-download: AppState.icon-download;
+        icon-eye: AppState.icon-eye;
+        icon-eye-off: AppState.icon-eye-off;
+        icon-clapperboard: AppState.icon-clapperboard;
+
+        season-changed(s) => { AppActions.details-season-changed(s); }
+        episode-changed(idx) => {
+            if (AppState.debug-preview-enabled && AppState.debug-preview-page == 7) {
+                AppState.detail-active-episode-idx = idx;
+                AppState.debug-preview-state = "series-streams";
+            } else {
+                AppActions.details-episode-changed(idx);
+            }
+        }
+        toggle-episode-watched(id) => { AppActions.details-toggle-episode-watched(id); }
+        episode-search-changed(q) => {
+            AppState.detail-episode-search-query = q;
+            AppActions.details-episode-search-changed(q);
+        }
+        copy-stream-link(id) => { AppActions.details-copy-stream-link(id); }
+        copy-magnet-link(id) => { AppActions.details-copy-magnet-link(id); }
+        copy-download-link(id) => { AppActions.details-copy-download-link(id); }
+        toggle-season-watched(s) => { AppActions.details-toggle-season-watched(s); }
+        play-stream(selection-id) => { AppActions.play-stream(selection-id); }
+        toggle-fullscreen => { AppActions.player-toggle-fullscreen(); }
+        close => {
+            if (AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+                && (AppState.debug-preview-state == "series-streams"
+                    || AppState.debug-preview-state == "series-stream-loading"
+                    || AppState.debug-preview-state == "series-no-streams")) {
+                AppState.debug-preview-state = "series-episodes";
+            } else if (AppState.detail-in-stream-view) {
+                AppState.detail-in-stream-view = false;
+            } else {
+                AppActions.navigation-back();
+            }
+        }
+    }
+
+    if (root.show-details-layer && AppState.ui-style == UiStyle.cinematic) : CinematicDetailsPage {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        z: 500;
+        item-title: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? "Dune: Part Two" : AppState.detail-title;
+        description: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+            : AppState.detail-description;
+        poster: AppState.detail-poster;
+        background-image: AppState.detail-background;
+        release-year: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "2024" : AppState.detail-year;
+        runtime: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "166 min" : AppState.detail-runtime;
+        rating: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter") ? "8.5" : AppState.detail-rating;
+        genres: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Science Fiction", "Adventure", "Drama"] : AppState.detail-genres;
+        cast: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"] : AppState.detail-cast;
+        directors: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-streams"
+                || AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "movie-filter")
+            ? ["Denis Villeneuve"] : AppState.detail-directors;
+        streams: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && (AppState.debug-preview-state == "movie-no-streams"
+                || AppState.debug-preview-state == "series-no-streams"
+                || AppState.debug-preview-state == "details-loading")
+            ? [] : AppState.stream-links;
+        stream-providers: AppState.detail-stream-providers;
+        stream-loading-count: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? (AppState.debug-preview-state == "series-stream-loading" ? 2 : 0)
+            : AppState.detail-stream-loading-count;
+        stream-filter-open <=> AppState.detail-stream-filter-open;
+        active-stream-provider <=> AppState.detail-active-stream-provider;
+        loading: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? AppState.debug-preview-state == "details-loading" : AppState.details-loading;
+        username: AppState.username;
+        avatar-image: AppState.avatar-image;
+        has-avatar-image: AppState.has-avatar-image;
+        default-avatar-icon: AppState.default-avatar-icon;
+        anonymous-icon: AppState.anonymous-icon;
+        is-in-library: AppState.detail-is-in-library;
+        is-watched: AppState.detail-is-watched;
+        has-trailer: AppState.detail-has-trailer;
+        trailer-selection-id: AppState.detail-trailer-selection-id;
+        toggle-library => { AppActions.details-toggle-library(); }
+        toggle-watched => { AppActions.details-toggle-watched(); }
+        play-trailer(selection-id) => { AppActions.play-stream(selection-id); }
+        is-series: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            ? (AppState.debug-preview-state == "series-episodes"
+                || AppState.debug-preview-state == "series-season-menu"
+                || AppState.debug-preview-state == "series-streams"
+                || AppState.debug-preview-state == "series-stream-loading"
+                || AppState.debug-preview-state == "series-no-streams")
+            : AppState.detail-is-series;
+        available-seasons: AppState.detail-seasons;
+        active-season <=> AppState.detail-active-season;
+        season-menu-open: AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+            && AppState.debug-preview-state == "series-season-menu";
+        episode-names: AppState.detail-episode-names;
+        active-episode-idx <=> AppState.detail-active-episode-idx;
+        episodes: AppState.detail-episodes;
+        in-stream-view <=> AppState.detail-in-stream-view;
+        episode-search-query <=> AppState.detail-episode-search-query;
+        icon-play: AppState.icon-play;
+        icon-link: AppState.icon-link;
+        icon-magnet: AppState.icon-magnet;
+        icon-download: AppState.icon-download;
+        icon-eye: AppState.icon-eye;
+        icon-eye-off: AppState.icon-eye-off;
+        icon-clapperboard: AppState.icon-clapperboard;
+        season-changed(season) => { AppActions.details-season-changed(season); }
+        episode-changed(index) => {
+            if (AppState.debug-preview-enabled && AppState.debug-preview-page == 7) {
+                AppState.detail-active-episode-idx = index;
+                AppState.debug-preview-state = "series-streams";
+            } else {
+                AppActions.details-episode-changed(index);
+            }
+        }
+        toggle-episode-watched(id) => { AppActions.details-toggle-episode-watched(id); }
+        episode-search-changed(query) => { AppState.detail-episode-search-query = query; AppActions.details-episode-search-changed(query); }
+        copy-stream-link(id) => { AppActions.details-copy-stream-link(id); }
+        copy-magnet-link(id) => { AppActions.details-copy-magnet-link(id); }
+        copy-download-link(id) => { AppActions.details-copy-download-link(id); }
+        toggle-season-watched(season) => { AppActions.details-toggle-season-watched(season); }
+        play-stream(selection-id) => { AppActions.play-stream(selection-id); }
+        toggle-fullscreen => { AppActions.player-toggle-fullscreen(); }
+        close => {
+            if (AppState.debug-preview-enabled && AppState.debug-preview-page == 7
+                && (AppState.debug-preview-state == "series-streams"
+                    || AppState.debug-preview-state == "series-stream-loading"
+                    || AppState.debug-preview-state == "series-no-streams")) {
+                AppState.debug-preview-state = "series-episodes";
+            } else if (AppState.detail-in-stream-view) {
+                AppState.detail-in-stream-view = false;
+            } else {
+                AppActions.navigation-back();
+            }
+        }
+    }
+
+}

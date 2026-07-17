@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub auto_launch_player: bool,
     pub torrent_port: u16,
     pub hardware_acceleration: bool,
+    pub ui_style: UiStyle,
     pub theme: ThemeConfig,
     pub tidb_api_key: String,
     pub tidb_show_intro: bool,
@@ -22,7 +23,17 @@ pub struct AppConfig {
     pub tidb_show_preview: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Selects the presentation layer mounted by the Slint `MainWindow`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiStyle {
+    Cinematic,
+    #[default]
+    #[serde(other)]
+    Classic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ThemeConfig {
     pub background: String,
@@ -89,12 +100,13 @@ impl Default for ThemeConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            config_version: 1,
+            config_version: 2,
             server_url: "http://127.0.0.1:11470".to_string(),
             active_tab: 0,
             auto_launch_player: true,
             torrent_port: 11470,
             hardware_acceleration: true,
+            ui_style: UiStyle::Classic,
             theme: ThemeConfig::default(),
             tidb_api_key: String::new(),
             tidb_show_intro: true,
@@ -107,7 +119,7 @@ impl Default for AppConfig {
 
 impl AppConfig {
     fn migrate(&mut self) -> bool {
-        if self.config_version >= 1 {
+        if self.config_version >= 2 {
             return false;
         }
 
@@ -128,7 +140,7 @@ impl AppConfig {
         if legacy_theme {
             self.theme = ThemeConfig::default();
         }
-        self.config_version = 1;
+        self.config_version = 2;
         true
     }
 }
@@ -138,6 +150,7 @@ pub async fn init_config() {
 
     // 1. Try to load from database settings table
     let mut loaded_from_db = false;
+    let mut migrated_from_db = false;
     if let Ok(conn) = crate::db::get_conn() {
         if let Ok(mut rows) = conn
             .query("SELECT value FROM settings WHERE key = 'app_config'", ())
@@ -145,13 +158,27 @@ pub async fn init_config() {
         {
             if let Ok(Some(row)) = rows.next().await {
                 if let Ok(val_str) = row.get::<String>(0) {
-                    if let Ok(parsed) = serde_json::from_str::<AppConfig>(&val_str) {
+                    if let Ok(mut parsed) = serde_json::from_str::<AppConfig>(&val_str) {
+                        migrated_from_db = parsed.migrate();
                         config = parsed;
                         loaded_from_db = true;
                     }
                 }
             }
         }
+    }
+
+    if loaded_from_db
+        && migrated_from_db
+        && let Ok(conn) = crate::db::get_conn()
+        && let Ok(serialized) = serde_json::to_string(&config)
+    {
+        let _ = conn
+            .execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                [serialized],
+            )
+            .await;
     }
 
     // 2. If not found in database, check for legacy config.json file
@@ -277,7 +304,7 @@ mod tests {
         let mut config = legacy_config();
 
         assert!(config.migrate());
-        assert_eq!(config.config_version, 1);
+        assert_eq!(config.config_version, 2);
         assert_eq!(config.theme.background, "#0c0b11");
         assert_eq!(config.theme.secondary_background, "#1a173e");
         assert_eq!(config.theme.success, "#22b365");
@@ -289,7 +316,7 @@ mod tests {
         config.theme.accent = "#ff3366".to_string();
 
         assert!(config.migrate());
-        assert_eq!(config.config_version, 1);
+        assert_eq!(config.config_version, 2);
         assert_eq!(config.theme.background, "#08070d");
         assert_eq!(config.theme.accent, "#ff3366");
     }
@@ -311,5 +338,63 @@ mod tests {
         assert_eq!(config.theme.accent, "#abcdef");
         assert_eq!(config.theme.drawer_background, "#00000066");
         assert_eq!(config.theme.text_muted, "#ffffff66");
+        assert_eq!(config.ui_style, UiStyle::Classic);
+    }
+
+    #[test]
+    fn ui_style_should_round_trip_classic() {
+        let config = AppConfig::default();
+        let json = serde_json::to_string(&config).expect("serialize config");
+        let restored: AppConfig = serde_json::from_str(&json).expect("deserialize config");
+
+        assert_eq!(restored.ui_style, UiStyle::Classic);
+    }
+
+    #[test]
+    fn ui_style_should_round_trip_cinematic() {
+        let config = AppConfig {
+            ui_style: UiStyle::Cinematic,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).expect("serialize config");
+        assert!(json.contains(r#""ui_style":"cinematic""#));
+        let restored: AppConfig = serde_json::from_str(&json).expect("deserialize config");
+        assert_eq!(restored.ui_style, UiStyle::Cinematic);
+    }
+
+    #[test]
+    fn ui_style_should_fall_back_to_classic_for_unknown_values() {
+        let config = AppConfig {
+            ui_style: UiStyle::Cinematic,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).expect("serialize config");
+        let unknown = json.replace("cinematic", "future-style");
+        let config: AppConfig = serde_json::from_str(&unknown).expect("deserialize unknown style");
+        assert_eq!(config.ui_style, UiStyle::Classic);
+    }
+
+    #[test]
+    fn migration_should_preserve_cinematic_selection() {
+        let mut config = AppConfig {
+            config_version: 1,
+            ui_style: UiStyle::Cinematic,
+            ..Default::default()
+        };
+
+        config.migrate();
+
+        assert_eq!(config.ui_style, UiStyle::Cinematic);
+    }
+
+    #[test]
+    fn changing_ui_style_should_preserve_classic_theme() {
+        let mut config = AppConfig::default();
+        config.theme.accent = "#abcdef".to_string();
+        let classic_theme = config.theme.clone();
+
+        config.ui_style = UiStyle::Cinematic;
+
+        assert_eq!(config.theme, classic_theme);
     }
 }

@@ -1,0 +1,50 @@
+import { AppState, AppActions } from "../app_contract.slint";
+import { AuthPage } from "../pages/auth.slint";
+import { CinematicAuthPage } from "../cinematic/pages/auth.slint";
+import { UiStyle } from "../cinematic/types.slint";
+
+export component AuthLayer inherits Rectangle {
+    in property <bool> show-auth-layer: false;
+    private property <length> ui-unit: root.width >= 2800px ? 18px
+        : (root.width >= 2200px ? 16px : (root.width >= 1600px ? 15px : 14px));
+    background: transparent;
+    if (root.show-auth-layer && AppState.ui-style == UiStyle.classic) : AuthPage {
+        width: 100%;
+        height: 100%;
+        unit: root.ui-unit;
+        error-message: AppState.debug-preview-enabled && AppState.debug-preview-page == -1
+            ? (AppState.debug-preview-state == "auth-error" ? "The email or password is incorrect." : "")
+            : AppState.error-message;
+        loading: AppState.debug-preview-enabled && AppState.debug-preview-page == -1
+            ? AppState.debug-preview-state == "auth-loading"
+            : AppState.loading;
+        register-mode: AppState.debug-preview-enabled && AppState.debug-preview-page == -1
+            && AppState.debug-preview-state == "register";
+        mail-icon: AppState.mail-icon;
+        lock-icon: AppState.lock-icon;
+        facebook-icon: AppState.facebook-icon;
+        apple-icon: AppState.apple-icon;
+        submit-login(email, pass) => { AppActions.submit-login(email, pass); }
+        submit-register(email, pass, tos, priv, mkt) => { AppActions.submit-register(email, pass, tos, priv, mkt); }
+        facebook-login => { AppActions.facebook-login(); }
+        apple-login => { AppActions.apple-login(); }
+        cancel-auth => { AppActions.cancel-auth(); }
+        request-password-reset(email) => { AppActions.request-password-reset(email); }
+        guest-login => { AppActions.guest-login(); }
+    }
+
+    if (root.show-auth-layer && AppState.ui-style == UiStyle.cinematic) : CinematicAuthPage {
+        width: 100%; height: 100%;
+        error-message: AppState.debug-preview-enabled && AppState.debug-preview-page == -1
+            ? (AppState.debug-preview-state == "auth-error" ? "The email or password is incorrect." : "") : AppState.error-message;
+        loading: AppState.debug-preview-enabled && AppState.debug-preview-page == -1 ? AppState.debug-preview-state == "auth-loading" : AppState.loading;
+        register-mode: AppState.debug-preview-enabled && AppState.debug-preview-page == -1 && AppState.debug-preview-state == "register";
+        submit-login(email, pass) => { AppActions.submit-login(email, pass); }
+        submit-register(email, pass, tos, priv, mkt) => { AppActions.submit-register(email, pass, tos, priv, mkt); }
+        facebook-login => { AppActions.facebook-login(); }
+        apple-login => { AppActions.apple-login(); }
+        request-password-reset(email) => { AppActions.request-password-reset(email); }
+        guest => { AppActions.guest-login(); }
+    }
+
+}

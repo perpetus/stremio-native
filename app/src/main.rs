@@ -29,14 +29,19 @@ use stremio_core::{
 
 use core_env::DesktopEnv;
 
+mod args;
 mod config;
 pub mod db;
 pub mod image_cache;
 mod models;
 mod mpv_integration;
 mod performance;
+mod platform;
 mod playback;
+mod rendering;
 mod shortcuts;
+mod ui_action_bridge;
+mod window_integration;
 
 // Modular sub-files
 mod app_model;
@@ -58,23 +63,57 @@ async fn main() -> anyhow::Result<()> {
     // so register the process runtime before any model or playback work starts.
     core_env::install_runtime_handle(tokio::runtime::Handle::current());
 
-    // 1. Initialize durable logging before any fallible application setup.
+    // Parse rendering arguments before logging because replacement renderer
+    // attempts must append to the first process's diagnostic file.
+    let app_args = args::AppArgs::from_env()?;
     let profile = performance::ProfileConfig::from_args(std::env::args());
 
     // Initialize logger and keep workers alive
-    let _guards = logger::init_logger(&profile)?;
+    let _guards = logger::init_logger(&profile, app_args.renderer_attempt > 0)?;
     tracing::info!("Starting Stremio-Rust GUI client...");
 
-    let res = run_app(&profile).await;
+    let rendering = match rendering::initialize(&app_args) {
+        Ok(rendering) => rendering,
+        Err(error) => {
+            if rendering::relaunch_next(&app_args, &error)? {
+                return Ok(());
+            }
+            rendering::show_terminal_error(&error);
+            return Err(error.into());
+        }
+    };
+
+    let res = run_app(&profile, rendering).await;
     if let Err(ref e) = res {
         tracing::error!(error = ?e, "Stremio-Rust execution failed with error");
+        if e.chain()
+            .any(|source| source.downcast_ref::<slint::PlatformError>().is_some())
+        {
+            let renderer_error = rendering::reported_setup_failure(
+                &app_args,
+                rendering,
+                format!("main window setup failed: {e:#}"),
+            );
+            if rendering::relaunch_next(&app_args, &renderer_error)? {
+                return Ok(());
+            }
+            rendering::show_terminal_error(&renderer_error);
+        }
         let _ = db::insert_log("ERROR", &format!("Application crash: {:?}", e)).await;
     }
     res
 }
 
-async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<()> {
+async fn run_app(
+    profile_config: &performance::ProfileConfig,
+    rendering: rendering::ResolvedRendering,
+) -> anyhow::Result<()> {
     let _run_span = tracing::info_span!("run_app").entered();
+
+    #[cfg(windows)]
+    let (player_video_output, video_host) = prepare_video_output(rendering.video_output)?;
+    #[cfg(not(windows))]
+    let player_video_output = prepare_video_output(rendering.video_output)?;
 
     // 1. Initialize local database
     db::init_db(std::path::PathBuf::from("storage")).await?;
@@ -87,12 +126,6 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         let _span = tracing::info_span!("load_config").entered();
         config::load_config()
     };
-
-    // MPV's render API needs a native OpenGL context even when video decoding
-    // itself is configured for software fallback.
-    unsafe {
-        std::env::set_var("SLINT_BACKEND", "winit-femtovg");
-    }
 
     // Initialize the embedded stream server
     let server_cfg = stream_server::ServerConfig {
@@ -114,6 +147,10 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     // 5. Initialize Slint MainWindow UI
     let ui = MainWindow::new()?;
     tracing::info!("MainWindow created");
+    ui.set_ui_style(match config.ui_style {
+        config::UiStyle::Classic => UiStyle::Classic,
+        config::UiStyle::Cinematic => UiStyle::Cinematic,
+    });
     let ui_weak = ui.as_weak();
 
     // Apply Dynamic Theme to Slint Global Theme Singleton
@@ -480,6 +517,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         &ui,
         &runtime,
         hardware_decoding,
+        player_video_output,
         navigation.clone(),
         discord_rpc.clone(),
         tokio::runtime::Handle::current(),
@@ -493,6 +531,19 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     let native_playback_bridge = native_playback
         .as_ref()
         .map(mpv_integration::NativePlayback::bridge);
+    let software_frame_source =
+        native_playback
+            .as_ref()
+            .and_then(|playback| match playback.video_source() {
+                playback_mpv::PlaybackVideoSource::Software(source) => Some(source),
+                _ => None,
+            });
+    let window_integration = window_integration::WindowIntegration::new(
+        #[cfg(windows)]
+        video_host,
+        software_frame_source,
+    );
+    window_integration.install_surface_callback(&ui);
 
     // 7. Spawn Stremio-Core event loop receiver to sync with Slint UI
     event_loop::start_event_loop(
@@ -515,7 +566,8 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         &config,
         navigation.clone(),
     );
-    shortcuts::install_platform_shortcuts(&ui);
+    ui_action_bridge::install(&ui);
+    shortcuts::install_platform_shortcuts(&ui, window_integration.clone());
 
     // 10. Run the Slint main window event loop
     tracing::info!("Stremio-Rust GUI loop starting...");
@@ -532,6 +584,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
     if let Some(reporter) = performance_reporter {
         reporter.abort();
     }
+    window_integration.shutdown();
     let hide_result = ui.hide();
     drop(ui);
 
@@ -539,6 +592,7 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         Some(playback) => playback.shutdown(),
         None => Ok(()),
     };
+    drop(window_integration);
 
     if let Err(error) = server_handle.shutdown() {
         tracing::warn!(%error, "stream-server was already stopped");
@@ -553,6 +607,51 @@ async fn run_app(profile_config: &performance::ProfileConfig) -> anyhow::Result<
         None => tracing::info!("stream-server stopped"),
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn prepare_video_output(
+    output: rendering::VideoOutputProfile,
+) -> anyhow::Result<(
+    playback_mpv::PlayerVideoOutput,
+    Option<platform::windows::VideoHostWindow>,
+)> {
+    use playback_mpv::{NativeWindowTarget, PlayerVideoOutput, SoftwareRenderConfig};
+
+    match output {
+        rendering::VideoOutputProfile::NativeWindow => {
+            let host = platform::windows::VideoHostWindow::create()?;
+            let target = host.native_target()?;
+            Ok((
+                PlayerVideoOutput::NativeWindow(NativeWindowTarget::Win32(target)),
+                Some(host),
+            ))
+        }
+        rendering::VideoOutputProfile::SharedOpenGl => {
+            Ok((PlayerVideoOutput::OpenGlRenderApi, None))
+        }
+        rendering::VideoOutputProfile::Software => Ok((
+            PlayerVideoOutput::SoftwareRenderApi(SoftwareRenderConfig::default()),
+            None,
+        )),
+    }
+}
+
+#[cfg(not(windows))]
+fn prepare_video_output(
+    output: rendering::VideoOutputProfile,
+) -> anyhow::Result<playback_mpv::PlayerVideoOutput> {
+    use playback_mpv::{PlayerVideoOutput, SoftwareRenderConfig};
+
+    match output {
+        rendering::VideoOutputProfile::NativeWindow => {
+            anyhow::bail!("native-window video is unavailable on this platform")
+        }
+        rendering::VideoOutputProfile::SharedOpenGl => Ok(PlayerVideoOutput::OpenGlRenderApi),
+        rendering::VideoOutputProfile::Software => Ok(PlayerVideoOutput::SoftwareRenderApi(
+            SoftwareRenderConfig::default(),
+        )),
+    }
 }
 
 fn queue_tab_sync(

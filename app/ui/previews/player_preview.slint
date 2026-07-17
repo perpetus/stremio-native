@@ -1,0 +1,113 @@
+import { FullscreenPreviewShell } from "preview_shell.slint";
+import { PreviewDebugMenu, PreviewStateOption } from "debug_menu.slint";
+import { PlayerPage } from "../pages/player.slint";
+import { Theme } from "../theme.slint";
+
+// Player chrome preview with every modal/drawer state available without an
+// mpv backend. The page receives only its public production inputs.
+export component PlayerPreview inherits Window {
+    in-out property <string> preview-state: "paused";
+    in-out property <bool> parity-size: false;
+    in-out property <bool> debug-menu-open: false;
+    in-out property <float> preview-progress: 0.42;
+    in-out property <float> preview-volume: 0.72;
+    in-out property <int> active-episode-idx: 1;
+
+    width: root.parity-size ? 2048px : 1280px;
+    height: root.parity-size ? 1096px : 720px;
+    background: #000000;
+    default-font-family: "Plus Jakarta Sans";
+
+    private property <[PreviewStateOption]> debug-options: [
+        { label: "Loading", value: "loading" },
+        { label: "Buffering", value: "buffering" },
+        { label: "Paused controls", value: "paused" },
+        { label: "Playing controls", value: "playing" },
+        { label: "Skip intro", value: "skip-intro" },
+        { label: "Subtitle menu", value: "subtitles" },
+        { label: "Audio menu", value: "audio" },
+        { label: "Speed menu", value: "speed" },
+        { label: "Playback info", value: "stats" },
+        { label: "More options", value: "options" },
+        { label: "Episode drawer", value: "episodes" },
+        { label: "Playback error", value: "error" },
+        { label: "Controls hidden", value: "controls-hidden" }
+    ];
+
+    FullscreenPreviewShell {
+        width: parent.width;
+        height: parent.height;
+
+        PlayerPage {
+            width: parent.width;
+            height: parent.height;
+            item-title: "One Piece · S23E14 · The Legend Lurking in Elbaph";
+            stream-name: "Torrentio 1080p WEB-DL";
+            poster-image: @image-url("../assets/images/intro-background.png");
+            video-frame: @image-url("../assets/images/background_1.svg");
+            has-video-frame: root.preview-state != "loading";
+            loading: root.preview-state == "loading";
+            buffering: root.preview-state == "buffering";
+            buffering-percent: 67;
+            error-message: root.preview-state == "error"
+                ? "The stream stopped unexpectedly. Select another stream and try again."
+                : "";
+            paused: root.preview-state == "paused" || root.preview-state == "error";
+            volume <=> root.preview-volume;
+            muted: false;
+            progress <=> root.preview-progress;
+            elapsed-time-str: "10:31";
+            total-time-str: "25:00";
+            video-format: "H.265 / HEVC Main 10";
+            audio-format: "E-AC-3 5.1";
+            file-format: "Matroska";
+            hardware-decoder: "D3D11VA";
+            buffered-percent: 71;
+            download-speed: "12.8 MB/s";
+            upload-speed: "1.3 MB/s";
+            peer-count: 184;
+            stream-progress: 67;
+
+            subtitles-tracks: ["English · embedded", "English · OpenSubtitles", "Spanish", "French"];
+            subtitle-track-languages: ["English", "English", "Spanish", "French"];
+            subtitle-track-origins: ["Embedded", "OpenSubtitles", "OpenSubtitles", "OpenSubtitles"];
+            subtitle-languages: ["English", "Spanish", "French"];
+            subtitle-language-track-indices: [0, 2, 3];
+            active-subtitle-idx: 0;
+            audio-tracks: ["Japanese · 5.1", "English · Stereo"];
+            audio-track-languages: ["Japanese", "English"];
+            audio-track-labels: ["Original", "Dub"];
+            active-audio-idx: 0;
+            is-series: true;
+            episode-names: [
+                "Ancient History - The Harley Passed Down by Elbaph",
+                "The Legend Lurking in Elbaph",
+                "The Truth Behind the Giant Kingdom",
+                "The Straw Hats Set Sail"
+            ];
+            active-episode-idx <=> root.active-episode-idx;
+            playback-speed: 1;
+            video-scale-mode: 0;
+            controls-visible: root.preview-state != "controls-hidden";
+            show-skip-button: root.preview-state == "skip-intro";
+            skip-button-label: "Skip Intro";
+            show-subtitles-menu: root.preview-state == "subtitles";
+            show-audio-menu: root.preview-state == "audio";
+            show-speed-menu: root.preview-state == "speed";
+            show-stats-menu: root.preview-state == "stats";
+            show-options-menu: root.preview-state == "options";
+            show-playlist-drawer: root.preview-state == "episodes";
+        }
+
+        PreviewDebugMenu {
+            unit: root.parity-size ? 16px : 14px;
+            x: 16px;
+            y: 128px;
+            title: "Player states";
+            options: root.debug-options;
+            selected-value: root.preview-state;
+            open <=> root.debug-menu-open;
+            state-selected(value) => { root.preview-state = value; }
+        }
+    }
+}

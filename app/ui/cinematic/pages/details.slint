@@ -1,0 +1,443 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { CinematicTheme } from "../theme.slint";
+import { CinematicButton } from "../components/cinematic_button.slint";
+import { CinematicInput } from "../components/input.slint";
+import { CinematicSelectField } from "../components/select.slint";
+import { FocusSurface } from "../components/focus_surface.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { MetadataLine } from "../components/metadata.slint";
+import { StreamRow } from "../components/stream_row.slint";
+import { FallbackImage } from "../../components/fallback_image.slint";
+import { EpisodeItem, StreamLink } from "../../pages/details.slint";
+import { IconData } from "../../theme.slint";
+
+export component CinematicDetailsPage inherits Rectangle {
+    in property <string> item-title: "";
+    in property <string> description: "";
+    in property <image> poster;
+    in property <image> background-image;
+    in property <string> release-year: "";
+    in property <string> runtime: "";
+    in property <string> rating: "";
+    in property <[string]> genres: [];
+    in property <[string]> cast: [];
+    in property <[string]> directors: [];
+    in property <[StreamLink]> streams: [];
+    in property <[string]> stream-providers: ["All"];
+    in property <int> stream-loading-count: 0;
+    in-out property <string> active-stream-provider: "All";
+    in property <bool> loading: false;
+    in property <bool> is-in-library: false;
+    in property <bool> is-watched: false;
+    in property <bool> has-trailer: false;
+    in property <string> trailer-selection-id: "";
+    callback toggle-library;
+    callback toggle-watched;
+    callback play-trailer(string);
+    in property <bool> is-series: false;
+    in property <[int]> available-seasons: [];
+    in-out property <int> active-season: 1;
+    in-out property <bool> season-menu-open: false;
+    in-out property <bool> notifications-enabled: true;
+    in property <[string]> episode-names: [];
+    in-out property <int> active-episode-idx: 0;
+    in property <[EpisodeItem]> episodes: [];
+    in-out property <bool> in-stream-view: false;
+    in-out property <string> episode-search-query: "";
+    in property <string> username: "";
+    in property <image> avatar-image;
+    in property <bool> has-avatar-image: false;
+    in property <image> default-avatar-icon;
+    in property <image> anonymous-icon;
+    callback toggle-fullscreen;
+    callback season-changed(int);
+    callback notifications-changed(bool);
+    callback episode-changed(int);
+    callback toggle-episode-watched(string);
+    callback episode-search-changed(string);
+    callback copy-stream-link(string);
+    callback copy-magnet-link(string);
+    callback copy-download-link(string);
+    callback toggle-season-watched(int);
+    in property <IconData> icon-play;
+    in property <IconData> icon-link;
+    in property <IconData> icon-magnet;
+    in property <IconData> icon-download;
+    in property <IconData> icon-eye;
+    in property <IconData> icon-eye-off;
+    in property <IconData> icon-clapperboard;
+    callback play-stream(string);
+    callback close;
+    in-out property <bool> stream-filter-open: false;
+
+    private property <length> gutter: root.width < 1200px ? 24px : 42px;
+    private property <length> content-top: min(350px, root.height * 0.46);
+    private property <length> panel-gap: 18px;
+    private property <length> left-panel-width: root.is-series ? max(420px, root.width * 0.45)
+        : max(360px, root.width * 0.38);
+
+    background: CinematicTheme.canvas;
+    clip: true;
+    forward-focus: page-focus;
+
+    page-focus := FocusScope {
+        width: parent.width;
+        height: parent.height;
+
+    if (root.background-image.width > 0) : Image {
+        width: parent.width;
+        height: min(parent.height, 520px);
+        source: root.background-image;
+        image-fit: cover;
+        horizontal-alignment: right;
+        opacity: 0.82;
+    }
+    Rectangle {
+        width: parent.width;
+        height: min(parent.height, 540px);
+        background: @linear-gradient(90deg, #141414fa 0%, #141414c9 43%, #14141440 78%, transparent 100%);
+    }
+    Rectangle {
+        y: min(parent.height, 280px);
+        width: parent.width;
+        height: min(280px, parent.height - self.y);
+        background: @linear-gradient(0deg, CinematicTheme.canvas 12%, transparent 100%);
+    }
+
+    if (root.loading) : Rectangle {
+        x: root.gutter;
+        y: 84px;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - 112px;
+        CinematicSkeleton { x: 0px; width: 190px; height: 285px; }
+        CinematicSkeleton { x: 216px; width: min(520px, parent.width - 216px); height: 42px; }
+        CinematicSkeleton { x: 216px; y: 62px; width: min(380px, parent.width - 216px); height: 20px; }
+        CinematicSkeleton { x: 216px; y: 104px; width: min(560px, parent.width - 216px); height: 96px; }
+        CinematicSkeleton { y: 320px; width: parent.width; height: parent.height - 320px; }
+    }
+
+    if (!root.loading) : Rectangle {
+        x: root.gutter;
+        y: 74px;
+        width: min(parent.width - 2 * root.gutter, 850px);
+        height: max(220px, root.content-top - 74px);
+
+        FallbackImage {
+            x: 0px;
+            y: 0px;
+            width: root.width < 1120px ? 142px : 174px;
+            height: root.width < 1120px ? 213px : 261px;
+            source: root.poster;
+        }
+
+        VerticalLayout {
+            x: (root.width < 1120px ? 166px : 202px);
+            y: 0px;
+            width: max(300px, parent.width - self.x);
+            height: parent.height;
+            spacing: 11px;
+            Text { text: root.item-title; color: CinematicTheme.primary; font-size: root.width < 1180px ? 34px : 44px; font-weight: 800; wrap: word-wrap; max-height: 106px; overflow: elide; }
+            MetadataLine { rating: root.rating; year: root.release-year; runtime: root.runtime; }
+            Text { text: root.description; color: CinematicTheme.secondary; font-size: 14px; wrap: word-wrap; max-height: 72px; overflow: elide; }
+            if (root.genres.length > 0) : HorizontalLayout {
+                height: 22px;
+                spacing: 8px;
+                for genre in root.genres : Text { text: genre; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+            }
+            HorizontalLayout {
+                height: 44px;
+                spacing: 8px;
+                if (!root.is-series || root.in-stream-view) : CinematicButton {
+                    primary: true;
+                    label: "Play";
+                    enabled: root.streams.length > 0;
+                    clicked => { if (root.streams.length > 0) { root.play-stream(root.streams[0].id); } }
+                }
+                CinematicButton { label: root.is-in-library ? "In library" : "Add to library"; clicked => { root.toggle-library(); } }
+                CinematicButton { label: root.is-watched ? "Watched" : "Mark watched"; clicked => { root.toggle-watched(); } }
+                if (root.has-trailer) : CinematicButton { label: "Trailer"; clicked => { root.play-trailer(root.trailer-selection-id); } }
+            }
+        }
+    }
+
+    if (!root.loading) : FocusSurface {
+        x: parent.width - 108px;
+        y: 18px;
+        width: 40px;
+        height: 40px;
+        accessible-name: "Toggle fullscreen";
+        Text { text: "□"; color: CinematicTheme.primary; font-size: 20px; horizontal-alignment: center; vertical-alignment: center; }
+        clicked => { root.toggle-fullscreen(); }
+    }
+    FocusSurface {
+        x: parent.width - 58px;
+        y: 18px;
+        width: 40px;
+        height: 40px;
+        z: 20;
+        accessible-name: "Back";
+        Text { text: "×"; color: CinematicTheme.primary; font-size: 24px; horizontal-alignment: center; vertical-alignment: center; }
+        clicked => { root.close(); }
+    }
+
+    if (!root.loading) : Rectangle {
+        x: root.gutter;
+        y: root.content-top;
+        width: parent.width - 2 * root.gutter;
+        height: parent.height - self.y - 20px;
+        background: transparent;
+
+        Rectangle {
+            width: root.left-panel-width;
+            height: parent.height;
+            background: CinematicTheme.raised;
+            border-radius: CinematicTheme.modal-radius;
+            border-width: 1px;
+            border-color: CinematicTheme.divider;
+            clip: true;
+
+            if (!root.is-series) : ScrollView {
+                x: 22px;
+                y: 20px;
+                width: parent.width - 44px;
+                height: parent.height - 40px;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                mouse-drag-pan-enabled: true;
+                VerticalLayout {
+                    width: parent.width;
+                    spacing: 15px;
+                    Text { text: "About"; color: CinematicTheme.primary; font-size: 20px; font-weight: 750; }
+                    Text { text: root.description; color: CinematicTheme.secondary; font-size: 14px; wrap: word-wrap; }
+                    if (root.cast.length > 0) : VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Cast"; color: CinematicTheme.primary; font-size: 13px; font-weight: 700; }
+                        for person in root.cast : Text { text: person; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                    }
+                    if (root.directors.length > 0) : VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Directors"; color: CinematicTheme.primary; font-size: 13px; font-weight: 700; }
+                        for person in root.directors : Text { text: person; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                    }
+                }
+            }
+
+            if (root.is-series) : Rectangle {
+                width: parent.width;
+                height: parent.height;
+                HorizontalLayout {
+                    x: 16px;
+                    y: 14px;
+                    width: parent.width - 32px;
+                    height: 42px;
+                    spacing: 6px;
+                    if (root.in-stream-view) : FocusSurface {
+                        width: 44px;
+                        height: 40px;
+                        accessible-name: "Back to episodes";
+                        Text { text: "‹"; color: CinematicTheme.primary; font-size: 26px; horizontal-alignment: center; vertical-alignment: center; }
+                        clicked => { root.in-stream-view = false; }
+                    }
+                    if (!root.in-stream-view) : Text { text: "Episodes"; color: CinematicTheme.primary; font-size: 21px; font-weight: 750; vertical-alignment: center; }
+                    if (root.in-stream-view) : Text {
+                        horizontal-stretch: 1;
+                        text: root.episode-names.length > root.active-episode-idx
+                            ? root.episode-names[root.active-episode-idx] : "Episode streams";
+                        color: CinematicTheme.primary;
+                        font-size: 16px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    if (!root.in-stream-view && root.is-in-library) : CinematicButton {
+                        min-width: 130px;
+                        height: 40px;
+                        label: root.notifications-enabled ? "Notifications on" : "Notifications off";
+                        clicked => {
+                            root.notifications-enabled = !root.notifications-enabled;
+                            root.notifications-changed(root.notifications-enabled);
+                        }
+                    }
+                }
+
+                if (!root.in-stream-view) : HorizontalLayout {
+                    x: 16px;
+                    y: 64px;
+                    width: parent.width - 32px;
+                    height: 40px;
+                    spacing: 6px;
+                    for season in root.available-seasons : FocusSurface {
+                        min-width: 86px;
+                        height: 38px;
+                        selected: season == root.active-season;
+                        accessible-name: "Season " + season;
+                        Text { text: "Season " + season; color: CinematicTheme.secondary; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                        clicked => {
+                            root.active-season = season;
+                            root.season-menu-open = false;
+                            root.season-changed(season);
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    CinematicButton { min-width: 118px; height: 38px; label: "Toggle season"; clicked => { root.toggle-season-watched(root.active-season); } }
+                }
+
+                if (!root.in-stream-view) : CinematicInput {
+                    x: 16px;
+                    y: 112px;
+                    width: parent.width - 32px;
+                    height: 40px;
+                    placeholder: "Search episodes";
+                    text <=> root.episode-search-query;
+                    edited(value) => { root.episode-search-changed(value); }
+                }
+
+                if (!root.in-stream-view && root.episodes.length == 0) : CinematicFeedback {
+                    x: 16px;
+                    y: 160px;
+                    width: parent.width - 32px;
+                    height: parent.height - 176px;
+                    title: "No episodes found";
+                }
+
+                if (!root.in-stream-view && root.episodes.length > 0) : ListView {
+                    x: 16px;
+                    y: 160px;
+                    width: parent.width - 32px;
+                    height: parent.height - 176px;
+                    horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                    mouse-drag-pan-enabled: true;
+                    for episode[index] in root.episodes : FocusSurface {
+                        width: parent.width;
+                        height: 88px;
+                        enabled: !episode.is-upcoming;
+                        accessible-name: episode.title;
+                        selected: index == root.active-episode-idx;
+                        clicked => {
+                            root.active-episode-idx = index;
+                            root.episode-changed(index);
+                            root.in-stream-view = true;
+                        }
+                        FallbackImage { x: 8px; y: 8px; width: 110px; height: 72px; source: episode.thumbnail; }
+                        VerticalLayout {
+                            x: 128px;
+                            y: 12px;
+                            width: max(80px, parent.width - 238px);
+                            height: parent.height - 24px;
+                            alignment: center;
+                            spacing: 5px;
+                            Text { text: episode.episode-num + ". " + episode.title; color: CinematicTheme.primary; font-size: 14px; font-weight: 700; overflow: elide; }
+                            Text { text: episode.is-upcoming ? "Upcoming" : episode.released; color: CinematicTheme.muted; font-size: 12px; overflow: elide; }
+                        }
+                        FocusSurface {
+                            x: parent.width - 100px;
+                            y: 24px;
+                            width: 88px;
+                            height: 40px;
+                            accessible-name: episode.is-watched ? "Mark unwatched" : "Mark watched";
+                            Text { text: episode.is-watched ? "Watched" : "Unwatched"; color: CinematicTheme.secondary; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                            clicked => { root.toggle-episode-watched(episode.id); }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            x: root.left-panel-width + root.panel-gap;
+            width: parent.width - self.x;
+            height: parent.height;
+            background: CinematicTheme.raised;
+            border-radius: CinematicTheme.modal-radius;
+            border-width: 1px;
+            border-color: CinematicTheme.divider;
+            clip: true;
+
+            HorizontalLayout {
+                x: 16px;
+                y: 14px;
+                width: parent.width - 32px;
+                height: 42px;
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.is-series && !root.in-stream-view ? "Choose an episode" : "Streams";
+                    color: CinematicTheme.primary;
+                    font-size: 21px;
+                    font-weight: 750;
+                    vertical-alignment: center;
+                }
+                if (!root.is-series || root.in-stream-view) : CinematicSelectField {
+                    field-width: min(180px, parent.width * 0.42);
+                    value: root.active-stream-provider;
+                    options: root.stream-providers;
+                    open: root.stream-filter-open;
+                    toggle => { root.stream-filter-open = !root.stream-filter-open; }
+                    selected(provider) => { root.active-stream-provider = provider; root.stream-filter-open = false; }
+                }
+            }
+
+            if (root.is-series && !root.in-stream-view) : CinematicFeedback {
+                y: 64px;
+                width: parent.width;
+                height: parent.height - 64px;
+                title: "Select an episode";
+                message: "Stream choices for the selected episode will appear here.";
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.streams.length == 0) : CinematicFeedback {
+                y: 64px;
+                width: parent.width;
+                height: parent.height - 64px;
+                title: "No streams found";
+                message: "Install more add-ons and try again.";
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.streams.length > 0) : ListView {
+                x: 12px;
+                y: 64px;
+                width: parent.width - 24px;
+                height: parent.height - 92px;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                mouse-drag-pan-enabled: true;
+                for stream in root.streams : Rectangle {
+                    private property <bool> matches-provider: root.active-stream-provider == "All"
+                        || stream.provider == root.active-stream-provider;
+                    width: parent.width;
+                    height: self.matches-provider ? 84px : 0px;
+                    clip: true;
+                    StreamRow {
+                        visible: parent.matches-provider;
+                        width: parent.width;
+                        name: stream.name;
+                        description: stream.description;
+                        provider: stream.provider;
+                        play => { root.play-stream(stream.id); }
+                        copy-link => { root.copy-stream-link(stream.id); }
+                        copy-magnet => { root.copy-magnet-link(stream.id); }
+                        download => { root.copy-download-link(stream.id); }
+                    }
+                }
+            }
+
+            if ((!root.is-series || root.in-stream-view) && root.stream-loading-count > 0) : Text {
+                x: 16px;
+                y: parent.height - 26px;
+                width: parent.width - 32px;
+                height: 18px;
+                text: root.stream-loading-count + " add-ons are still loading";
+                color: CinematicTheme.muted;
+                font-size: 12px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(Escape);
+        enabled: root.stream-filter-open || root.season-menu-open;
+        activated => { root.stream-filter-open = false; root.season-menu-open = false; }
+    }
+    }
+}

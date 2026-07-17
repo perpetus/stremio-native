@@ -1,0 +1,9 @@
+import { CinematicTheme } from "../theme.slint";
+export component MetadataLine inherits HorizontalLayout {
+    in property <string> rating: ""; in property <string> year: ""; in property <string> runtime: "";
+    spacing: 12px;
+    if root.rating != "" : Text { text: root.rating; color: CinematicTheme.success; font-weight: 700; }
+    if root.year != "" : Text { text: root.year; color: CinematicTheme.secondary; }
+    if root.runtime != "" : Text { text: root.runtime; color: CinematicTheme.secondary; }
+}
+

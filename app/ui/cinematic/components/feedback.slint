@@ -1,0 +1,11 @@
+import { CinematicTheme } from "../theme.slint";
+export component CinematicFeedback inherits Rectangle {
+    in property <string> title: "Nothing here yet";
+    in property <string> message: "";
+    background: transparent;
+    VerticalLayout { alignment: center; spacing: 10px;
+        Text { text: root.title; color: CinematicTheme.primary; font-size: 23px; font-weight: 700; horizontal-alignment: center; }
+        Text { text: root.message; color: CinematicTheme.muted; font-size: 14px; horizontal-alignment: center; wrap: word-wrap; }
+    }
+}
+

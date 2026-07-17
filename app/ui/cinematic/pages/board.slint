@@ -1,0 +1,60 @@
+import { CinematicTheme } from "../theme.slint";
+import { MediaCardItem } from "../../components/media_card.slint";
+import { BoardSection } from "../../pages/board.slint";
+import { HeroBillboard } from "../components/hero_billboard.slint";
+import { MediaRail } from "../components/media_rail.slint";
+import { ListView } from "std-widgets.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+
+export component CinematicBoardPage inherits Rectangle {
+    in property <[MediaCardItem]> continue-watching: [];
+    in property <[BoardSection]> sections: [];
+    in property <bool> loading: false;
+    in property <bool> show-missing-artwork: false;
+    in property <int> selected-index: -1;
+    in property <image> hero-backdrop;
+    in property <image> play-icon;
+    callback item-selected(string, string, string);
+    callback poster-requested(string);
+    private property <bool> has-hero-item: root.continue-watching.length > 0
+        || (root.sections.length > 0 && root.sections[0].items.length > 0);
+    private property <MediaCardItem> hero-item: root.continue-watching.length > 0
+        ? root.continue-watching[0]
+        : root.sections[0].items[0];
+    background: CinematicTheme.canvas;
+    HeroBillboard {
+        width: parent.width;
+        title: root.has-hero-item ? root.hero-item.title : "Your Stremio, cinematic";
+        description: root.has-hero-item && root.hero-item.description != ""
+            ? root.hero-item.description
+            : "Your library, catalogs, and streams in one cinematic view.";
+        backdrop: root.hero-backdrop.width > 0 ? root.hero-backdrop : root.hero-item.poster;
+        play-icon: root.play-icon;
+        actions-enabled: root.has-hero-item;
+        play => {
+            if (root.has-hero-item) {
+                root.item-selected(root.hero-item.id, root.hero-item.media-type, root.hero-item.video-id);
+            }
+        }
+        more-info => {
+            if (root.has-hero-item) {
+                root.item-selected(root.hero-item.id, root.hero-item.media-type, "");
+            }
+        }
+    }
+    // Mirror Classic's bounded image set: off-screen catalog rows are
+    // virtualized by ListView instead of leaving every poster mounted.
+    if root.loading && root.sections.length == 0 : HorizontalLayout {
+        x: 36px; y: 420px; width: parent.width - 72px; height: 150px; spacing: 10px;
+        for _item in [0, 1, 2, 3, 4] : CinematicSkeleton { width: 250px; height: 141px; }
+    }
+    if !root.loading && root.sections.length == 0 : CinematicFeedback {
+        x: 36px; y: 420px; width: parent.width - 72px; height: 170px;
+        title: "Nothing to watch yet";
+        message: "Your recommendations and continue-watching titles will appear here.";
+    }
+    if root.sections.length > 0 : ListView { x: 36px; y: 390px; width: parent.width - 72px; height: parent.height - 390px;
+        for section[index] in root.sections : MediaRail { width: parent.width; title: section.title; items: section.items; selected-index: index == 0 ? root.selected-index : -1; show-missing-artwork: root.show-missing-artwork && index == 0; item-selected(a,b,c) => { root.item-selected(a,b,c); } poster-requested(url) => { root.poster-requested(url); } }
+    }
+}

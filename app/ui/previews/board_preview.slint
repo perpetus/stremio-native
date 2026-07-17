@@ -1,0 +1,61 @@
+import { AppPreviewShell } from "preview_shell.slint";
+import { BoardPage, BoardSection } from "../pages/board.slint";
+import { MediaCardItem } from "../components/media_card.slint";
+import { Theme } from "../theme.slint";
+
+export component BoardPreview inherits Window {
+    in-out property <string> preview-state: "loaded";
+    in-out property <bool> parity-size: false;
+    width: root.parity-size ? 2048px : 1280px;
+    height: root.parity-size ? 1096px : 720px;
+    background: Theme.main-gradient;
+    default-font-family: "Plus Jakarta Sans";
+
+    private property <[MediaCardItem]> loaded-continue: [
+        {
+            id: "tt0111161", media-type: "movie", video-id: "tt0111161",
+            title: "The Shawshank Redemption", poster-url: "",
+            poster: @image-url("../assets/images/background_1.svg"), description: "",
+            show-checkmark: false, show-progress: true, progress-value: 0.63
+        },
+        {
+            id: "tt1375666", media-type: "movie", video-id: "tt1375666",
+            title: "Inception", poster-url: "",
+            poster: @image-url("../assets/images/background_2.svg"), description: "",
+            show-checkmark: false, show-progress: true, progress-value: 0.28
+        }
+    ];
+    private property <[BoardSection]> loaded-sections: [
+        {
+            title: "Continue watching", r-type: "", catalog-id: "", addon-base: "",
+            is-continue-watching: true,
+            items: root.loaded-continue
+        },
+        {
+            title: "Popular Movies", r-type: "movie", catalog-id: "top", addon-base: "preview",
+            is-continue-watching: false,
+            items: [
+                { id: "dune", media-type: "movie", video-id: "", title: "Dune", poster-url: "", poster: @image-url("../assets/images/background_1.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+                { id: "alien", media-type: "movie", video-id: "", title: "Alien", poster-url: "", poster: @image-url("../assets/images/background_2.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+                { id: "arrival", media-type: "movie", video-id: "", title: "Arrival", poster-url: "", poster: @image-url("../assets/images/intro-background.png"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+                { id: "blade-runner", media-type: "movie", video-id: "", title: "Blade Runner", poster-url: "", poster: @image-url("../assets/images/background_1.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+                { id: "moon", media-type: "movie", video-id: "", title: "Moon", poster-url: "", poster: @image-url("../assets/images/background_2.svg"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 },
+                { id: "solaris", media-type: "movie", video-id: "", title: "Solaris", poster-url: "", poster: @image-url("../assets/images/intro-background.png"), description: "", show-checkmark: false, show-progress: false, progress-value: 0 }
+            ]
+        }
+    ];
+
+    AppPreviewShell {
+        width: parent.width;
+        height: parent.height;
+        active-tab: 0;
+
+        BoardPage {
+            width: parent.width;
+            height: parent.height;
+            loading: root.preview-state == "loading";
+            continue-watching: root.preview-state == "loaded" ? root.loaded-continue : [];
+            sections: root.preview-state == "loaded" ? root.loaded-sections : [];
+        }
+    }
+}

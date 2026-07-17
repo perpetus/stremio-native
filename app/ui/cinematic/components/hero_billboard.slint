@@ -1,0 +1,24 @@
+import { CinematicTheme } from "../theme.slint";
+import { CinematicButton } from "cinematic_button.slint";
+
+export component HeroBillboard inherits Rectangle {
+    in property <string> title: "Discover something remarkable";
+    in property <string> description: "Your library, catalogs, and streams in one cinematic view.";
+    in property <image> backdrop;
+    in property <image> play-icon;
+    in property <bool> actions-enabled: true;
+    callback play;
+    callback more-info;
+    height: 420px; background: CinematicTheme.canvas; clip: true;
+    Image { width: parent.width; height: parent.height; source: root.backdrop; image-fit: cover; }
+    Rectangle { width: parent.width; height: parent.height; background: @linear-gradient(90deg, #000000ed 0%, #0000008c 48%, transparent 75%); }
+    Rectangle { y: parent.height * 0.55; width: parent.width; height: parent.height * 0.45; background: @linear-gradient(0deg, CinematicTheme.canvas, transparent); }
+    VerticalLayout { x: 48px; y: 125px; width: min(560px, parent.width * 0.55); spacing: 16px;
+        Text { text: root.title; color: CinematicTheme.primary; font-size: 42px; font-weight: 800; wrap: word-wrap; }
+        Text { text: root.description; color: CinematicTheme.secondary; font-size: 16px; wrap: word-wrap; max-height: 70px; overflow: elide; }
+        HorizontalLayout { spacing: 12px;
+            CinematicButton { primary: true; label: "Play"; show-icon: true; icon: root.play-icon; enabled: root.actions-enabled; clicked => { root.play(); } }
+            CinematicButton { label: "More info"; enabled: root.actions-enabled; clicked => { root.more-info(); } }
+        }
+    }
+}

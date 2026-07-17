@@ -1,0 +1,131 @@
+import { ListView } from "std-widgets.slint";
+import { CinematicTheme } from "../theme.slint";
+import { CinematicSelectField } from "../components/select.slint";
+import { MediaTile } from "../components/media_tile.slint";
+import { CinematicFeedback } from "../components/feedback.slint";
+import { CinematicSkeleton } from "../components/loading.slint";
+import { LibraryRow } from "../../pages/library.slint";
+
+export component CinematicLibraryPage inherits Rectangle {
+    in property <[LibraryRow]> rows: [];
+    in property <int> column-count: 6;
+    in property <bool> loading: false;
+    in-out property <string> active-type: "All";
+    in-out property <string> active-sort: "Last Watched";
+    in-out property <bool> type-open: false;
+    in-out property <bool> sort-open: false;
+    in-out property <length> scroll-y: 0px;
+    callback type-changed(string);
+    callback sort-changed(string);
+    callback item-selected(string, string);
+    callback poster-requested(string);
+
+    private property <length> gutter: root.width < 1200px ? 24px : CinematicTheme.page-gutter;
+    private property <length> tile-gap: 14px;
+    private property <length> tile-width: root.column-count > 0
+        ? max(118px, (root.width - 2 * root.gutter - (root.column-count - 1) * root.tile-gap) / root.column-count)
+        : 160px;
+    private property <length> tile-height: root.tile-width * 1.5;
+
+    background: CinematicTheme.canvas;
+
+    Rectangle {
+        width: parent.width;
+        height: 82px;
+        background: CinematicTheme.canvas;
+        z: 120;
+        HorizontalLayout {
+            padding-left: root.gutter;
+            padding-right: root.gutter;
+            spacing: 12px;
+            alignment: center;
+            Text {
+                text: "My Library";
+                color: CinematicTheme.primary;
+                font-size: root.width < 1180px ? 24px : 30px;
+                font-weight: 800;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            CinematicSelectField {
+                field-width: 170px;
+                value: root.active-type;
+                options: ["All", "Movies", "Series", "Others"];
+                open: root.type-open;
+                toggle => { root.type-open = !root.type-open; root.sort-open = false; }
+                selected(value) => {
+                    root.type-open = false;
+                    root.active-type = value;
+                    root.type-changed(value);
+                }
+            }
+            CinematicSelectField {
+                field-width: 190px;
+                value: root.active-sort;
+                options: ["Last Watched", "A-Z", "Z-A", "Most Watched", "Watched", "Not Watched"];
+                open: root.sort-open;
+                toggle => { root.sort-open = !root.sort-open; root.type-open = false; }
+                selected(value) => {
+                    root.sort-open = false;
+                    root.active-sort = value;
+                    root.sort-changed(value);
+                }
+            }
+        }
+    }
+
+    if (root.loading) : Rectangle {
+        y: 82px;
+        width: parent.width;
+        height: parent.height - 82px;
+        clip: true;
+        HorizontalLayout {
+            x: root.gutter;
+            y: 12px;
+            width: parent.width - 2 * root.gutter;
+            height: root.tile-height;
+            spacing: root.tile-gap;
+            for _column in root.column-count : CinematicSkeleton {
+                width: root.tile-width;
+                height: root.tile-height;
+                radius: CinematicTheme.card-radius;
+            }
+        }
+    }
+
+    if (!root.loading && root.rows.length == 0) : CinematicFeedback {
+        y: 82px;
+        width: parent.width;
+        height: parent.height - 82px;
+        title: "Your library is empty";
+        message: "Add movies and series to find them here.";
+    }
+
+    if (!root.loading && root.rows.length > 0) : ListView {
+        y: 82px;
+        width: parent.width;
+        height: parent.height - 82px;
+        viewport-y <=> root.scroll-y;
+        mouse-drag-pan-enabled: true;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        for row in root.rows : Rectangle {
+            width: parent.width;
+            height: root.tile-height + root.tile-gap;
+            for item[index] in row.cols : MediaTile {
+                x: root.gutter + index * (root.tile-width + root.tile-gap);
+                y: 0px;
+                width: root.tile-width;
+                height: root.tile-height;
+                title: item.title;
+                artwork: item.poster;
+                artwork-url: item.poster-url;
+                watched: item.show-checkmark;
+                show-progress: item.show-progress;
+                progress: item.progress-value;
+                is-visible: true;
+                clicked => { root.item-selected(item.id, item.media-type); }
+                poster-requested(url) => { root.poster-requested(url); }
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+import { CinematicTheme } from "../theme.slint";
+export component CinematicModal inherits Rectangle {
+    in property <string> title: ""; callback close;
+    background: CinematicTheme.raised; border-radius: CinematicTheme.modal-radius; border-width: 1px; border-color: CinematicTheme.divider;
+    Text { x: 20px; y: 16px; text: root.title; color: CinematicTheme.primary; font-size: 20px; font-weight: 700; }
+}
