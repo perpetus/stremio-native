@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-stremio-core = { path = "../../stremio-core", features = ["derive", "analytics", "env-future-send"] }
-stream-server = { path = "../../stream-server/server", package = "server" }
+stremio-core.workspace = true
+stream-server.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls", "charset", "http2"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

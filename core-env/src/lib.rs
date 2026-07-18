@@ -4,8 +4,10 @@ use http::Request;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::OnceLock;
 use tokio::runtime::Handle;
+use tokio::sync::mpsc;
 
 use stremio_core::{
     models::{ctx::Ctx, streaming_server::StreamingServer},
@@ -14,11 +16,14 @@ use stremio_core::{
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static TOKIO_HANDLE: OnceLock<Handle> = OnceLock::new();
+type SequentialFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+static SEQUENTIAL_EXECUTOR: OnceLock<mpsc::UnboundedSender<SequentialFuture>> = OnceLock::new();
 
 /// Registers the application runtime so core work can be scheduled safely from
 /// native callback threads such as the libmpv actor.
 pub fn install_runtime_handle(handle: Handle) {
-    let _ = TOKIO_HANDLE.set(handle);
+    let _ = TOKIO_HANDLE.set(handle.clone());
+    let _ = SEQUENTIAL_EXECUTOR.get_or_init(|| start_sequential_executor(&handle));
 }
 
 pub fn spawn_on_runtime(future: impl Future<Output = ()> + Send + 'static) {
@@ -28,6 +33,30 @@ pub fn spawn_on_runtime(future: impl Future<Output = ()> + Send + 'static) {
         drop(handle.spawn(future));
     } else {
         tracing::error!("cannot schedule core future because no Tokio runtime is registered");
+    }
+}
+
+fn start_sequential_executor(handle: &Handle) -> mpsc::UnboundedSender<SequentialFuture> {
+    let (sender, receiver) = mpsc::unbounded_channel();
+    drop(handle.spawn(run_sequential(receiver)));
+    sender
+}
+
+fn sequential_executor() -> Option<&'static mpsc::UnboundedSender<SequentialFuture>> {
+    if let Some(sender) = SEQUENTIAL_EXECUTOR.get() {
+        return Some(sender);
+    }
+
+    let handle = TOKIO_HANDLE
+        .get()
+        .cloned()
+        .or_else(|| Handle::try_current().ok())?;
+    Some(SEQUENTIAL_EXECUTOR.get_or_init(|| start_sequential_executor(&handle)))
+}
+
+async fn run_sequential(mut receiver: mpsc::UnboundedReceiver<SequentialFuture>) {
+    while let Some(future) = receiver.recv().await {
+        future.await;
     }
 }
 
@@ -293,7 +322,22 @@ impl Env for DesktopEnv {
     }
 
     fn exec_sequential<F: Future<Output = ()> + Send + 'static>(future: F) {
-        spawn_on_runtime(future);
+        let future: SequentialFuture = Box::pin(future);
+        match sequential_executor() {
+            Some(sender) => {
+                if let Err(error) = sender.send(future) {
+                    tracing::error!(
+                        "sequential core executor stopped; scheduling the pending effect directly"
+                    );
+                    spawn_on_runtime(error.0);
+                }
+            }
+            None => {
+                tracing::error!(
+                    "cannot schedule sequential core future because no Tokio runtime is registered"
+                );
+            }
+        }
     }
 
     fn now() -> DateTime<Utc> {
@@ -315,5 +359,40 @@ impl Env for DesktopEnv {
     #[cfg(debug_assertions)]
     fn log(message: String) {
         tracing::info!("{}", message);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SequentialFuture, run_sequential};
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn sequential_executor_awaits_each_effect_in_submission_order() {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<SequentialFuture>();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let worker = tokio::spawn(run_sequential(receiver));
+
+        let first_order = order.clone();
+        assert!(
+            sender
+                .send(Box::pin(async move {
+                    tokio::task::yield_now().await;
+                    first_order.lock().unwrap().push(1);
+                }))
+                .is_ok()
+        );
+        let second_order = order.clone();
+        assert!(
+            sender
+                .send(Box::pin(async move {
+                    second_order.lock().unwrap().push(2);
+                }))
+                .is_ok()
+        );
+        drop(sender);
+
+        worker.await.unwrap();
+        assert_eq!(*order.lock().unwrap(), vec![1, 2]);
     }
 }

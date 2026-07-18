@@ -9,11 +9,30 @@ pub struct AppServerConnector {
     http_client: reqwest::Client,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSnapshot {
+    #[serde(flatten)]
+    pub settings: SettingsPayload,
+    #[serde(default)]
+    pub server_version: String,
+}
+
 impl AppServerConnector {
     pub fn new(server_url: String) -> Self {
         Self {
             server_url: server_url.trim_end_matches('/').to_string(),
             http_client: reqwest::Client::new(),
+        }
+    }
+
+    pub async fn get_settings_snapshot(&self) -> Result<SettingsSnapshot> {
+        if cfg!(feature = "in-process") {
+            self.dispatch_in_process(http::Method::GET, "/settings", None::<()>)
+                .await
+        } else {
+            self.dispatch_http(reqwest::Method::GET, "/settings", None::<()>)
+                .await
         }
     }
 
@@ -106,13 +125,9 @@ impl AppServerConnector {
 #[async_trait::async_trait]
 impl ServerConnector for AppServerConnector {
     async fn get_settings(&self) -> Result<SettingsPayload> {
-        if cfg!(feature = "in-process") {
-            self.dispatch_in_process(http::Method::GET, "/settings", None::<()>)
-                .await
-        } else {
-            self.dispatch_http(reqwest::Method::GET, "/settings", None::<()>)
-                .await
-        }
+        self.get_settings_snapshot()
+            .await
+            .map(|snapshot| snapshot.settings)
     }
 
     async fn apply_settings(&self, settings: SettingsPayload) -> Result<()> {

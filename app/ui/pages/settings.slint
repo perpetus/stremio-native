@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "../theme.slint";
 import { MenuButton, PillButton } from "../components/button.slint";
+import { SelectField } from "../components/select.slint";
 import { NativeTextField } from "../components/text_input.slint";
 import { ToggleSwitch } from "../components/toggle.slint";
 import { Slider } from "../components/slider.slint";
@@ -105,6 +106,8 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> torrent-cache-size: "2.0 GB";
     in property <string> server-url: "";
     in-out property <string> interface-language: "English";
+    in property <[string]> interface-language-options: [];
+    in-out property <bool> interface-language-open: false;
     in-out property <string> subtitles-language: "English";
     in-out property <string> torrent-profile: "Default";
     in-out property <bool> hardware-acceleration: true;
@@ -127,13 +130,22 @@ export component SettingsPage inherits Rectangle {
     in-out property <bool> pause-on-minimize: false;
     in-out property <bool> quit-on-close: true;
     in property <bool> export-loading: false;
-    in property <string> export-status: "";
+    in property <int> export-state: 0;
+    in property <string> export-detail: "";
+    in property <string> application-version: "";
+    in property <string> build-version: "";
+    in property <string> server-version: "";
+    in property <string> shell-version: "";
+    in property <int> update-state: 0;
+    in property <string> update-version: "";
+    in property <int> update-action-kind: 0;
+    in property <bool> update-action-enabled: true;
     in-out property <bool> streaming-seeding: false;
     in-out property <bool> streaming-dht: true;
     in-out property <bool> streaming-pex: true;
     in-out property <bool> streaming-lsd: true;
     in-out property <string> streaming-remote-url: "";
-    in-out property <string> streaming-logs-text: "No logs loaded. Click Refresh.";
+    in-out property <string> streaming-logs-text: @tr("No logs loaded. Click Refresh.");
     in property <IconData> refresh-icon;
     in property <IconData> folder-icon;
     in-out property <bool> esc-exit-fullscreen: true;
@@ -153,6 +165,7 @@ export component SettingsPage inherits Rectangle {
     callback refresh-logs;
     callback open-logs-folder;
     callback export-data;
+    callback update-action;
     callback change-binge-watching(bool);
     callback change-discord-rpc-enabled(bool);
     callback change-tidb-api-key(string);
@@ -194,19 +207,46 @@ export component SettingsPage inherits Rectangle {
             padding-right: 1.5 * root.unit;
             spacing: 0.5 * root.unit;
 
-            MenuButton { unit: root.unit; label: "General"; selected: root.active-category == 0; clicked => { scroll.viewport-y = 0px; root.active-category = 0; } }
-            MenuButton { unit: root.unit; label: "Interface"; selected: root.active-category == 1; clicked => { scroll.viewport-y = -35 * root.unit; root.active-category = 1; } }
-            MenuButton { unit: root.unit; label: "Player"; selected: root.active-category == 2; clicked => { scroll.viewport-y = -70 * root.unit; root.active-category = 2; } }
-            MenuButton { unit: root.unit; label: "Streaming"; selected: root.active-category == 3; clicked => { scroll.viewport-y = -165 * root.unit; root.active-category = 3; } }
-            MenuButton { unit: root.unit; label: "Shortcuts"; selected: root.active-category == 4; clicked => { scroll.viewport-y = -215 * root.unit; root.active-category = 4; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_GENERAL" => "General"); selected: root.active-category == 0; clicked => { scroll.viewport-y = 0px; root.active-category = 0; } }
+            MenuButton { unit: root.unit; label: @tr("INTERFACE" => "Interface"); selected: root.active-category == 1; clicked => { scroll.viewport-y = -35 * root.unit; root.active-category = 1; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_PLAYER" => "Player"); selected: root.active-category == 2; clicked => { scroll.viewport-y = -70 * root.unit; root.active-category = 2; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_STREAMING" => "Streaming"); selected: root.active-category == 3; clicked => { scroll.viewport-y = -165 * root.unit; root.active-category = 3; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts"); selected: root.active-category == 4; clicked => { scroll.viewport-y = -215 * root.unit; root.active-category = 4; } }
             Rectangle { vertical-stretch: 1; }
-            Text {
-                height: 2 * root.unit;
-                text: "Stremio Native";
-                color: Theme.text-primary;
-                opacity: 0.3;
-                font-size: 0.9 * root.unit;
-                vertical-alignment: center;
+            VerticalLayout {
+                spacing: 0.5 * root.unit;
+                if (root.application-version != "") : Text {
+                    height: 1.5 * root.unit;
+                    text: @tr("SETTINGS_APP_VERSION" => "App Version") + ": " + root.application-version;
+                    color: Theme.text-primary;
+                    opacity: 0.3;
+                    font-size: 0.8 * root.unit;
+                    overflow: elide;
+                }
+                if (root.build-version != "") : Text {
+                    height: 1.5 * root.unit;
+                    text: @tr("SETTINGS_BUILD_VERSION" => "Build Version") + ": " + root.build-version;
+                    color: Theme.text-primary;
+                    opacity: 0.3;
+                    font-size: 0.8 * root.unit;
+                    overflow: elide;
+                }
+                if (root.server-version != "") : Text {
+                    height: 1.5 * root.unit;
+                    text: @tr("SETTINGS_SERVER_VERSION" => "Server Version") + ": " + root.server-version;
+                    color: Theme.text-primary;
+                    opacity: 0.3;
+                    font-size: 0.8 * root.unit;
+                    overflow: elide;
+                }
+                if (root.shell-version != "") : Text {
+                    height: 1.5 * root.unit;
+                    text: @tr("SETTINGS_SHELL_VERSION" => "Shell Version") + ": " + root.shell-version;
+                    color: Theme.text-primary;
+                    opacity: 0.3;
+                    font-size: 0.8 * root.unit;
+                    overflow: elide;
+                }
             }
         }
 
@@ -224,12 +264,12 @@ export component SettingsPage inherits Rectangle {
 
                 general-sec := SettingsSection {
                     unit: root.unit;
-                    title: "General";
+                    title: @tr("SETTINGS_NAV_GENERAL" => "General");
 
                     SettingsOption {
                         unit: root.unit;
-                        label: "Discord Rich Presence";
-                        description: "Show what you are watching in your Discord profile.";
+                        label: @tr("SETTINGS_DISCORD" => "Show watching activity on Discord");
+                        description: @tr("Show what you are watching in your Discord profile.");
                         ToggleSwitch {
                             unit: root.unit;
                             checked: root.discord-rpc-enabled;
@@ -239,14 +279,48 @@ export component SettingsPage inherits Rectangle {
 
                     SettingsOption {
                         unit: root.unit;
-                        label: "Export user data";
-                        description: root.export-status == ""
-                            ? "Download a backup of your library and settings."
-                            : root.export-status;
+                        label: @tr("Application updates") + " · v" + root.application-version;
+                        description: root.update-state == 1
+                            ? @tr("Checking GitHub for updates…")
+                            : (root.update-state == 2
+                                ? @tr("Version {} is available.", root.update-version)
+                                : (root.update-state == 3
+                                    ? @tr("You are up to date (v{}).", root.update-version)
+                                    : (root.update-state == 4
+                                        ? @tr("Update check failed. Try again.")
+                                        : @tr("Current version: v{}", root.update-version))));
                         PillButton {
                             width: 16 * root.unit;
                             unit: root.unit;
-                            label: root.export-loading ? "Preparing…" : "Export";
+                            label: root.update-action-kind == 1
+                                ? @tr("Checking…")
+                                : (root.update-action-kind == 2
+                                    ? @tr("View update")
+                                    : (root.update-action-kind == 3 ? @tr("Check again") : @tr("Check now")));
+                            outlined: true;
+                            enabled: root.update-action-enabled;
+                            clicked => { root.update-action(); }
+                        }
+                    }
+
+                    SettingsOption {
+                        unit: root.unit;
+                        label: @tr("SETTINGS_DATA_EXPORT" => "Export user data");
+                        description: root.export-state == 1
+                            ? @tr("Sign in to export your data.")
+                            : (root.export-state == 2
+                                ? @tr("Preparing export…")
+                                : (root.export-state == 3
+                                    ? @tr("Export opened in your browser.")
+                                    : (root.export-state == 4
+                                        ? @tr("Export ready: {}", root.export-detail)
+                                        : (root.export-state == 5
+                                            ? @tr("Export failed: {}", root.export-detail)
+                                            : @tr("Download a backup of your library and settings.")))));
+                        PillButton {
+                            width: 16 * root.unit;
+                            unit: root.unit;
+                            label: root.export-loading ? @tr("Preparing…") : @tr("Export");
                             outlined: true;
                             enabled: !root.export-loading;
                             clicked => { root.export-data(); }
@@ -254,12 +328,12 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Clear search history";
-                        description: "Delete all recent search queries stored locally.";
+                        label: @tr("STREMIO_TV_SEARCH_HISTORY_CLEAR" => "Clear Search History");
+                        description: @tr("Delete all recent search queries stored locally.");
                         PillButton {
                             width: 16 * root.unit;
                             unit: root.unit;
-                            label: "Clear history";
+                            label: @tr("CLEAR_HISTORY" => "Clear history");
                             outlined: true;
                             clicked => { root.clear-search-history(); }
                         }
@@ -267,96 +341,103 @@ export component SettingsPage inherits Rectangle {
 
                     SettingsLink {
                         unit: root.unit;
-                        label: "Data export";
+                        label: @tr("SETTINGS_REQ_EXPORT" => "Request data export");
                         clicked => { root.export-data(); }
                     }
                     SettingsLink {
                         unit: root.unit;
-                        label: "Support";
+                        label: @tr("WEBSITE_SUPPORT" => "Support");
                         clicked => { root.open-external-url("https://stremio.zendesk.com/hc/en-us"); }
                     }
                     SettingsLink {
                         unit: root.unit;
-                        label: "Source code";
+                        label: @tr("SETTINGS_SOURCE_CODE" => "Source code");
                         clicked => { root.open-external-url("https://github.com/stremio/stremio-native"); }
                     }
                     SettingsLink {
                         unit: root.unit;
-                        label: "Terms of Service";
+                        label: @tr("TERMS_OF_SERVICE" => "Terms of Service");
                         clicked => { root.open-external-url("https://www.stremio.com/tos"); }
                     }
                     SettingsLink {
                         unit: root.unit;
-                        label: "Privacy Policy";
+                        label: @tr("PRIVACY_POLICY" => "Privacy Policy");
                         clicked => { root.open-external-url("https://www.stremio.com/privacy"); }
                     }
                     SettingsLink {
                         unit: root.unit;
-                        label: "Delete account";
+                        label: @tr("WEBSITE_DELETE_ACCOUNT" => "Delete Account");
                         clicked => { root.open-external-url("https://stremio.zendesk.com/hc/en-us/articles/360021428911-How-to-delete-my-account"); }
                     }
                 }
 
                 interface-sec := SettingsSection {
                     unit: root.unit;
-                    title: "Interface";
+                    title: @tr("INTERFACE" => "Interface");
                     SettingsOption {
                         unit: root.unit;
-                        label: "Interface language";
-                        NativeTextField {
+                        label: @tr("SETTINGS_INTERFACE_LANGUAGE" => "Interface Language");
+                        SelectField {
                             width: 16 * root.unit;
                             unit: root.unit;
-                            text: root.interface-language;
-                            placeholder-text: "English";
-                            accepted => { root.change-interface-language(self.text); }
+                            field-width: 16 * root.unit;
+                            value: root.interface-language;
+                            options: root.interface-language-options;
+                            open: root.interface-language-open;
+                            toggle => { root.interface-language-open = !root.interface-language-open; }
+                            selected(value) => {
+                                root.interface-language-open = false;
+                                root.interface-language = value;
+                                root.change-interface-language(value);
+                            }
                         }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Gamepad support";
+                        label: @tr("SETTINGS_GAMEPAD" => "Enable gamepad support");
                         ToggleSwitch { unit: root.unit; checked: root.gamepad-support; toggled => { root.change-gamepad-support(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Hide spoilers";
+                        label: @tr("Hide spoilers");
                         ToggleSwitch { unit: root.unit; checked: root.hide-spoilers; toggled => { root.change-hide-spoilers(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Quit when closing the window";
+                        label: @tr("Quit when closing the window");
                         ToggleSwitch { unit: root.unit; checked: root.quit-on-close; toggled => { root.change-quit-on-close(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Esc exits fullscreen";
+                        label: @tr("SETTINGS_FULLSCREEN_EXIT" => "Escape key exit full screen");
                         ToggleSwitch { unit: root.unit; checked: root.esc-exit-fullscreen; toggled => { root.esc-exit-fullscreen = self.checked; } }
                     }
                 }
 
                 player-sec := SettingsSection {
                     unit: root.unit;
-                    title: "Player";
+                    title: @tr("SETTINGS_NAV_PLAYER" => "Player");
 
                     // Subtitles Settings
                     SettingsOption {
                         unit: root.unit;
-                        label: "Default subtitles language";
+                        label: @tr("SETTINGS_SUBTITLES_LANGUAGE" => "Default Subtitles Language");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
                             text: root.subtitles-language;
-                            placeholder-text: "English";
+                            placeholder-text: @tr("English");
                             accepted => { root.change-subtitles-language(self.text); }
                         }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Automatically select subtitles";
+                        label: @tr("SETTINGS_SUBTITLES_AUTO_SELECT" => "Automatic subtitles selection");
                         ToggleSwitch { unit: root.unit; checked: root.subtitles-auto-select; toggled => { root.change-subtitles-auto-select(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Subtitle font";
+                        label: @tr("SETTINGS_SUBTITLES_FONT" => "Subtitles font");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
@@ -367,8 +448,8 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Subtitle size";
-                        description: "Percentage from 50 to 200.";
+                        label: @tr("SETTINGS_SUBTITLES_SIZE" => "Default Subtitles Size");
+                        description: @tr("Percentage from 50 to 200.");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
@@ -379,13 +460,13 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Bold subtitles";
+                        label: @tr("Bold subtitles");
                         ToggleSwitch { unit: root.unit; checked: root.subtitles-bold; toggled => { root.change-subtitles-bold(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Subtitle vertical offset";
-                        description: "Percentage from the bottom edge.";
+                        label: @tr("PLAYER_SUBTITLES_VERTICAL_POSITION" => "Vertical Position");
+                        description: @tr("Percentage from the bottom edge.");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
@@ -398,18 +479,18 @@ export component SettingsPage inherits Rectangle {
                     // Advanced Settings
                     SettingsOption {
                         unit: root.unit;
-                        label: "Play next episode automatically";
+                        label: @tr("SETTINGS_BINGE" => "Auto-play next episode");
                         ToggleSwitch { unit: root.unit; checked: root.binge-watching; toggled => { root.change-binge-watching(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Continue playback in the background";
+                        label: @tr("SETTINGS_PLAY_IN_BACKGROUND" => "Play in background");
                         ToggleSwitch { unit: root.unit; checked: root.play-in-background; toggled => { root.change-play-in-background(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Seek duration";
-                        description: "Seconds skipped by the forward and back shortcuts.";
+                        label: @tr("SEEK_TIME_DURATION" => "Seek Time Duration");
+                        description: @tr("Seconds skipped by the forward and back shortcuts.");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
@@ -420,13 +501,13 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Pause when minimized";
+                        label: @tr("SETTINGS_PAUSE_MINIMIZED" => "Pause playback when minimized");
                         ToggleSwitch { unit: root.unit; checked: root.pause-on-minimize; toggled => { root.change-pause-on-minimize(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Hardware-accelerated decoding";
-                        description: "Use the GPU for video decoding. A restart may be required.";
+                        label: @tr("SETTINGS_HWDEC" => "Hardware-accelerated decoding");
+                        description: @tr("Use the GPU for video decoding. A restart may be required.");
                         ToggleSwitch {
                             unit: root.unit;
                             checked: root.hardware-acceleration;
@@ -436,47 +517,47 @@ export component SettingsPage inherits Rectangle {
                     SettingsOption {
                         unit: root.unit;
                         label: "TheIntroDB API Key";
-                        description: "Optional API Key for TheIntroDB Premium.";
+                        description: @tr("Optional API Key for TheIntroDB Premium.");
                         NativeTextField {
                             width: 16 * root.unit;
                             unit: root.unit;
                             text: root.tidb-api-key;
-                            placeholder-text: "Leave empty for free tier";
+                            placeholder-text: @tr("Leave empty for free tier");
                             accepted => { root.change-tidb-api-key(self.text); }
                         }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Show Skip Intro Button";
+                        label: @tr("Show Skip Intro Button");
                         ToggleSwitch { unit: root.unit; checked: root.tidb-show-intro; toggled => { root.change-tidb-show-intro(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Show Skip Recap Button";
+                        label: @tr("Show Skip Recap Button");
                         ToggleSwitch { unit: root.unit; checked: root.tidb-show-recap; toggled => { root.change-tidb-show-recap(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Show Skip Credits Button";
+                        label: @tr("Show Skip Credits Button");
                         ToggleSwitch { unit: root.unit; checked: root.tidb-show-credits; toggled => { root.change-tidb-show-credits(self.checked); } }
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Show Skip Preview Button";
+                        label: @tr("Show Skip Preview Button");
                         ToggleSwitch { unit: root.unit; checked: root.tidb-show-preview; toggled => { root.change-tidb-show-preview(self.checked); } }
                     }
                 }
 
                 streaming-sec := SettingsSection {
                     unit: root.unit;
-                    title: "Streaming";
+                    title: @tr("SETTINGS_NAV_STREAMING" => "Streaming");
                     SettingsOption {
                         unit: root.unit;
-                        label: "Streaming server endpoint";
-                        description: root.server-url == "" ? "The streaming server is offline." : root.server-url;
+                        label: @tr("STREMIO_TV_SETTINGS_SERVER_URL" => "Streaming server URL");
+                        description: root.server-url == "" ? @tr("SETTINGS_SERVER_UNAVAILABLE" => "Streaming server is not available.") : root.server-url;
                         Text {
                             width: 16 * root.unit;
-                            text: root.server-url == "" ? "Offline" : "Online";
+                            text: root.server-url == "" ? @tr("MOBILE_SERVER_OFFLINE" => "Offline") : @tr("MOBILE_SERVER_ONLINE" => "Online");
                             color: root.server-url == "" ? Theme.text-secondary : Theme.success;
                             font-size: root.unit;
                             font-weight: 600;
@@ -487,18 +568,20 @@ export component SettingsPage inherits Rectangle {
                     }
                     if (root.streaming-remote-url != "") : SettingsOption {
                         unit: root.unit;
-                        label: "Remote access URL";
+                        label: @tr("Remote access URL");
                         description: root.streaming-remote-url;
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Torrent cache size";
-                        description: "Limit the disk space available for torrent buffering.";
+                        label: @tr("SETTINGS_SERVER_CACHE_SIZE" => "Cache size");
+                        description: @tr("Limit the disk space available for torrent buffering.");
                         VerticalLayout {
                             width: 16 * root.unit;
                             spacing: 0.35 * root.unit;
                             Text {
-                                text: root.torrent-cache-size;
+                                text: root.torrent-cache-size == "No Caching"
+                                    ? @tr("STREMIO_TV_SETTINGS_NO_CACHING" => "No caching")
+                                    : (root.torrent-cache-size == "Infinite" ? @tr("Infinite") : root.torrent-cache-size);
                                 color: Theme.accent;
                                 font-size: 0.9 * root.unit;
                                 font-weight: 600;
@@ -514,7 +597,7 @@ export component SettingsPage inherits Rectangle {
                     }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Torrent connection profile";
+                        label: @tr("SETTINGS_SERVER_TORRENT_PROFILE" => "Torrent profile");
                         HorizontalLayout {
                             width: 16 * root.unit;
                             spacing: 0.5 * root.unit;
@@ -522,7 +605,7 @@ export component SettingsPage inherits Rectangle {
                                 horizontal-stretch: 1;
                                 height: 3.5 * root.unit;
                                 unit: root.unit;
-                                label: profile;
+                                label: profile == "Default" ? @tr("TORRENT_PROFILE_DEFAULT" => "Default") : (profile == "Fast" ? @tr("TORRENT_PROFILE_FAST" => "Fast") : @tr("TORRENT_PROFILE_ULTRA_FAST" => "Ultra Fast"));
                                 label-font-size: 0.8 * root.unit;
                                 label-font-weight: 600;
                                 primary: root.torrent-profile == profile;
@@ -538,19 +621,19 @@ export component SettingsPage inherits Rectangle {
                             }
                         }
                     }
-                    SettingsOption { unit: root.unit; label: "Enable DHT"; ToggleSwitch { unit: root.unit; checked: root.streaming-dht; toggled => { root.change-dht-enabled(self.checked); } } }
-                    SettingsOption { unit: root.unit; label: "Enable peer exchange"; ToggleSwitch { unit: root.unit; checked: root.streaming-pex; toggled => { root.change-pex-enabled(self.checked); } } }
-                    SettingsOption { unit: root.unit; label: "Enable local peer discovery"; ToggleSwitch { unit: root.unit; checked: root.streaming-lsd; toggled => { root.change-lsd-enabled(self.checked); } } }
+                    SettingsOption { unit: root.unit; label: @tr("Enable DHT"); ToggleSwitch { unit: root.unit; checked: root.streaming-dht; toggled => { root.change-dht-enabled(self.checked); } } }
+                    SettingsOption { unit: root.unit; label: @tr("Enable peer exchange"); ToggleSwitch { unit: root.unit; checked: root.streaming-pex; toggled => { root.change-pex-enabled(self.checked); } } }
+                    SettingsOption { unit: root.unit; label: @tr("Enable local peer discovery"); ToggleSwitch { unit: root.unit; checked: root.streaming-lsd; toggled => { root.change-lsd-enabled(self.checked); } } }
                     SettingsOption {
                         unit: root.unit;
-                        label: "Enable torrent seeding";
-                        description: "Upload downloaded pieces while streaming.";
+                        label: @tr("Enable torrent seeding");
+                        description: @tr("Upload downloaded pieces while streaming.");
                         ToggleSwitch { unit: root.unit; checked: root.streaming-seeding; toggled => { root.change-seeding-enabled(self.checked); } }
                     }
                     PillButton {
                         width: 18 * root.unit;
                         unit: root.unit;
-                        label: "Shutdown streaming server";
+                        label: @tr("Shutdown streaming server");
                         outlined: true;
                         clicked => { root.shutdown-server(); }
                     }
@@ -558,11 +641,11 @@ export component SettingsPage inherits Rectangle {
 
                 shortcuts-sec := SettingsSection {
                     unit: root.unit;
-                    title: "Shortcuts";
-                    SettingsOption { unit: root.unit; label: "Play / Pause"; Text { text: "Space"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
-                    SettingsOption { unit: root.unit; label: "Fullscreen"; Text { text: "F"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
-                    SettingsOption { unit: root.unit; label: "Volume"; Text { text: "Up / Down"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
-                    SettingsOption { unit: root.unit; label: "Seek"; Text { text: "Left / Right"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    title: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts");
+                    SettingsOption { unit: root.unit; label: @tr("SETTINGS_SHORTCUT_PLAY_PAUSE" => "Play / Pause"); Text { text: @tr("SETTINGS_SHORTCUT_SPACE" => "Space"); color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: @tr("CTX_FULLSCREEN" => "Fullscreen"); Text { text: "F"; color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: @tr("Volume"); Text { text: @tr("Up / Down"); color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
+                    SettingsOption { unit: root.unit; label: @tr("Seek"); Text { text: @tr("Left / Right"); color: Theme.text-primary; opacity: 0.5; font-size: root.unit; horizontal-alignment: center; } }
                 }
             }
         }

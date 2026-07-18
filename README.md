@@ -29,17 +29,19 @@ See the [detailed changelog](CHANGELOG.md) for the current build's implementatio
 
 #### Measured Idle Footprint (Windows x64)
 
-The current settled native release remains a single process and uses **406.7 MB** of Task Manager memory (private working set), **407.7 MB (50.1%) less** than the retained official Stremio baseline.
+The currently running native `1.0.0` release remains a single process, uses **358.6 MB** of private working set, and averaged **0.19% CPU** while idle. Its memory footprint is **455.8 MB (56.0%) lower** than the retained official Stremio baseline.
 
 | Metric | Official Stremio baseline | Current native release |
 | :--- | ---: | ---: |
 | Processes | `10` | **`1`** |
-| Task Manager memory | `814.4 MB` | **`406.7 MB`** |
-| Threads | `190` | **`58`** |
-| Handles | `4,872` | **`807`** |
-| Loaded modules | `201` | **`80`** |
+| Private working set | `814.4 MB` | **`358.6 MB`** |
+| CPU (5-second normalized average) | Not recorded | **`0.19%`** |
+| Read/write I/O (5-second average) | Not recorded | **`0.00 / 0.00 MB/s`** |
+| Threads | `190` | **`72`** |
+| Handles | `4,872` | **`891`** |
+| Loaded modules | `201` | **`108`** |
 
-The native values are the refreshed readings from the current minimized, no-playback release after it was allowed to settle. The official WebView2 values are the corresponding settled baseline retained from the previous performance investigation. These remain point-in-time comparisons rather than controlled laboratory benchmarks.
+The native values were captured on July 18, 2026 from the already-running, settled release process without changing its state. CPU and I/O are five-second samples; the remaining values are point-in-time readings. The official WebView2 values are the corresponding settled baseline retained from the previous performance investigation, so this remains an observational comparison rather than a controlled laboratory benchmark.
 
 ### 📦 Secure Offline Database Cache (Turso & Limbo)
 * **Local-First Database Storage**: Stores all settings, historical logs, and metadata inside a single local database file (`stremio.db`) using the native `turso` engine.
@@ -50,10 +52,10 @@ The native values are the refreshed readings from the current minimized, no-play
 
 ## 🚀 How to Build and Run the App
 
-The current release target is **Windows x64** because the repository bundles a Windows x64 static libmpv SDK. The platform abstractions are portable, but Linux and macOS playback packages are not included yet.
+Windows x64 builds automatically download and verify the pinned optimized `libmpv-2.dll`; no media binaries are stored in this repository. Linux builds use the system's dynamic `libmpv` through `pkg-config`. The Windows runtime currently targets the `x86-64-v3` CPU baseline.
 
 ### 1. Prerequisites
-Install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK.
+On Windows, install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK. On Linux, install Rust, `pkg-config`, the libmpv development package, and the native GUI packages listed in the release workflow.
 
 ### 2. Launching the Media Center
 1. Open your terminal or shell command prompt.
@@ -61,10 +63,16 @@ Install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rus
    ```bash
    cd stremio-native
    ```
-3. Build and run the optimized release:
+3. Build and run the optimized release on Windows:
    ```powershell
    cargo build --release --package stremio-native
    .\target\release\stremio-native.exe
+   ```
+
+   Or on Linux:
+   ```bash
+   cargo build --release --package stremio-native
+   ./target/release/stremio-native
    ```
 
 *All settings, log consoles, and image databases are stored in the local `./storage/` folder inside the project directory.*

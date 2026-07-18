@@ -148,7 +148,7 @@ component AddonCard inherits Rectangle {
                 width: 3.5 * root.unit;
                 height: 3.5 * root.unit;
                 unit: root.unit;
-                label: "Configure addon";
+                label: @tr("ADDON_CONFIGURE" => "Configure");
                 icon-size: 1.7 * root.unit;
                 icon-source: @image-url("../assets/images/icons/settings.svg");
                 surface-color: Theme.success;
@@ -163,8 +163,8 @@ component AddonCard inherits Rectangle {
                     ? root.actions-width - 4.5 * root.unit : root.actions-width;
                 height: 3.5 * root.unit;
                 unit: root.unit;
-                label: root.addon.is-installed ? "Uninstall" :
-                    (root.addon.configuration-required ? "Configure" : "Install");
+                label: root.addon.is-installed ? @tr("ADDON_UNINSTALL" => "Uninstall") :
+                    (root.addon.configuration-required ? @tr("ADDON_CONFIGURE" => "Configure") : @tr("ADDON_INSTALL" => "Install"));
                 outlined: root.addon.is-installed;
                 primary: !root.addon.is-installed;
                 accent-color: Theme.success;
@@ -187,7 +187,7 @@ component AddonCard inherits Rectangle {
             width: root.actions-width;
             height: 3.5 * root.unit;
             unit: root.unit;
-            label: "Share addon";
+            label: @tr("Share addon");
             show-icon: true;
             use-svg-icon: true;
             icon-source: @image-url("../assets/images/icons/share.svg");
@@ -282,7 +282,7 @@ export component AddonsPage inherits Rectangle {
                     width: 10.5 * root.unit;
                     height: 3 * root.unit;
                     unit: root.unit;
-                    label: "Add addon";
+                    label: @tr("Add addon");
                     show-icon: true;
                     use-svg-icon: true;
                     icon-source: @image-url("../assets/images/icons/add.svg");
@@ -299,7 +299,7 @@ export component AddonsPage inherits Rectangle {
                     width: 18 * root.unit;
                     height: 3 * root.unit;
                     unit: root.unit;
-                    title: "Search addons";
+                    title: @tr("Search addons");
                     text <=> root.search-query;
                     edited => { root.search-changed(root.search-query); }
                 }
@@ -329,8 +329,8 @@ export component AddonsPage inherits Rectangle {
             vertical-stretch: 1;
             unit: root.unit;
             icon-source: @image-url("../assets/images/icons/addons.svg");
-            title: "No addons found";
-            message: "Try another filter or install an addon by manifest URL.";
+            title: @tr("No addons found");
+            message: @tr("Try another filter or install an addon by manifest URL.");
         }
 
         if (!root.loading && root.addons.length > 0) : ListView {
@@ -385,13 +385,13 @@ export component AddonsPage inherits Rectangle {
                 padding: 2 * root.unit;
                 spacing: root.unit;
                 Text {
-                    text: "Add addon";
+                    text: @tr("ADD_ADDON" => "Add addon");
                     color: Theme.text-primary;
                     font-size: 1.6 * root.unit;
                     font-weight: 500;
                 }
                 Text {
-                    text: "Paste the HTTPS URL of an addon manifest.";
+                    text: @tr("Paste the HTTPS URL of an addon manifest.");
                     color: Theme.text-primary;
                     opacity: 0.6;
                     font-size: root.unit;
@@ -414,14 +414,14 @@ export component AddonsPage inherits Rectangle {
                     PillButton {
                         horizontal-stretch: 1;
                         unit: root.unit;
-                        label: "Cancel";
+                        label: @tr("BUTTON_CANCEL" => "Cancel");
                         outlined: true;
                         clicked => { root.add-modal-open = false; }
                     }
                     PillButton {
                         horizontal-stretch: 1;
                         unit: root.unit;
-                        label: "Install";
+                        label: @tr("ADDON_INSTALL" => "Install");
                         primary: true;
                         accent-color: Theme.success;
                         enabled: root.manifest-url != "";
@@ -459,7 +459,7 @@ export component AddonsPage inherits Rectangle {
                 spacing: 1.25 * root.unit;
 
                 Text {
-                    text: "Community addon";
+                    text: @tr("Community addon");
                     color: Theme.text-primary;
                     opacity: 0.55;
                     font-size: root.unit;
@@ -567,7 +567,7 @@ export component AddonsPage inherits Rectangle {
                     PillButton {
                         width: 9 * root.unit;
                         unit: root.unit;
-                        label: "Cancel";
+                        label: @tr("BUTTON_CANCEL" => "Cancel");
                         outlined: true;
                         clicked => { root.close-addon-details(); }
                     }
@@ -575,7 +575,7 @@ export component AddonsPage inherits Rectangle {
                     if (root.details-configurable) : PillButton {
                         width: 12 * root.unit;
                         unit: root.unit;
-                        label: "Configure";
+                        label: @tr("ADDON_CONFIGURE" => "Configure");
                         show-icon: true;
                         use-svg-icon: true;
                         icon-source: @image-url("../assets/images/icons/settings.svg");
@@ -588,7 +588,7 @@ export component AddonsPage inherits Rectangle {
                         (root.details-addon.is-installed || !root.details-configuration-required)) : PillButton {
                         width: 12 * root.unit;
                         unit: root.unit;
-                        label: root.details-addon.is-installed ? "Uninstall" : "Install";
+                        label: root.details-addon.is-installed ? @tr("ADDON_UNINSTALL" => "Uninstall") : @tr("ADDON_INSTALL" => "Install");
                         show-icon: true;
                         use-svg-icon: true;
                         icon-source: root.details-addon.is-installed

@@ -17,6 +17,7 @@ pub const FORMAT_NODE_MAP: c_int = 8;
 
 pub const EVENT_NONE: c_int = 0;
 pub const EVENT_SHUTDOWN: c_int = 1;
+pub const EVENT_COMMAND_REPLY: c_int = 5;
 pub const EVENT_START_FILE: c_int = 6;
 pub const EVENT_END_FILE: c_int = 7;
 pub const EVENT_FILE_LOADED: c_int = 8;
@@ -205,6 +206,8 @@ type SetPropertyFn =
 type SetPropertyStringFn =
     unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int;
 type CommandFn = unsafe extern "C" fn(*mut MpvHandle, *const *const c_char) -> c_int;
+type CommandAsyncFn = unsafe extern "C" fn(*mut MpvHandle, u64, *const *const c_char) -> c_int;
+type AbortAsyncCommandFn = unsafe extern "C" fn(*mut MpvHandle, u64);
 type ObservePropertyFn = unsafe extern "C" fn(*mut MpvHandle, u64, *const c_char, c_int) -> c_int;
 type WaitEventFn = unsafe extern "C" fn(*mut MpvHandle, f64) -> *mut MpvEvent;
 pub(crate) type WakeupCallback = unsafe extern "C" fn(*mut c_void);
@@ -219,7 +222,7 @@ type RenderUpdateFn = unsafe extern "C" fn(*mut MpvRenderContext) -> u64;
 type RenderFn = unsafe extern "C" fn(*mut MpvRenderContext, *mut MpvRenderParam) -> c_int;
 type RenderFreeFn = unsafe extern "C" fn(*mut MpvRenderContext);
 
-// The symbols are provided by the pinned static MPV SDK selected by build.rs.
+// The symbols are provided by the pinned MPV import library selected by build.rs.
 // Keeping this list explicit makes the unsafe ABI surface small and auditable.
 unsafe extern "C" {
     fn mpv_client_api_version() -> c_ulong;
@@ -244,6 +247,12 @@ unsafe extern "C" {
         value: *const c_char,
     ) -> c_int;
     fn mpv_command(handle: *mut MpvHandle, args: *const *const c_char) -> c_int;
+    fn mpv_command_async(
+        handle: *mut MpvHandle,
+        reply_userdata: u64,
+        args: *const *const c_char,
+    ) -> c_int;
+    fn mpv_abort_async_command(handle: *mut MpvHandle, reply_userdata: u64);
     fn mpv_observe_property(
         handle: *mut MpvHandle,
         reply_userdata: u64,
@@ -284,6 +293,8 @@ pub struct MpvApi {
     set_property: SetPropertyFn,
     set_property_string: SetPropertyStringFn,
     command: CommandFn,
+    command_async: CommandAsyncFn,
+    abort_async_command: AbortAsyncCommandFn,
     observe_property: ObservePropertyFn,
     wait_event: WaitEventFn,
     set_wakeup_callback: SetWakeupCallbackFn,
@@ -306,6 +317,8 @@ impl MpvApi {
             set_property: mpv_set_property,
             set_property_string: mpv_set_property_string,
             command: mpv_command,
+            command_async: mpv_command_async,
+            abort_async_command: mpv_abort_async_command,
             observe_property: mpv_observe_property,
             wait_event: mpv_wait_event,
             set_wakeup_callback: mpv_set_wakeup_callback,
@@ -320,7 +333,7 @@ impl MpvApi {
     }
 
     pub fn api_version(&self) -> ApiVersion {
-        // SAFETY: The function is statically linked with the pinned client.h signature.
+        // SAFETY: The imported function uses the pinned client.h signature.
         ApiVersion::decode(unsafe { (self.client_api_version)() } as u64)
     }
 
@@ -398,6 +411,27 @@ impl MpvClient {
             .result(unsafe { (self.api.command)(self.handle(), pointers.as_ptr()) })
     }
 
+    pub fn command_async(&self, reply_userdata: u64, args: &[&str]) -> Result<(), MpvError> {
+        let strings = args
+            .iter()
+            .map(|arg| CString::new(*arg))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut pointers = strings.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
+        pointers.push(std::ptr::null());
+        // SAFETY: MPV parses and queues the command before returning. The
+        // completion result is delivered later through MPV_EVENT_COMMAND_REPLY.
+        self.api.result(unsafe {
+            (self.api.command_async)(self.handle(), reply_userdata, pointers.as_ptr())
+        })
+    }
+
+    pub fn abort_async_command(&self, reply_userdata: u64) {
+        // SAFETY: The id is an opaque value previously supplied to this same
+        // client. MPV performs cancellation asynchronously and retains no Rust
+        // references.
+        unsafe { (self.api.abort_async_command)(self.handle(), reply_userdata) };
+    }
+
     pub fn set_flag(&self, name: &str, enabled: bool) -> Result<(), MpvError> {
         let name = CString::new(name)?;
         let mut value: c_int = enabled.into();
@@ -467,7 +501,7 @@ mod tests {
     use super::{ApiVersion, HEADER_CLIENT_API_VERSION, MpvApi, MpvClient, MpvError};
 
     #[test]
-    fn statically_linked_engine_should_initialize() -> Result<(), MpvError> {
+    fn dynamically_linked_engine_should_initialize() -> Result<(), MpvError> {
         let api = MpvApi::linked()?;
         let client = MpvClient::create(api)?;
         client.set_option("terminal", "no")?;

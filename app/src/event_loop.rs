@@ -9,11 +9,27 @@ use core_env::DesktopEnv;
 use futures::StreamExt;
 use std::sync::Arc;
 use stremio_core::{
-    models::common::Loadable,
-    runtime::{Runtime, RuntimeEvent, msg::Event},
+    models::{catalogs_with_extra::CatalogsWithExtra, common::Loadable},
+    runtime::{
+        Runtime, RuntimeAction, RuntimeEvent,
+        msg::{Action, ActionCatalogsWithExtra, Event},
+    },
 };
 
 const STATE_COALESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(4);
+const INITIAL_CATALOG_RANGE: std::ops::Range<usize> = 0..20;
+
+fn catalogs_need_initial_range(catalogs: &CatalogsWithExtra) -> bool {
+    catalogs.selected.is_some()
+        && catalogs
+            .catalogs
+            .iter()
+            .take(INITIAL_CATALOG_RANGE.end + 1)
+            .any(|catalog| match catalog.first() {
+                Some(page) => page.content.is_none(),
+                None => true,
+            })
+}
 
 pub fn start_event_loop(
     mut rx: futures::channel::mpsc::Receiver<RuntimeEvent<DesktopEnv, AppModel>>,
@@ -84,17 +100,16 @@ pub fn start_event_loop(
 
                     let active_tab = navigation.active_tab_index() as usize;
                     let profile_sync_needed = first_render || fields.contains(&AppModelField::Ctx);
-                    let profile_catalogs_changed =
-                        if profile_sync_needed && matches!(active_tab, 0 | 6) {
-                            let fingerprint =
-                                models::profile_catalogs_fingerprint(&model.ctx.profile.addons);
-                            let changed = last_profile_catalogs_fingerprint != Some(fingerprint);
-                            last_profile_catalogs_fingerprint = Some(fingerprint);
-                            changed
-                        } else {
-                            false
-                        };
-                    let profile_addons_changed = if profile_sync_needed && active_tab == 3 {
+                    let profile_catalogs_changed = if profile_sync_needed {
+                        let fingerprint =
+                            models::profile_catalogs_fingerprint(&model.ctx.profile.addons);
+                        let changed = last_profile_catalogs_fingerprint != Some(fingerprint);
+                        last_profile_catalogs_fingerprint = Some(fingerprint);
+                        changed
+                    } else {
+                        false
+                    };
+                    let profile_addons_changed = if profile_sync_needed {
                         let fingerprint =
                             models::profile_addons_fingerprint(&model.ctx.profile.addons);
                         let changed = last_profile_addons_fingerprint != Some(fingerprint);
@@ -103,6 +118,15 @@ pub fn start_event_loop(
                     } else {
                         false
                     };
+                    // ProfileChanged rebuilds CatalogsWithExtra requests but Core deliberately
+                    // leaves newly introduced pages unloaded. Fill only the same bounded range
+                    // requested at startup so first-login addon catalogs do not require a restart.
+                    let board_catalog_reload_needed = (profile_sync_needed
+                        || fields.contains(&AppModelField::Board))
+                        && catalogs_need_initial_range(&model.board);
+                    let search_catalog_reload_needed = (profile_sync_needed
+                        || fields.contains(&AppModelField::Search))
+                        && catalogs_need_initial_range(&model.search);
                     let auth_projection = profile_sync_needed.then(|| {
                         let email = model
                             .ctx
@@ -207,6 +231,8 @@ pub fn start_event_loop(
                         && (first_render
                             || fields.contains(&AppModelField::Calendar)
                             || calendar_fingerprint_changed);
+                    let calendar_context_refresh_needed =
+                        active_tab == 5 && fields.contains(&AppModelField::Ctx);
                     let search_sync_needed = (first_render
                         || fields.contains(&AppModelField::Search)
                         || profile_catalogs_changed)
@@ -324,6 +350,26 @@ pub fn start_event_loop(
                     drop(_clone_span);
                     // Drop the model guard before invoking event loop
                     drop(model);
+                    let calendar_refresh_started = calendar_context_refresh_needed
+                        && models::calendar::ensure_loaded(&runtime);
+                    if board_catalog_reload_needed {
+                        tracing::debug!("loading Board catalogs introduced by profile hydration");
+                        runtime.dispatch(RuntimeAction {
+                            field: Some(AppModelField::Board),
+                            action: Action::CatalogsWithExtra(ActionCatalogsWithExtra::LoadRange(
+                                INITIAL_CATALOG_RANGE,
+                            )),
+                        });
+                    }
+                    if search_catalog_reload_needed {
+                        tracing::debug!("loading Search catalogs introduced by profile hydration");
+                        runtime.dispatch(RuntimeAction {
+                            field: Some(AppModelField::Search),
+                            action: Action::CatalogsWithExtra(ActionCatalogsWithExtra::LoadRange(
+                                INITIAL_CATALOG_RANGE,
+                            )),
+                        });
+                    }
                     if let (Some(playback), Some(player)) =
                         (&native_playback_bridge, player_cloned.as_ref())
                         && navigation.is_player_visible()
@@ -598,6 +644,12 @@ pub fn start_event_loop(
                                         &ui_weak_for_sync,
                                     );
                                 }
+                            }
+
+                            if calendar_refresh_started
+                                && navigation_for_sync.active_tab_index() == 5
+                            {
+                                ui.set_calendar_loading(true);
                             }
 
                             if details_sync_needed && details_patch_allowed {

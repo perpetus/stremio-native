@@ -30,40 +30,404 @@ fn update_profile_settings(
     });
 }
 
-fn language_code(value: &str) -> String {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "english" | "en" | "eng" => "eng",
-        "spanish" | "es" | "spa" => "spa",
-        "french" | "fr" | "fra" | "fre" => "fra",
-        "german" | "de" | "deu" | "ger" => "deu",
-        "italian" | "it" | "ita" => "ita",
-        "portuguese" | "pt" | "por" => "por",
-        "russian" | "ru" | "rus" => "rus",
-        "hindi" | "hi" | "hin" => "hin",
-        "japanese" | "ja" | "jpn" => "jpn",
-        "korean" | "ko" | "kor" => "kor",
-        "chinese" | "zh" | "zho" | "chi" => "zho",
-        _ => return value.trim().to_owned(),
+struct InterfaceLanguage {
+    name: &'static str,
+    locale: &'static str,
+    code: &'static str,
+}
+
+const INTERFACE_LANGUAGES: &[InterfaceLanguage] = &[
+    InterfaceLanguage {
+        name: "العربية",
+        locale: "ar-AR",
+        code: "ara",
+    },
+    InterfaceLanguage {
+        name: "Беларуская",
+        locale: "be-BY",
+        code: "bel",
+    },
+    InterfaceLanguage {
+        name: "български език",
+        locale: "bg-BG",
+        code: "bul",
+    },
+    InterfaceLanguage {
+        name: "বাংলা",
+        locale: "bn-BD",
+        code: "ben",
+    },
+    InterfaceLanguage {
+        name: "català",
+        locale: "ca-ES",
+        code: "cat",
+    },
+    InterfaceLanguage {
+        name: "čeština",
+        locale: "cs-CZ",
+        code: "ces",
+    },
+    InterfaceLanguage {
+        name: "dansk",
+        locale: "da-DK",
+        code: "dan",
+    },
+    InterfaceLanguage {
+        name: "Deutsch",
+        locale: "de-DE",
+        code: "deu",
+    },
+    InterfaceLanguage {
+        name: "ελληνικά",
+        locale: "el-GR",
+        code: "ell",
+    },
+    InterfaceLanguage {
+        name: "English",
+        locale: "en-US",
+        code: "eng",
+    },
+    InterfaceLanguage {
+        name: "Esperanto",
+        locale: "eo-EO",
+        code: "epo",
+    },
+    InterfaceLanguage {
+        name: "español",
+        locale: "es-ES",
+        code: "spa",
+    },
+    InterfaceLanguage {
+        name: "Eesti",
+        locale: "et-EE",
+        code: "est",
+    },
+    InterfaceLanguage {
+        name: "euskara",
+        locale: "eu-ES",
+        code: "eus",
+    },
+    InterfaceLanguage {
+        name: "فارسی",
+        locale: "fa-IR",
+        code: "fas",
+    },
+    InterfaceLanguage {
+        name: "Suomi",
+        locale: "fi-FI",
+        code: "fin",
+    },
+    InterfaceLanguage {
+        name: "Français",
+        locale: "fr-FR",
+        code: "fra",
+    },
+    InterfaceLanguage {
+        name: "עברית",
+        locale: "he-IL",
+        code: "heb",
+    },
+    InterfaceLanguage {
+        name: "हिन्दी",
+        locale: "hi-IN",
+        code: "hin",
+    },
+    InterfaceLanguage {
+        name: "hrvatski jezik",
+        locale: "hr-HR",
+        code: "hrv",
+    },
+    InterfaceLanguage {
+        name: "magyar",
+        locale: "hu-HU",
+        code: "hun",
+    },
+    InterfaceLanguage {
+        name: "Bahasa Indonesia",
+        locale: "id-ID",
+        code: "ind",
+    },
+    InterfaceLanguage {
+        name: "italiano",
+        locale: "it-IT",
+        code: "ita",
+    },
+    InterfaceLanguage {
+        name: "日本語 (にほんご)",
+        locale: "ja-JP",
+        code: "jpn",
+    },
+    InterfaceLanguage {
+        name: "한국어",
+        locale: "ko-KR",
+        code: "kor",
+    },
+    InterfaceLanguage {
+        name: "Lietuvių",
+        locale: "lt-LT",
+        code: "lit",
+    },
+    InterfaceLanguage {
+        name: "македонски јазик",
+        locale: "mk-MK",
+        code: "mkd",
+    },
+    InterfaceLanguage {
+        name: "ဗမာစာ",
+        locale: "my-BM",
+        code: "mya",
+    },
+    InterfaceLanguage {
+        name: "नेपाली",
+        locale: "ne-NP",
+        code: "nep",
+    },
+    InterfaceLanguage {
+        name: "Norsk bokmål",
+        locale: "nb-NO",
+        code: "nob",
+    },
+    InterfaceLanguage {
+        name: "Nederlands",
+        locale: "nl-NL",
+        code: "nld",
+    },
+    InterfaceLanguage {
+        name: "Norsk nynorsk",
+        locale: "nn-NO",
+        code: "nno",
+    },
+    InterfaceLanguage {
+        name: "ਪੰਜਾਬੀ",
+        locale: "pa-IN",
+        code: "pan",
+    },
+    InterfaceLanguage {
+        name: "język polski",
+        locale: "pl-PL",
+        code: "pol",
+    },
+    InterfaceLanguage {
+        name: "português Brazil",
+        locale: "pt-BR",
+        code: "por",
+    },
+    InterfaceLanguage {
+        name: "português",
+        locale: "pt-PT",
+        code: "por",
+    },
+    InterfaceLanguage {
+        name: "Română",
+        locale: "ro-RO",
+        code: "ron",
+    },
+    InterfaceLanguage {
+        name: "русский язык",
+        locale: "ru-RU",
+        code: "rus",
+    },
+    InterfaceLanguage {
+        name: "Slovenčina",
+        locale: "sk-SK",
+        code: "slk",
+    },
+    InterfaceLanguage {
+        name: "slovenski jezik",
+        locale: "sl-SL",
+        code: "slv",
+    },
+    InterfaceLanguage {
+        name: "српски језик",
+        locale: "sr-RS",
+        code: "srp",
+    },
+    InterfaceLanguage {
+        name: "Svenska",
+        locale: "sv-SE",
+        code: "swe",
+    },
+    InterfaceLanguage {
+        name: "தமிழ்",
+        locale: "ta-IN",
+        code: "tam",
+    },
+    InterfaceLanguage {
+        name: "తెలుగు",
+        locale: "te-IN",
+        code: "tel",
+    },
+    InterfaceLanguage {
+        name: "Türkçe",
+        locale: "tr-TR",
+        code: "tur",
+    },
+    InterfaceLanguage {
+        name: "українська мова",
+        locale: "uk-UA",
+        code: "ukr",
+    },
+    InterfaceLanguage {
+        name: "اُرْدُو",
+        locale: "ur-PK",
+        code: "urd",
+    },
+    InterfaceLanguage {
+        name: "Tiếng Việt",
+        locale: "vi-VN",
+        code: "vie",
+    },
+    InterfaceLanguage {
+        name: "中文(中华人民共和国)",
+        locale: "zh-CN",
+        code: "zho",
+    },
+    InterfaceLanguage {
+        name: "中文(香港特别行政區)",
+        locale: "zh-HK",
+        code: "zho",
+    },
+    InterfaceLanguage {
+        name: "中文(台灣)",
+        locale: "zh-TW",
+        code: "zho",
+    },
+];
+
+fn legacy_language_code(value: &str) -> &str {
+    match value {
+        "ar" => "ara",
+        "be" => "bel",
+        "bg" => "bul",
+        "bn" => "ben",
+        "ca" => "cat",
+        "cs" | "cze" => "ces",
+        "da" => "dan",
+        "de" | "ger" => "deu",
+        "el" | "gre" => "ell",
+        "en" => "eng",
+        "eo" => "epo",
+        "es" => "spa",
+        "et" => "est",
+        "eu" | "baq" => "eus",
+        "fa" | "per" => "fas",
+        "fi" => "fin",
+        "fr" | "fre" => "fra",
+        "he" => "heb",
+        "hi" => "hin",
+        "hr" | "scr" => "hrv",
+        "hu" => "hun",
+        "id" => "ind",
+        "it" => "ita",
+        "ja" => "jpn",
+        "ko" => "kor",
+        "lt" => "lit",
+        "mk" | "mac" => "mkd",
+        "my" | "bur" => "mya",
+        "nb" => "nob",
+        "ne" => "nep",
+        "nl" | "dut" => "nld",
+        "nn" => "nno",
+        "pa" => "pan",
+        "pl" => "pol",
+        "pt" => "por",
+        "ro" | "rum" => "ron",
+        "ru" => "rus",
+        "sk" | "slo" => "slk",
+        "sl" => "slv",
+        "sr" | "scc" => "srp",
+        "sv" => "swe",
+        "ta" => "tam",
+        "te" => "tel",
+        "tr" => "tur",
+        "uk" => "ukr",
+        "ur" => "urd",
+        "vi" => "vie",
+        "zh" | "chi" => "zho",
+        _ => value,
     }
-    .to_owned()
+}
+
+fn find_interface_language(value: &str) -> Option<&'static InterfaceLanguage> {
+    let value = value.trim();
+    INTERFACE_LANGUAGES
+        .iter()
+        .find(|language| {
+            language.name == value
+                || language.locale.eq_ignore_ascii_case(value)
+                || language.code.eq_ignore_ascii_case(value)
+        })
+        .or_else(|| {
+            let normalized = value.to_ascii_lowercase();
+            let code = legacy_language_code(&normalized);
+            INTERFACE_LANGUAGES
+                .iter()
+                .find(|language| language.code == code)
+        })
+}
+
+fn interface_language_code(value: &str) -> String {
+    find_interface_language(value)
+        .map(|language| language.locale)
+        .unwrap_or_else(|| value.trim())
+        .to_owned()
+}
+
+fn language_code(value: &str) -> String {
+    find_interface_language(value)
+        .map(|language| language.code)
+        .unwrap_or_else(|| value.trim())
+        .to_owned()
 }
 
 fn language_display(value: &str) -> String {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "eng" | "en" => "English",
-        "spa" | "es" => "Spanish",
-        "fra" | "fre" | "fr" => "French",
-        "deu" | "ger" | "de" => "German",
-        "ita" | "it" => "Italian",
-        "por" | "pt" => "Portuguese",
-        "rus" | "ru" => "Russian",
-        "hin" | "hi" => "Hindi",
-        "jpn" | "ja" => "Japanese",
-        "kor" | "ko" => "Korean",
-        "zho" | "chi" | "zh" => "Chinese",
-        _ => return value.to_owned(),
+    find_interface_language(value)
+        .map(|language| language.name)
+        .unwrap_or(value)
+        .to_owned()
+}
+
+fn map_interface_language_to_locale(value: &str) -> &'static str {
+    find_interface_language(value)
+        .map(|language| language.locale)
+        .unwrap_or("en-US")
+}
+
+fn interface_language_options() -> slint::ModelRc<slint::SharedString> {
+    let preferred_locale = sys_locale::get_locale()
+        .map(|locale| locale.replace('_', "-"))
+        .and_then(|locale| {
+            INTERFACE_LANGUAGES
+                .iter()
+                .find(|language| language.locale.eq_ignore_ascii_case(&locale))
+                .or_else(|| {
+                    let language_code = locale.get(..2)?;
+                    INTERFACE_LANGUAGES.iter().find(|language| {
+                        language
+                            .locale
+                            .get(..2)
+                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(language_code))
+                    })
+                })
+        })
+        .map(|language| language.locale)
+        .unwrap_or("en-US");
+
+    let mut languages = INTERFACE_LANGUAGES.iter().collect::<Vec<_>>();
+    languages.sort_by_key(|language| language.name.to_lowercase());
+    if let Some(index) = languages
+        .iter()
+        .position(|language| language.locale == preferred_locale)
+    {
+        let preferred = languages.remove(index);
+        languages.insert(0, preferred);
     }
-    .to_owned()
+
+    let names = languages
+        .into_iter()
+        .map(|language| slint::SharedString::from(language.name))
+        .collect::<Vec<_>>();
+    slint::ModelRc::new(slint::VecModel::from(names))
 }
 
 fn format_cache_size(bytes: f64) -> String {
@@ -78,6 +442,8 @@ fn format_cache_size(bytes: f64) -> String {
 }
 
 pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, config: &AppConfig) {
+    ui.set_settings_interface_language_options(interface_language_options());
+
     let server_url = runtime
         .model()
         .ok()
@@ -110,7 +476,9 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
             .get("bt_enable_lsd")
             .map(|value| value == "true");
 
-        if let Ok(mut settings) = conn_init.get_settings().await {
+        if let Ok(snapshot) = conn_init.get_settings_snapshot().await {
+            let mut settings = snapshot.settings;
+            let server_version = snapshot.server_version;
             let mut dirty = false;
             let seeding_value = settings.seeding_enabled.to_string();
             let dht_value = settings.bt_enable_dht.to_string();
@@ -170,7 +538,6 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
             let pex = settings.bt_enable_pex;
             let lsd = settings.bt_enable_lsd;
             let max_conn = settings.bt_max_connections;
-
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.set_torrent_cache_size(cache_size_str.into());
@@ -178,6 +545,7 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
                     ui.set_settings_streaming_dht(dht);
                     ui.set_settings_streaming_pex(pex);
                     ui.set_settings_streaming_lsd(lsd);
+                    ui.set_settings_server_version(server_version.into());
 
                     let profile_str = if max_conn >= 200 {
                         "Ultra Fast"
@@ -232,7 +600,11 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
         let runtime = runtime.clone();
         move |lang| {
             let rt = runtime.clone();
-            let lang = language_code(lang.as_str());
+            let lang = interface_language_code(lang.as_str());
+            let locale = map_interface_language_to_locale(&lang);
+            if let Err(error) = slint::select_bundled_translation(locale) {
+                tracing::error!(%error, %locale, "failed to select bundled translation on language change");
+            }
             tokio::spawn(async move {
                 let _ = crate::db::set_setting("interface_language", &lang).await;
                 let _ = crate::db::insert_log(
@@ -373,13 +745,15 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
             if !authenticated {
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.set_settings_export_loading(false);
-                    ui.set_settings_export_status("Sign in to export your data.".into());
+                    ui.set_settings_export_state(1);
+                    ui.set_settings_export_detail("".into());
                 }
                 return;
             }
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_settings_export_loading(true);
-                ui.set_settings_export_status("Preparing export…".into());
+                ui.set_settings_export_state(2);
+                ui.set_settings_export_detail("".into());
             }
             runtime.dispatch(RuntimeAction {
                 field: Some(AppModelField::DataExport),
@@ -643,6 +1017,10 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
 #[tracing::instrument(skip_all)]
 pub fn sync(ui: &MainWindow, settings: &ProfileSettings) {
     let _span = tracing::info_span!("apply_ui_settings").entered();
+    let locale = map_interface_language_to_locale(&settings.interface_language);
+    if let Err(error) = slint::select_bundled_translation(locale) {
+        tracing::error!(%error, %locale, "failed to select bundled translation on sync");
+    }
     ui.set_settings_interface_language(language_display(&settings.interface_language).into());
     ui.set_settings_subtitles_language(
         settings
@@ -687,15 +1065,20 @@ pub fn sync_data_export(
         }
         Some(Loadable::Loading) => {
             ui.set_settings_export_loading(true);
-            ui.set_settings_export_status("Preparing export…".into());
+            ui.set_settings_export_state(2);
+            ui.set_settings_export_detail("".into());
         }
         Some(Loadable::Ready(url)) => {
             ui.set_settings_export_loading(false);
             match open::that(url.as_str()) {
-                Ok(()) => ui.set_settings_export_status("Export opened in your browser.".into()),
+                Ok(()) => {
+                    ui.set_settings_export_state(3);
+                    ui.set_settings_export_detail("".into());
+                }
                 Err(error) => {
                     tracing::error!(%error, %url, "failed to open data export");
-                    ui.set_settings_export_status(format!("Export ready: {url}").into());
+                    ui.set_settings_export_state(4);
+                    ui.set_settings_export_detail(url.as_str().into());
                 }
             }
             runtime.dispatch(RuntimeAction {
@@ -705,7 +1088,8 @@ pub fn sync_data_export(
         }
         Some(Loadable::Err(error)) => {
             ui.set_settings_export_loading(false);
-            ui.set_settings_export_status(format!("Export failed: {error:?}").into());
+            ui.set_settings_export_state(5);
+            ui.set_settings_export_detail(format!("{error:?}").into());
         }
     }
 }

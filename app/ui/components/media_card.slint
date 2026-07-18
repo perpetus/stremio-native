@@ -32,6 +32,7 @@ export component MediaCard inherits Rectangle {
     in property <bool> is-visible: true;
 
     callback clicked;
+    callback double-clicked;
     callback remove-clicked;
     callback play-clicked;
     callback menu-clicked;
@@ -67,6 +68,7 @@ export component MediaCard inherits Rectangle {
         accessible-name: root.item.title;
         border-width: 0px;
         clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
     }
 
     // CSS box-shadow equivalent, outside the clipped poster bounds.
@@ -141,7 +143,7 @@ export component MediaCard inherits Rectangle {
             background: Theme.background.with-alpha(0.6);
             opacity: root.highlighted ? 1 : 0;
             interaction-enabled: root.highlighted;
-            accessible-name: "Dismiss";
+            accessible-name: @tr("WARNING_STREAMING_SERVER_DISMISS" => "Dismiss");
             clicked => { root.remove-clicked(); }
 
             animate opacity { duration: Theme.motion-fast; easing: ease-in; }
@@ -169,7 +171,7 @@ export component MediaCard inherits Rectangle {
             background: root.highlighted
                 ? Theme.secondary-accent
                 : Theme.background.with-alpha(0.4);
-            accessible-name: "Play";
+            accessible-name: @tr("PLAYER_PLAY" => "Play");
             clicked => { root.play-clicked(); }
 
             Image {
@@ -275,7 +277,7 @@ export component MediaCard inherits Rectangle {
             x: parent.width - 1.5 * root.unit;
             width: 1.5 * root.unit;
             height: parent.height;
-            accessible-name: "More options";
+            accessible-name: @tr("More options");
             interaction-enabled: root.highlighted;
             opacity: root.highlighted ? 1 : 0;
             clicked => { root.menu-clicked(); }

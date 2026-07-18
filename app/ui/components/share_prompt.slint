@@ -100,7 +100,7 @@ export component SharePrompt inherits Rectangle {
             background: self.has-hover ? transparent : Theme.secondary-accent;
             border-width: self.has-hover || self.has-focus ? Theme.focus-outline-size : 0px;
             border-color: self.has-hover ? Theme.secondary-accent : Theme.primary-foreground;
-            accessible-name: "Copy to clipboard";
+            accessible-name: @tr("Copy to clipboard");
             clicked => { root.copy-requested(root.url); }
 
             Rectangle {
@@ -124,7 +124,7 @@ export component SharePrompt inherits Rectangle {
                     y: 0px;
                     width: parent.width - self.x;
                     height: parent.height;
-                    text: "Copy";
+                    text: @tr("COPY" => "Copy");
                     color: Theme.primary-foreground;
                     font-size: 1.1 * root.unit;
                     horizontal-alignment: center;

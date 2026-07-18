@@ -38,7 +38,7 @@ export component AppDebugMenu inherits Rectangle {
         y: 0px;
         width: parent.width;
         height: 3.25 * root.unit;
-        accessible-name: root.open ? "Hide debug states" : "Show debug states";
+        accessible-name: root.open ? @tr("Hide debug states") : @tr("Show debug states");
         background: self.has-hover ? Theme.overlay-hover : transparent;
         clicked => { root.open = !root.open; }
 
@@ -46,7 +46,7 @@ export component AppDebugMenu inherits Rectangle {
             x: 1.25 * root.unit;
             width: parent.width - 4 * root.unit;
             height: parent.height;
-            text: "UI debug states";
+            text: @tr("UI debug states");
             color: Theme.primary-foreground;
             font-size: root.unit;
             font-weight: 700;

@@ -13,13 +13,15 @@ use crate::{
     RenderSource,
     ffi::{
         END_FILE_EOF, END_FILE_ERROR, END_FILE_QUIT, END_FILE_REDIRECT, END_FILE_STOP,
-        EVENT_END_FILE, EVENT_FILE_LOADED, EVENT_NONE, EVENT_PLAYBACK_RESTART,
+        EVENT_COMMAND_REPLY, EVENT_END_FILE, EVENT_FILE_LOADED, EVENT_NONE, EVENT_PLAYBACK_RESTART,
         EVENT_PROPERTY_CHANGE, EVENT_QUEUE_OVERFLOW, EVENT_SHUTDOWN, EVENT_START_FILE,
         FORMAT_DOUBLE, FORMAT_FLAG, FORMAT_INT64, FORMAT_NODE, FORMAT_NODE_ARRAY, FORMAT_NODE_MAP,
         FORMAT_NONE, FORMAT_STRING, MpvApi, MpvClient, MpvError, MpvEvent, MpvEventEndFile,
         MpvEventProperty, MpvNode, MpvNodeList,
     },
 };
+
+const ADD_SUBTITLE_COMMAND_REPLY_ID: u64 = 1;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AudioTrack {
@@ -344,6 +346,7 @@ fn actor_loop(
     }
 
     client.set_wakeup_callback(None, std::ptr::null_mut());
+    client.abort_async_command(ADD_SUBTITLE_COMMAND_REPLY_ID);
     let _ = client.command(&["stop"]);
     sink(PlaybackEvent::Shutdown);
 }
@@ -413,7 +416,10 @@ fn handle_command(
                 None => client.command(&["loadfile", &url, "replace"]),
             }
         }
-        PlaybackCommand::Stop => client.command(&["stop"]),
+        PlaybackCommand::Stop => {
+            client.abort_async_command(ADD_SUBTITLE_COMMAND_REPLY_ID);
+            client.command(&["stop"])
+        }
         PlaybackCommand::SetPaused(paused) => client.set_flag("pause", paused),
         PlaybackCommand::TogglePaused => client.command(&["cycle", "pause"]),
         PlaybackCommand::SeekAbsolute(time) => {
@@ -447,7 +453,10 @@ fn handle_command(
         }
         PlaybackCommand::AddSubtitle { url, title } => {
             let title = title.unwrap_or_default();
-            client.command(&["sub-add", &url, "auto", &title])
+            client.command_async(
+                ADD_SUBTITLE_COMMAND_REPLY_ID,
+                &["sub-add", &url, "auto", &title],
+            )
         }
         PlaybackCommand::SetSubtitleDelay(milliseconds) => {
             client.set_double("sub-delay", milliseconds as f64 / 1_000.0)
@@ -488,6 +497,11 @@ fn drain_events(
         let event = unsafe { &*event };
         match event.event_id {
             EVENT_NONE => return,
+            EVENT_COMMAND_REPLY if event.error < 0 => {
+                let error = client.api.operation_error(event.error).to_string();
+                sink(PlaybackEvent::Warning(error));
+            }
+            EVENT_COMMAND_REPLY => {}
             EVENT_START_FILE => {
                 state.loading = true;
                 state.loaded = false;
@@ -664,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    fn playback_runtime_should_start_with_static_engine() {
+    fn playback_runtime_should_start_with_dynamic_engine() {
         let runtime = PlaybackRuntime::start(
             PlayerConfig {
                 config_dir: None,
@@ -672,7 +686,7 @@ mod tests {
             },
             |_| {},
         )
-        .expect("the statically linked MPV runtime should start");
+        .expect("the dynamically linked MPV runtime should start");
 
         runtime
             .shutdown()

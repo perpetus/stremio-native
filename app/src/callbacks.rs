@@ -1,5 +1,5 @@
 use crate::{
-    MainWindow, NavigationController, NavigationIntent, Tab,
+    MainWindow, NavigationController, NavigationIntent,
     app_model::{AppModel, AppModelField},
     config::AppConfig,
     models,
@@ -285,12 +285,8 @@ pub fn setup_ui_callbacks(
     });
 }
 
-pub fn trigger_initial_load(
-    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
-    navigation: &NavigationController,
-) {
+pub fn trigger_initial_load(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
     let rt = runtime.clone();
-    let load_calendar = navigation.active_tab_index() == Tab::Calendar.index();
     tokio::spawn(async move {
         rt.dispatch(RuntimeAction {
             field: None,
@@ -335,11 +331,5 @@ pub fn trigger_initial_load(
                 },
             )),
         });
-        if load_calendar {
-            rt.dispatch(RuntimeAction {
-                field: None,
-                action: Action::Load(ActionLoad::Calendar(None)),
-            });
-        }
     });
 }

@@ -2,7 +2,53 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
-## Unreleased - 2026-07-16
+## Unreleased - 2026-07-18
+
+### Desktop lifecycle and startup
+
+- Projects the persisted model for the active tab synchronously before starting network loads and performs tab-entry projection on Slint's UI thread, preventing an older queued snapshot from replacing newer Continue Watching, Calendar, Library, Discover, Addons, or Settings state.
+- Runs Core sequential effects through a single FIFO executor instead of spawning them concurrently, so an older library/profile storage snapshot cannot commit after a newer snapshot and reappear after restart.
+- Reloads only the bounded initial Board/Search catalog range when first-login profile hydration introduces addon catalogs that Core intentionally leaves unloaded, removing the former full-restart requirement.
+- Invalidates Calendar's cached metadata requests only when its relevant library items or addon catalogs change; unchanged revisits reuse the ready schedule without a network reload.
+- Uses Core's canonical storage-key constants at startup, retains a legacy `server_urls` read fallback, and maps the legacy JSON filename to the canonical `streaming_server_urls` database key.
+- Shows the Slint client and starts its event loop before icon lookup, tray/update setup, database initialization, stream-server startup, storage hydration, Core construction, or MPV initialization; the responsive loading UI is now the first startup milestone and reports `shell_ready_ms` for cold-start profiling.
+- Runs stream-server startup and all independent Core storage reads concurrently after configuration is available.
+- Configures Turso WAL through its row-returning query path, batches the remaining pragmas and schema work, migrates legacy storage in one transaction, and defers log/image-table maintenance beyond the first-frame window.
+- Initializes libmpv's shared OpenGL context from the first available render callback after deferred engine startup and requests that callback explicitly, fixing audio-only playback when Slint's one-time graphics-setup event occurred before MPV was ready.
+- Queues network-backed external subtitles through libmpv's asynchronous command API and cancels outstanding subtitle requests before Stop, keeping the MPV actor free to process Player Back immediately while preserving ordered `loadfile`/`stop` semantics.
+- Reprojects a matching ready Core details model immediately on every details entry path, preventing repeat visits to cached titles from waiting forever for a state event Core correctly omits.
+- Keeps details-page Back navigation available during genuine metadata loading so a failed or slow request cannot trap the client on its skeleton state.
+- Removes the tray component by ownership during post-event-loop shutdown instead of changing its finalized visibility property, preventing Slint's `Constant property being changed` panic on quit.
+- Adds a native system tray with GUI-relevant actions for opening Stremio, Settings, logs, update checks, installation, and quit; closing the window now respects the quit-on-close setting and otherwise hides to the tray.
+- Queues tray-driven show/navigation operations onto Slint's event loop to avoid re-entrant Winit window borrows.
+- Adds single-instance activation plus official `stremio:` and `magnet:` deep-link forwarding, with commands queued until Core and playback are ready.
+- Keeps the latest Discord activity pending while IPC is unavailable, retries connection with a bounded 2-to-30-second backoff, and treats media/pause/resume activity changes as reconnect opportunities without blocking the UI.
+
+### Native shell and UI polish
+
+- Uses the official desktop card interaction split: one Discover click selects and loads the metadata preview, a double-click opens full details, and Library retains its one-click details route through the same shared card primitive.
+- Uses the stream-server's exact `icon_48.png` and `app.ico` assets for the tray, Slint window, taskbar, executable resources, and Windows installer.
+- Applies the official shell's `#15122b` Windows caption color with white caption text while keeping the operating system's native title-bar controls.
+- Centers the Stremio navigation mark against the same fixed rail and header tokens used by the sidebar icons at every responsive UI scale.
+- Vertically centers the details stream-row play button in a full-height action slot, including rows whose descriptions wrap.
+- Adds localized tray/update strings, a web-style language selector, application/build/shell versions in their official Settings positions, and shell version `1.0.0`.
+- Adds an official-style update notification and installer flow backed by GitHub releases through `self_update`.
+
+### Playback dependency and release system
+
+- Replaces the tracked static MPV SDK with the pinned optimized x86-64-v3 `libmpv-2.dll` and COFF import library from the trusted shinchiro GitHub release.
+- Downloads, extracts, SHA-256 verifies, caches, links, and deploys the DLL and pinned licenses directly from the Rust build script; Cargo builds no longer require PowerShell, 7-Zip, or repository-stored media binaries.
+- Resolves dynamic libmpv through `pkg-config` on Linux, with `STREMIO_MPV_DIR` retained as an explicit local SDK override.
+- Pins the current Core head plus its `flate2` compatibility correction from `perpetus/stremio-core`, and pins the lifecycle-fixed stream-server revision through remote Git dependencies, so clean CI checkouts do not rely on sibling repositories.
+- Disables stream-server's standalone Windows EXE resource table only when it is embedded, preventing duplicate `VERSIONINFO`/icon resources while preserving the GUI executable's own `1.0.0` metadata.
+- Preserves only OpenGL state supported by the active context and uses an ES2-compatible RGBA render target, preventing ES3-only libmpv sharing operations from leaking `GL_INVALID_ENUM` into Slint/FemtoVG on Windows.
+- Adds clean Windows and Linux release jobs. The Windows job also produces the Inno Setup installer and GitHub updater archive.
+
+### Resource baseline
+
+- The settled `1.0.0` process measured 358.6 MB private working set and 0.19% five-second CPU, 455.8 MB (56.0%) below the retained 814.4 MB official Stremio WebView2 baseline.
+
+## Earlier implementation baseline - 2026-07-16
 
 ### Highlights
 

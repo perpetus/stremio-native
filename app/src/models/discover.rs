@@ -220,10 +220,32 @@ pub fn setup(
         let navigation = navigation.clone();
         move |id| {
             let id = id.to_string();
-            navigation.dispatch(NavigationIntent::SelectDiscoverPreview {
+            let transition = navigation.dispatch(NavigationIntent::SelectDiscoverPreview {
                 media_id: id.clone(),
             });
-            load_meta_details(&runtime, id);
+            if transition.changed {
+                load_meta_details(&runtime, id);
+            }
+        }
+    });
+
+    // Discover mirrors the official desktop interaction: one click updates
+    // the preview, while a double-click opens the full details route.
+    ui.on_discover_item_activated({
+        let runtime = runtime.clone();
+        let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
+        move |id| {
+            let id = id.to_string();
+            if navigation.snapshot().discover_preview_id.as_deref() != Some(id.as_str()) {
+                navigation.dispatch(NavigationIntent::SelectDiscoverPreview {
+                    media_id: id.clone(),
+                });
+                load_meta_details(&runtime, id.clone());
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::models::details::open_details_route(&ui, &runtime, &navigation, &id);
+            }
         }
     });
 
@@ -238,29 +260,7 @@ pub fn setup(
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
-            navigation.dispatch_and_project(&ui, NavigationIntent::OpenDetails { media_id });
-            if let Ok(model) = runtime.model() {
-                let is_in_library = model
-                    .meta_details
-                    .selected
-                    .as_ref()
-                    .is_some_and(|selected| {
-                        model
-                            .ctx
-                            .library
-                            .items
-                            .get(&selected.meta_path.id)
-                            .is_some_and(|item| !item.removed)
-                    });
-                crate::models::details::sync(
-                    &ui,
-                    &model.meta_details,
-                    is_in_library,
-                    &ui_weak,
-                    &runtime,
-                    &navigation,
-                );
-            }
+            crate::models::details::open_details_route(&ui, &runtime, &navigation, &media_id);
         }
     });
 

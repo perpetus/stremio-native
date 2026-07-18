@@ -50,7 +50,7 @@ export component NumberInput inherits Rectangle {
             height: 3.5 * root.unit;
             border-radius: self.width / 2;
             enabled: root.enabled && !(root.has-explicit-minimum && root.value <= root.minimum);
-            accessible-name: "Decrease";
+            accessible-name: @tr("Decrease");
             background: Theme.overlay-color;
             clicked => { root.decrement(); }
 
@@ -116,7 +116,7 @@ export component NumberInput inherits Rectangle {
             height: 3.5 * root.unit;
             border-radius: self.width / 2;
             enabled: root.enabled && !(root.has-maximum && root.value >= root.maximum);
-            accessible-name: "Increase";
+            accessible-name: @tr("Increase");
             background: Theme.overlay-color;
             clicked => { root.increment(); }
 

@@ -68,7 +68,7 @@ export component ModalDialog inherits Rectangle {
             width: 3 * root.unit;
             height: 3 * root.unit;
             border-radius: Theme.border-radius;
-            accessible-name: "Close";
+            accessible-name: @tr("BUTTON_CLOSE" => "Close");
             clicked => { root.close-requested(); }
 
             Image {

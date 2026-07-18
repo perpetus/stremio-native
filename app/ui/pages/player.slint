@@ -127,7 +127,7 @@ component SubtitleStepper inherits Rectangle {
                 height: 42px;
                 border-radius: 8px;
                 enabled: !root.disabled;
-                accessible-name: "Decrease " + root.label;
+                accessible-name: @tr("Decrease") + " " + root.label;
                 background: self.has-hover ? #ffffff1f : #ffffff0d;
                 Text { text: "−"; color: #ffffff; font-size: 24px; horizontal-alignment: center; vertical-alignment: center; }
                 clicked => {
@@ -151,7 +151,7 @@ component SubtitleStepper inherits Rectangle {
                 height: 42px;
                 border-radius: 8px;
                 enabled: !root.disabled;
-                accessible-name: "Increase " + root.label;
+                accessible-name: @tr("Increase") + " " + root.label;
                 background: self.has-hover ? #ffffff1f : #ffffff0d;
                 Text { text: "+"; color: #ffffff; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
                 clicked => {
@@ -220,7 +220,7 @@ export component PlayerPage inherits Rectangle {
     in-out property <int> video-scale-mode: 0;
 
     in-out property <bool> show-skip-button: false;
-    in-out property <string> skip-button-label: "Skip Intro";
+    in-out property <string> skip-button-label: @tr("PLAYER_SKIP_INTRO" => "Skip Intro");
     callback skip-segment();
 
     // Icons
@@ -330,7 +330,7 @@ export component PlayerPage inherits Rectangle {
             padding-right: 48px;
 
             Text {
-                text: "Playback unavailable";
+                text: @tr("Playback unavailable");
                 color: #ffffff;
                 font-size: 22px;
                 font-weight: 700;
@@ -346,7 +346,7 @@ export component PlayerPage inherits Rectangle {
             PillButton {
                 width: 192px;
                 unit: 16px;
-                label: "Back to streams";
+                label: @tr("Back to streams");
                 outlined: true;
                 surface-color: transparent;
                 clicked => { close(); }
@@ -481,7 +481,7 @@ export component PlayerPage inherits Rectangle {
             height: 56px;
             icon-size: 32px;
             icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-            tooltip: "Back (Escape)";
+            tooltip: @tr("BACK" => "Back") + " (Escape)";
             clicked => { close(); }
         }
 
@@ -506,7 +506,7 @@ export component PlayerPage inherits Rectangle {
             height: 56px;
             icon-size: 32px;
             icon-source: @image-url("../assets/images/icons/maximize.svg");
-            tooltip: "Fullscreen (F)";
+            tooltip: @tr("CTX_FULLSCREEN" => "Fullscreen") + " (F)";
             clicked => { toggle-fullscreen(); }
         }
     }
@@ -534,12 +534,12 @@ export component PlayerPage inherits Rectangle {
 
                 PlayerIconButton {
                     icon-source: @image-url("../assets/images/icons/chevron-forward.svg");
-                    tooltip: "Close episode list";
+                    tooltip: @tr("Close episode list");
                     clicked => { show-playlist-drawer = false; }
                 }
 
                 Text {
-                    text: "Episodes";
+                    text: @tr("Episodes");
                     color: #ffffff;
                     font-size: 24px;
                     font-weight: 700;
@@ -685,13 +685,13 @@ export component PlayerPage inherits Rectangle {
                 icon-source: paused
                     ? @image-url("../assets/images/icons/play.svg")
                     : @image-url("../assets/images/icons/pause.svg");
-                tooltip: paused ? "Play (Space)" : "Pause (Space)";
+                tooltip: paused ? @tr("PLAYER_PLAY" => "Play") + " (Space)" : @tr("PLAYER_PAUSE" => "Pause") + " (Space)";
                 clicked => { toggle-pause(); }
             }
 
             if (is-series) : PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/next.svg");
-                tooltip: "Next episode";
+                tooltip: @tr("PLAYER_NEXT_VIDEO" => "Next Video");
                 clicked => {
                     if (active-episode-idx + 1 < episode-names.length) {
                         play-episode(active-episode-idx + 1);
@@ -708,7 +708,7 @@ export component PlayerPage inherits Rectangle {
                         : (volume < 0.7
                             ? @image-url("../assets/images/icons/volume-medium.svg")
                             : @image-url("../assets/images/icons/volume-high.svg")));
-                tooltip: muted ? "Unmute (M)" : "Mute (M)";
+                tooltip: muted ? @tr("PLAYER_UNMUTE" => "Unmute") + " (M)" : @tr("PLAYER_MUTE" => "Mute") + " (M)";
                 clicked => { toggle-mute(); }
             }
 
@@ -743,7 +743,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/network.svg");
-                tooltip: "Playback information";
+                tooltip: @tr("Playback information");
                 active: show-stats-menu;
                 clicked => {
                     show-stats-menu = !show-stats-menu;
@@ -757,7 +757,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/speed.svg");
-                tooltip: "Playback speed";
+                tooltip: @tr("PLAYER_PLAYBACK_SPEED" => "Playback Speed");
                 active: show-speed-menu;
                 clicked => {
                     show-speed-menu = !show-speed-menu;
@@ -771,7 +771,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/subtitles.svg");
-                tooltip: "Subtitles";
+                tooltip: @tr("SUBTITLES" => "Subtitles");
                 disabled: subtitles-tracks.length == 0;
                 active: show-subtitles-menu;
                 clicked => {
@@ -786,7 +786,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/audio-tracks.svg");
-                tooltip: "Audio tracks";
+                tooltip: @tr("AUDIO_TRACKS" => "Audio Tracks");
                 disabled: audio-tracks.length == 0;
                 active: show-audio-menu;
                 clicked => {
@@ -801,7 +801,7 @@ export component PlayerPage inherits Rectangle {
 
             if (is-series) : PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/episodes.svg");
-                tooltip: "Episode list";
+                tooltip: @tr("Episode list");
                 active: show-playlist-drawer;
                 clicked => {
                     show-playlist-drawer = !show-playlist-drawer;
@@ -815,7 +815,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/scale.svg");
-                tooltip: video-scale-mode == 0 ? "Fit video" : (video-scale-mode == 1 ? "Crop video" : "Stretch video");
+                tooltip: video-scale-mode == 0 ? @tr("PLAYER_SCALE_FIT" => "Fit") : (video-scale-mode == 1 ? @tr("PLAYER_SCALE_CROP" => "Crop") : @tr("PLAYER_SCALE_STRETCH" => "Stretch"));
                 clicked => {
                     video-scale-mode = Math.mod(video-scale-mode + 1, 3);
                     change-video-scale(video-scale-mode);
@@ -825,7 +825,7 @@ export component PlayerPage inherits Rectangle {
 
             PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/more-horizontal.svg");
-                tooltip: "More playback options";
+                tooltip: @tr("More playback options");
                 active: show-options-menu;
                 clicked => {
                     show-options-menu = !show-options-menu;
@@ -855,7 +855,7 @@ export component PlayerPage inherits Rectangle {
             spacing: 8px;
             PlayerMenuOption {
                 icon-source: @image-url("../assets/images/icons/link.svg");
-                label: "Copy stream link";
+                label: @tr("CTX_COPY_STREAM_LINK" => "Copy stream link");
                 clicked => {
                     copy-stream-link();
                     show-options-menu = false;
@@ -863,7 +863,7 @@ export component PlayerPage inherits Rectangle {
             }
             PlayerMenuOption {
                 icon-source: @image-url("../assets/images/icons/download.svg");
-                label: "Download video";
+                label: @tr("CTX_DOWNLOAD_VIDEO" => "Download this video");
                 clicked => {
                     download-video();
                     show-options-menu = false;
@@ -895,7 +895,7 @@ export component PlayerPage inherits Rectangle {
                     height: 72px;
                     padding-left: 32px;
                     Text {
-                        text: "Languages";
+                        text: @tr("PLAYER_SUBTITLES_LANGUAGES" => "Subtitles Languages");
                         color: Theme.surface-light;
                         font-size: 16px;
                         font-weight: 700;
@@ -915,7 +915,7 @@ export component PlayerPage inherits Rectangle {
                         spacing: 8px;
 
                         TrackItem {
-                            label: "Off";
+                            label: @tr("NAVIGATION_OFF" => "Off");
                             active: active-subtitle-idx == -1;
                             clicked => {
                                 active-subtitle-idx = -1;
@@ -946,7 +946,7 @@ export component PlayerPage inherits Rectangle {
                     height: 72px;
                     padding-left: 32px;
                     Text {
-                        text: "Variants";
+                        text: @tr("PLAYER_SUBTITLES_VARIANTS" => "Subtitles Variants");
                         color: Theme.surface-light;
                         font-size: 16px;
                         font-weight: 700;
@@ -959,7 +959,7 @@ export component PlayerPage inherits Rectangle {
                     padding-left: 16px;
                     padding-right: 16px;
                     Text {
-                        text: "Subtitles disabled";
+                        text: @tr("PLAYER_SUBTITLES_DISABLED" => "Subtitles are disabled");
                         color: Theme.surface-light-90;
                         font-size: 15px;
                         font-weight: 500;
@@ -1009,7 +1009,7 @@ export component PlayerPage inherits Rectangle {
                     height: 72px;
                     padding-left: 32px;
                     Text {
-                        text: "Settings";
+                        text: @tr("SETTINGS" => "Settings");
                         color: Theme.surface-light;
                         font-size: 16px;
                         font-weight: 700;
@@ -1025,7 +1025,7 @@ export component PlayerPage inherits Rectangle {
 
                     VerticalLayout {
                         SubtitleStepper {
-                            label: "Delay";
+                            label: @tr("DELAY" => "Delay");
                             unit: "s";
                             value: subtitle-delay-seconds;
                             step: 0.25;
@@ -1038,7 +1038,7 @@ export component PlayerPage inherits Rectangle {
                             }
                         }
                         SubtitleStepper {
-                            label: "Size";
+                            label: @tr("SIZE" => "Size");
                             unit: "%";
                             value: subtitle-size-percent;
                             step: 25.0;
@@ -1051,7 +1051,7 @@ export component PlayerPage inherits Rectangle {
                             }
                         }
                         SubtitleStepper {
-                            label: "Vertical position";
+                            label: @tr("PLAYER_SUBTITLES_VERTICAL_POSITION" => "Vertical Position");
                             unit: "%";
                             value: subtitle-offset-percent;
                             step: 1.0;
@@ -1087,7 +1087,7 @@ export component PlayerPage inherits Rectangle {
                 height: 72px;
                 padding-left: 32px;
                 Text {
-                    text: "Audio tracks";
+                    text: @tr("AUDIO_TRACKS" => "Audio Tracks");
                     color: #ffffff;
                     font-size: 16px;
                     font-weight: 700;
@@ -1138,7 +1138,7 @@ export component PlayerPage inherits Rectangle {
 
             Text {
                 height: 52px;
-                text: "Playback speed";
+                text: @tr("PLAYER_PLAYBACK_SPEED" => "Playback Speed");
                 color: #ffffff;
                 font-size: 20px;
                 font-weight: 700;
@@ -1158,7 +1158,7 @@ export component PlayerPage inherits Rectangle {
                     TrackItem { label: "0.25x"; active: playback-speed == 0.25; clicked => { playback-speed = 0.25; change-speed(0.25); show-speed-menu = false; } }
                     TrackItem { label: "0.5x"; active: playback-speed == 0.5; clicked => { playback-speed = 0.5; change-speed(0.5); show-speed-menu = false; } }
                     TrackItem { label: "0.75x"; active: playback-speed == 0.75; clicked => { playback-speed = 0.75; change-speed(0.75); show-speed-menu = false; } }
-                    TrackItem { label: "1.0x (Normal)"; active: playback-speed == 1.0; clicked => { playback-speed = 1.0; change-speed(1.0); show-speed-menu = false; } }
+                    TrackItem { label: "1.0x (" + @tr("Normal") + ")"; active: playback-speed == 1.0; clicked => { playback-speed = 1.0; change-speed(1.0); show-speed-menu = false; } }
                     TrackItem { label: "1.25x"; active: playback-speed == 1.25; clicked => { playback-speed = 1.25; change-speed(1.25); show-speed-menu = false; } }
                     TrackItem { label: "1.5x"; active: playback-speed == 1.5; clicked => { playback-speed = 1.5; change-speed(1.5); show-speed-menu = false; } }
                     TrackItem { label: "2.0x"; active: playback-speed == 2.0; clicked => { playback-speed = 2.0; change-speed(2.0); show-speed-menu = false; } }
@@ -1187,7 +1187,7 @@ export component PlayerPage inherits Rectangle {
 
             // Title
             Text {
-                text: "Statistics";
+                text: @tr("PLAYER_STATISTICS" => "Statistics");
                 color: Theme.surface-light;
                 font-size: 16px;
                 font-weight: 700;
@@ -1200,19 +1200,19 @@ export component PlayerPage inherits Rectangle {
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Peers"; color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
+                    Text { text: @tr("PLAYER_PEERS" => "Peers"); color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                     Text { text: download-speed != "" ? peer-count : "0"; color: Theme.surface-light; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                 }
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Speed"; color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
+                    Text { text: @tr("PLAYER_SPEED" => "Speed"); color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                     Text { text: download-speed != "" ? download-speed : "0 KB/s"; color: Theme.surface-light; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                 }
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Completed"; color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
+                    Text { text: @tr("PLAYER_COMPLETED" => "Completed"); color: Theme.text-secondary; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                     Text { text: download-speed != "" ? round(stream-progress) + " %" : "0 %"; color: Theme.surface-light; font-size: 14px; font-weight: 500; vertical-alignment: center; }
                 }
             }
@@ -1221,7 +1221,7 @@ export component PlayerPage inherits Rectangle {
             VerticalLayout {
                 spacing: 8px;
                 alignment: start;
-                Text { text: "Info hash"; color: Theme.text-secondary; font-size: 14px; font-weight: 500; }
+                Text { text: @tr("PLAYER_INFO_HASH" => "Info hash"); color: Theme.text-secondary; font-size: 14px; font-weight: 500; }
                 Text {
                     text: info-hash != "" ? info-hash : "N/A";
                     color: Theme.surface-light;
@@ -1286,14 +1286,14 @@ export component PlayerPage inherits Rectangle {
                 // Play / Pause
                 PlayerIconButton {
                     icon: paused ? icon-play : icon-pause;
-                    tooltip: paused ? "Play (Space)" : "Pause (Space)";
+                    tooltip: paused ? @tr("PLAYER_PLAY" => "Play") + " (Space)" : @tr("PLAYER_PAUSE" => "Pause") + " (Space)";
                     clicked => { toggle-pause(); }
                 }
 
                 // Next Episode
                 if (is-series) : PlayerIconButton {
                     icon: icon-next;
-                    tooltip: "Next episode";
+                    tooltip: @tr("PLAYER_NEXT_VIDEO" => "Next Video");
                     clicked => {
                         if (active-episode-idx + 1 < episode-names.length) {
                             play-episode(active-episode-idx + 1);
@@ -1309,7 +1309,7 @@ export component PlayerPage inherits Rectangle {
                     
                     PlayerIconButton {
                         icon: (muted || volume == 0.0) ? icon-volume-mute : (volume < 0.5 ? icon-volume-low : icon-volume-high);
-                        tooltip: muted ? "Unmute (M)" : "Mute (M)";
+                        tooltip: muted ? @tr("PLAYER_UNMUTE" => "Unmute") + " (M)" : @tr("PLAYER_MUTE" => "Mute") + " (M)";
                         clicked => { toggle-mute(); }
                     }
 
@@ -1337,7 +1337,7 @@ export component PlayerPage inherits Rectangle {
 
                 PlayerIconButton {
                     icon: icon-fullscreen;
-                    tooltip: "Fullscreen (F)";
+                    tooltip: @tr("CTX_FULLSCREEN" => "Fullscreen") + " (F)";
                     clicked => { toggle-fullscreen(); }
                 }
 
@@ -1348,7 +1348,7 @@ export component PlayerPage inherits Rectangle {
                     
                     PlayerIconButton {
                         icon: icon-subtitles;
-                        tooltip: "Subtitles";
+                        tooltip: @tr("SUBTITLES" => "Subtitles");
                         active: show-subtitles-menu;
                         clicked => {
                             show-subtitles-menu = !show-subtitles-menu;
@@ -1375,7 +1375,7 @@ export component PlayerPage inherits Rectangle {
                                 spacing: 4px;
                                 
                                 TrackItem {
-                                    label: "None (Off)";
+                                    label: @tr("None (Off)");
                                     active: active-subtitle-idx == -1;
                                     clicked => {
                                         active-subtitle-idx = -1;
@@ -1405,7 +1405,7 @@ export component PlayerPage inherits Rectangle {
                     
                     PlayerIconButton {
                         icon: icon-audio;
-                        tooltip: "Audio tracks";
+                        tooltip: @tr("AUDIO_TRACKS" => "Audio Tracks");
                         active: show-audio-menu;
                         clicked => {
                             show-audio-menu = !show-audio-menu;
@@ -1452,7 +1452,7 @@ export component PlayerPage inherits Rectangle {
                     
                     PlayerIconButton {
                         icon: icon-speed;
-                        tooltip: "Playback speed";
+                        tooltip: @tr("PLAYER_PLAYBACK_SPEED" => "Playback Speed");
                         active: show-speed-menu;
                         clicked => {
                             show-speed-menu = !show-speed-menu;
@@ -1478,7 +1478,7 @@ export component PlayerPage inherits Rectangle {
                             spacing: 4px;
                             
                             TrackItem {
-                                label: "0.5x (Slow)";
+                                label: "0.5x (" + @tr("Slow") + ")";
                                 active: playback-speed == 0.5;
                                 clicked => {
                                     playback-speed = 0.5;
@@ -1487,7 +1487,7 @@ export component PlayerPage inherits Rectangle {
                                 }
                             }
                             TrackItem {
-                                label: "1.0x (Normal)";
+                                label: "1.0x (" + @tr("Normal") + ")";
                                 active: playback-speed == 1.0;
                                 clicked => {
                                     playback-speed = 1.0;
@@ -1514,7 +1514,7 @@ export component PlayerPage inherits Rectangle {
                                 }
                             }
                             TrackItem {
-                                label: "2.0x (Fast)";
+                                label: "2.0x (" + @tr("TORRENT_PROFILE_FAST" => "Fast") + ")";
                                 active: playback-speed == 2.0;
                                 clicked => {
                                     playback-speed = 2.0;
@@ -1533,7 +1533,7 @@ export component PlayerPage inherits Rectangle {
                     
                     PlayerIconButton {
                         icon: icon-stats;
-                        tooltip: "Playback information";
+                        tooltip: @tr("Playback information");
                         active: show-stats-menu;
                         clicked => {
                             show-stats-menu = !show-stats-menu;
@@ -1560,43 +1560,43 @@ export component PlayerPage inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "Video Statistics";
+                                text: @tr("Video Statistics");
                                 color: Theme.accent;
                                 font-size: 13px;
                                 font-weight: 700;
                             }
                             Text {
-                                text: "Container: " + (file-format == "" ? "Unknown" : file-format);
+                                text: @tr("Container: {}", file-format == "" ? @tr("UNKNOWN_TRACK_LANG" => "Unknown") : file-format);
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             Text {
-                                text: "Video format: " + (video-format == "" ? "Unknown" : video-format);
+                                text: @tr("Video format: {}", video-format == "" ? @tr("UNKNOWN_TRACK_LANG" => "Unknown") : video-format);
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             Text {
-                                text: "Audio format: " + (audio-format == "" ? "Unknown" : audio-format);
+                                text: @tr("Audio format: {}", audio-format == "" ? @tr("UNKNOWN_TRACK_LANG" => "Unknown") : audio-format);
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             Text {
-                                text: "Decoder: " + ((hardware-decoder == "" || hardware-decoder == "no") ? "Software" : hardware-decoder);
+                                text: @tr("Decoder: {}", (hardware-decoder == "" || hardware-decoder == "no") ? @tr("Software") : hardware-decoder);
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             Text {
-                                text: "Buffered: " + round(buffered-percent) + "%";
+                                text: @tr("Buffered: {}%", round(buffered-percent));
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             if (download-speed != "") : Text {
-                                text: "Torrent: " + download-speed + " down / " + upload-speed + " up · " + peer-count + " peers";
+                                text: @tr("Torrent: {} down / {} up · {} peers", download-speed, upload-speed, peer-count);
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
                             if (download-speed != "") : Text {
-                                text: "Streamed: " + round(stream-progress) + "%";
+                                text: @tr("Streamed: {}%", round(stream-progress));
                                 color: #ffffffcc;
                                 font-size: 11px;
                             }
@@ -1607,7 +1607,7 @@ export component PlayerPage inherits Rectangle {
                 // Side Playlist Drawer Trigger Button
                 if (is-series) : PlayerIconButton {
                     icon: icon-menu;
-                    tooltip: "Episode list";
+                    tooltip: @tr("Episode list");
                     active: show-playlist-drawer;
                     clicked => {
                         show-playlist-drawer = !show-playlist-drawer;
@@ -1636,7 +1636,7 @@ export component PlayerPage inherits Rectangle {
 
             ContextMenuOption {
                 unit: 16px;
-                label: "Copy stream link";
+                label: @tr("CTX_COPY_STREAM_LINK" => "Copy stream link");
                 show-icon: true;
                 icon-source: @image-url("../assets/images/icons/link.svg");
                 clicked => {
@@ -1646,7 +1646,7 @@ export component PlayerPage inherits Rectangle {
             }
             ContextMenuOption {
                 unit: 16px;
-                label: "Download video";
+                label: @tr("CTX_DOWNLOAD_VIDEO" => "Download this video");
                 show-icon: true;
                 icon-source: @image-url("../assets/images/icons/download.svg");
                 clicked => {
@@ -1656,7 +1656,7 @@ export component PlayerPage inherits Rectangle {
             }
             ContextMenuOption {
                 unit: 16px;
-                label: "Playback information";
+                label: @tr("Playback information");
                 show-icon: true;
                 icon-source: @image-url("../assets/images/icons/settings-outline.svg");
                 clicked => {

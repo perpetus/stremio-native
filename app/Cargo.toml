@@ -1,12 +1,12 @@
 [package]
 name = "stremio-native"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
-stremio-core = { path = "../../stremio-core", features = ["derive", "analytics"] }
-stream-server = { path = "../../stream-server/server", package = "server" }
-settings-gui = { path = "../../stream-server/settings-gui" }
+stremio-core.workspace = true
+stream-server.workspace = true
+settings-gui.workspace = true
 core-env = { path = "../core-env" }
 playback-mpv = { path = "../playback-mpv" }
 server-connector = { path = "../server-connector" }
@@ -34,13 +34,21 @@ mimalloc = "0.1.52"
 arboard = "3.4.1"
 hex = "0.4.3"
 open = "5.4.0"
+percent-encoding.workspace = true
+self_update.workspace = true
+sys-locale.workspace = true
 uuid = { version = "1.23.5", features = ["v4"] }
 discord-rich-presence = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
 
 
 [build-dependencies]
 slint-build.workspace = true
 iconflow = { workspace = true, features = ["pack-lucide", "pack-bootstrap"] }
+serde_json.workspace = true
+winres = "0.1.12"
 
 [features]
 default = ["stremio-core/env-future-send", "core-env/default", "server-connector/default"]

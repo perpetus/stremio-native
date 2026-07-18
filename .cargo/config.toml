@@ -1,4 +1,9 @@
+[env]
+# The embedded stream-server library must not link its standalone EXE resource
+# table into the Stremio GUI executable. The GUI supplies its own icon/version.
+STREAM_SERVER_SKIP_WINDOWS_RESOURCES = "1"
+
 [target.'cfg(all(windows, target_env = "msvc"))']
-# MPV's official MSVC dependency bundle uses /MD. Keep Rust on the matching
-# dynamic CRT while libmpv, FFmpeg, and the codec stack remain static archives.
+# Keep Rust and its statically linked native crates on the static MSVC runtime.
+# libmpv remains isolated behind its DLL C API boundary.
 rustflags = ["-C", "target-feature=+crt-static"]

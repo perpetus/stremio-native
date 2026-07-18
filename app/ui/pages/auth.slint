@@ -25,7 +25,7 @@ component BrandHeader inherits Rectangle {
         y: 8 * root.unit;
         width: parent.width;
         height: 3.6 * root.unit;
-        text: "Freedom to Stream";
+        text: @tr("WEBSITE_FREEDOM_TO_STREAM" => "Freedom to Stream");
         color: Theme.text-primary;
         font-size: 3 * root.unit;
         font-weight: 600;
@@ -37,7 +37,7 @@ component BrandHeader inherits Rectangle {
         y: 12.1 * root.unit;
         width: parent.width;
         height: 1.8 * root.unit;
-        text: "All the video content you enjoy in one place";
+        text: @tr("All the video content you enjoy in one place");
         color: Theme.text-primary;
         opacity: 0.6;
         font-size: 1.5 * root.unit;
@@ -72,7 +72,7 @@ component FormSection inherits VerticalLayout {
         surface-color: Theme.overlay;
         focus-color: Theme.overlay;
         text <=> root.email;
-        placeholder-text: "E-mail";
+        placeholder-text: @tr("EMAIL" => "Email");
         accepted => { password-input.focus-input(); }
         edited => { root.edited(); }
     }
@@ -84,7 +84,7 @@ component FormSection inherits VerticalLayout {
         surface-color: Theme.overlay;
         focus-color: Theme.overlay;
         text <=> root.password;
-        placeholder-text: "Password";
+        placeholder-text: @tr("Password");
         input-type: InputType.password;
         accepted => {
             if (!root.register-mode) {
@@ -101,7 +101,7 @@ component FormSection inherits VerticalLayout {
         surface-color: Theme.overlay;
         focus-color: Theme.overlay;
         text <=> root.confirm-password;
-        placeholder-text: "Confirm password";
+        placeholder-text: @tr("Confirm password");
         input-type: InputType.password;
         accepted => { root.submit(); }
         edited => { root.edited(); }
@@ -113,7 +113,7 @@ component FormSection inherits VerticalLayout {
         Text {
             x: parent.width - self.width;
             height: parent.height;
-            text: "Forgot password?";
+            text: @tr("Forgot password?");
             color: Theme.text-primary;
             font-size: root.unit;
             vertical-alignment: center;
@@ -131,8 +131,8 @@ component FormSection inherits VerticalLayout {
         Checkbox {
             unit: root.unit;
             checked <=> root.tos-accepted;
-            label: "I have read and agree with the Stremio";
-            link-label: "Terms and Conditions";
+            label: @tr("I have read and agree with the Stremio");
+            link-label: @tr("Terms and Conditions");
             has-link: true;
             toggled(_checked) => { root.edited(); }
         }
@@ -140,8 +140,8 @@ component FormSection inherits VerticalLayout {
         Checkbox {
             unit: root.unit;
             checked <=> root.privacy-accepted;
-            label: "I have read and agree with the Stremio";
-            link-label: "Privacy Policy";
+            label: @tr("I have read and agree with the Stremio");
+            link-label: @tr("PRIVACY_POLICY" => "Privacy Policy");
             has-link: true;
             toggled(_checked) => { root.edited(); }
         }
@@ -149,7 +149,7 @@ component FormSection inherits VerticalLayout {
         Checkbox {
             unit: root.unit;
             checked <=> root.marketing-accepted;
-            label: "I agree to receive marketing communications from Stremio";
+            label: @tr("I agree to receive marketing communications from Stremio");
             toggled(_checked) => { root.edited(); }
         }
     }
@@ -165,7 +165,7 @@ component FormSection inherits VerticalLayout {
     PillButton {
         unit: root.unit;
         height: 4 * root.unit;
-        label: root.register-mode ? "Sign up" : "Log in";
+        label: root.register-mode ? @tr("Sign up") : @tr("Log in");
         enabled: !root.loading;
         outlined: true;
         surface-color: transparent;
@@ -195,7 +195,7 @@ component OptionsSection inherits VerticalLayout {
     PillButton {
         unit: root.unit;
         height: 4 * root.unit;
-        label: "Continue with Facebook";
+        label: @tr("Continue with Facebook");
         enabled: !root.loading;
         show-icon: true;
         icon: root.facebook-icon;
@@ -211,7 +211,7 @@ component OptionsSection inherits VerticalLayout {
     PillButton {
         unit: root.unit;
         height: 4 * root.unit;
-        label: "Continue with Apple";
+        label: @tr("Continue with Apple");
         enabled: !root.loading;
         show-icon: true;
         icon: root.apple-icon;
@@ -227,7 +227,7 @@ component OptionsSection inherits VerticalLayout {
     PillButton {
         unit: root.unit;
         height: 4 * root.unit;
-        label: root.register-mode ? "Log in" : "Sign up with email";
+        label: root.register-mode ? @tr("Log in") : @tr("Sign up with email");
         enabled: !root.loading;
         outlined: true;
         surface-color: transparent;
@@ -241,7 +241,7 @@ component OptionsSection inherits VerticalLayout {
     if (root.register-mode) : PillButton {
         unit: root.unit;
         height: 4 * root.unit;
-        label: "Guest login";
+        label: @tr("Guest login");
         enabled: !root.loading;
         outlined: true;
         surface-color: transparent;
@@ -440,7 +440,7 @@ export component AuthPage inherits Rectangle {
 
                 Text {
                     height: 4.5 * root.unit;
-                    text: "Password reset";
+                    text: @tr("Password reset");
                     color: Theme.text-primary;
                     font-size: 1.2 * root.unit;
                     font-weight: 500;
@@ -456,7 +456,7 @@ export component AuthPage inherits Rectangle {
                     surface-color: Theme.overlay;
                     focus-color: Theme.overlay;
                     text <=> root.reset-email;
-                    placeholder-text: "E-mail";
+                    placeholder-text: @tr("EMAIL" => "Email");
                     edited => { root.reset-error = ""; }
                     accepted => { root.send-password-reset(); }
                 }
@@ -479,7 +479,7 @@ export component AuthPage inherits Rectangle {
                     PillButton {
                         unit: root.unit;
                         height: 3.5 * root.unit;
-                        label: "Cancel";
+                        label: @tr("BUTTON_CANCEL" => "Cancel");
                         outlined: true;
                         surface-color: transparent;
                         hover-color: Theme.text-primary;
@@ -491,7 +491,7 @@ export component AuthPage inherits Rectangle {
                     PillButton {
                         unit: root.unit;
                         height: 3.5 * root.unit;
-                        label: "Send";
+                        label: @tr("BUTTON_SEND" => "Send");
                         surface-color: Theme.accent;
                         hover-color: transparent;
                         outline-color: Theme.accent;
@@ -550,7 +550,7 @@ export component AuthPage inherits Rectangle {
                     }
                 }
                 Text {
-                    text: "Authenticating";
+                    text: @tr("AUTHENTICATING" => "Authenticating...");
                     color: Theme.text-primary;
                     font-size: 1.5 * root.unit;
                     horizontal-alignment: center;
@@ -559,7 +559,7 @@ export component AuthPage inherits Rectangle {
                 PillButton {
                     unit: root.unit;
                     height: 4 * root.unit;
-                    label: "Cancel";
+                    label: @tr("BUTTON_CANCEL" => "Cancel");
                     outlined: true;
                     surface-color: transparent;
                     hover-color: Theme.text-primary;
@@ -585,24 +585,24 @@ export component AuthPage inherits Rectangle {
 
     function submit-current-form() {
         if (root.email-text == "") {
-            root.error-message = "Invalid email";
+            root.error-message = @tr("INVALID_EMAIL" => "Please enter a valid email address");
             return;
         }
         if (root.password-text == "") {
-            root.error-message = "Invalid password";
+            root.error-message = @tr("INVALID_PASSWORD" => "Please enter a valid password");
             return;
         }
         if (root.register-mode) {
             if (root.confirm-password-text != root.password-text) {
-                root.error-message = "Passwords do not match";
+                root.error-message = @tr("PASSWORDS_NOMATCH" => "Passwords don't match");
                 return;
             }
             if (!root.tos-accepted) {
-                root.error-message = "You must accept the Terms and Conditions";
+                root.error-message = @tr("MUST_ACCEPT_TERMS" => "You must accept Terms");
                 return;
             }
             if (!root.privacy-accepted) {
-                root.error-message = "You must accept the Privacy Policy";
+                root.error-message = @tr("MUST_ACCEPT_PRIVACY_POLICY" => "You must accept the Privacy Policy");
                 return;
             }
             root.submit-register(
@@ -619,7 +619,7 @@ export component AuthPage inherits Rectangle {
 
     function send-password-reset() {
         if (root.reset-email == "") {
-            root.reset-error = "Invalid email";
+            root.reset-error = @tr("INVALID_EMAIL" => "Please enter a valid email address");
             return;
         }
         root.request-password-reset(root.reset-email);

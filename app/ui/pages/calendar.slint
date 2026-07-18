@@ -30,7 +30,7 @@ component MonthButton inherits ButtonSurface {
     height: 3 * root.unit;
     border-radius: 0.5 * root.unit;
     background: root.has-hover ? Theme.overlay : transparent;
-    accessible-name: (root.previous ? "Previous month " : "Next month ") + root.label;
+    accessible-name: (root.previous ? @tr("Previous month") : @tr("Next month")) + " " + root.label;
 
     HorizontalLayout {
         padding-left: 0.5 * root.unit;
@@ -143,11 +143,33 @@ export component CalendarPage inherits Rectangle {
 
     background: Theme.main-gradient;
 
+    pure function translate-calendar-string(val: string) -> string {
+        return val == "Monday" ? @tr("Monday") :
+               val == "Tuesday" ? @tr("Tuesday") :
+               val == "Wednesday" ? @tr("Wednesday") :
+               val == "Thursday" ? @tr("Thursday") :
+               val == "Friday" ? @tr("Friday") :
+               val == "Saturday" ? @tr("Saturday") :
+               val == "Sunday" ? @tr("Sunday") :
+               val == "January" ? @tr("January") :
+               val == "February" ? @tr("February") :
+               val == "March" ? @tr("March") :
+               val == "April" ? @tr("April") :
+               val == "May" ? @tr("May") :
+               val == "June" ? @tr("June") :
+               val == "July" ? @tr("July") :
+               val == "August" ? @tr("August") :
+               val == "September" ? @tr("September") :
+               val == "October" ? @tr("October") :
+               val == "November" ? @tr("November") :
+               val == "December" ? @tr("December") : val;
+    }
+
     if (!root.authenticated) : EmptyState {
         unit: root.unit;
         icon-source: @image-url("../assets/images/icons/calendar.svg");
-        title: "Your personal episode calendar";
-        message: "Log in to see release dates for series in your Library.";
+        title: @tr("NOT_LOGGED_IN_CALENDAR" => "Schedule your personal watching calendar");
+        message: @tr("Log in to see release dates for series in your Library.");
     }
 
     if (root.authenticated) : VerticalLayout {
@@ -165,7 +187,7 @@ export component CalendarPage inherits Rectangle {
 
             MonthButton {
                 unit: root.unit;
-                label: root.previous-month;
+                label: translate-calendar-string(root.previous-month);
                 previous: true;
                 clicked => { root.previous(); }
             }
@@ -183,7 +205,7 @@ export component CalendarPage inherits Rectangle {
                     horizontal-alignment: center;
                 }
                 Text {
-                    text: root.selected-month;
+                    text: translate-calendar-string(root.selected-month);
                     color: Theme.text-primary;
                     font-size: 1.5 * root.unit;
                     font-weight: 500;
@@ -193,7 +215,7 @@ export component CalendarPage inherits Rectangle {
 
             MonthButton {
                 unit: root.unit;
-                label: root.next-month;
+                label: translate-calendar-string(root.next-month);
                 clicked => { root.next(); }
             }
         }
@@ -203,7 +225,7 @@ export component CalendarPage inherits Rectangle {
             spacing: 0px;
             for weekday in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] : Text {
                 horizontal-stretch: 1;
-                text: weekday;
+                text: translate-calendar-string(weekday);
                 color: Theme.text-primary;
                 font-size: root.unit;
                 font-weight: 500;

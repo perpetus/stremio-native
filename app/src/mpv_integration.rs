@@ -1709,203 +1709,260 @@ fn install_renderer(
     let mut last_reported_load = None;
     let mut last_gl_error_logged = None;
     let mut last_player_visible = None;
+    let mut context_initialization_attempted = false;
+    let mut missing_context_logged = false;
     let mut allocated_size: Option<(i32, i32)> = None;
     let mut pending_size: Option<(i32, i32)> = None;
     let mut pending_size_since = Instant::now();
     ui.window()
-        .set_rendering_notifier(move |state, graphics_api| match state {
-            slint::RenderingState::RenderingSetup => {
-                tracing::info!(?graphics_api, "Slint rendering setup started");
-                let slint::GraphicsAPI::NativeOpenGL { get_proc_address } = graphics_api else {
-                    tracing::error!(?graphics_api, "MPV requires Slint's NativeOpenGL renderer");
-                    return;
-                };
-                let redraw_weak = window_weak.clone();
-                match source.create_context(get_proc_address, move || {
-                    crate::performance::counters().record_mpv_redraw_post();
-                    let redraw_weak = redraw_weak.clone();
-                    let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(ui) = redraw_weak.upgrade() {
-                            if ui.get_show_player() {
-                                ui.window().request_redraw();
-                            }
-                        }
-                    });
-                }) {
-                    Ok(mut render_context) => {
-                        let diagnostics = render_context.open_gl_diagnostics();
-                        tracing::info!(
-                            vendor = %diagnostics.vendor,
-                            renderer = %diagnostics.renderer,
-                            version = %diagnostics.version,
-                            "MPV is sharing Slint's OpenGL context"
-                        );
-                        if let Some(ui) = window_weak.upgrade() {
-                            match ensure_render_target(&ui, &mut render_context) {
-                                Ok(ready) => {
-                                    render_target_ready = ready;
-                                    let size = ui.window().size();
-                                    allocated_size = Some((
-                                        i32::try_from(size.width).unwrap_or(i32::MAX),
-                                        i32::try_from(size.height).unwrap_or(i32::MAX),
-                                    ));
-                                    pending_size = allocated_size;
-                                }
-                                Err(error) => {
-                                    tracing::error!(%error, "MPV video render target creation failed")
-                                }
-                            }
-                        }
-                        context = Some(render_context);
-                        tracing::info!("MPV OpenGL render context created");
-                    }
-                    Err(error) => tracing::error!(%error, "could not create MPV render context"),
-                }
-            }
-            slint::RenderingState::BeforeRendering => {
-                let Some(ui) = window_weak.upgrade() else {
-                    return;
-                };
-                let player_visible = ui.get_show_player();
-                if last_player_visible != Some(player_visible) {
-                    last_player_visible = Some(player_visible);
-                    tracing::info!(player_visible, "BeforeRendering: player visibility changed");
-                }
-                if context.is_none() && player_visible {
-                    tracing::warn!("BeforeRendering: player is visible but MPV render context is None!");
-                }
-                if !player_visible {
-                    if let Some(context) = context.as_mut()
-                        && let Err(error) = context.process_updates(false)
-                    {
-                        tracing::error!(%error, "MPV hidden-frame update processing failed");
-                    }
-                    return;
-                }
+        .set_rendering_notifier(move |state, graphics_api| {
+            let is_rendering_setup = matches!(&state, slint::RenderingState::RenderingSetup);
+            let is_before_rendering = matches!(&state, slint::RenderingState::BeforeRendering);
 
-                if let Some(context) = context.as_mut() {
-                    let size = ui.window().size();
-                    let requested_size = (
-                        i32::try_from(size.width).unwrap_or(i32::MAX),
-                        i32::try_from(size.height).unwrap_or(i32::MAX),
+            if is_rendering_setup {
+                tracing::info!(?graphics_api, "Slint rendering setup started");
+                context_initialization_attempted = false;
+            }
+
+            // Fast startup deliberately installs MPV after the first window is
+            // visible. In that case Slint's one-shot RenderingSetup notification
+            // has already occurred, but its OpenGL context is equally current in
+            // BeforeRendering. Initialize once at the first available callback.
+            if context.is_none()
+                && !context_initialization_attempted
+                && (is_rendering_setup || is_before_rendering)
+            {
+                context_initialization_attempted = true;
+                if !is_rendering_setup {
+                    tracing::info!(
+                        ?graphics_api,
+                        "initializing deferred MPV render context before rendering"
                     );
-                    if pending_size != Some(requested_size) {
-                        pending_size = Some(requested_size);
-                        pending_size_since = Instant::now();
-                    }
-                    let resize_settled = pending_size_since.elapsed() >= Duration::from_millis(100);
-                    if !context.has_video_textures()
-                        || (allocated_size != Some(requested_size) && resize_settled)
-                    {
-                        match ensure_render_target_size(&ui, context, requested_size) {
-                            Ok(ready) => {
-                                render_target_ready = ready;
-                                allocated_size = Some(requested_size);
+                }
+                if let Some(ui) = window_weak.upgrade() {
+                    match create_render_context(&source, &window_weak, graphics_api) {
+                        Ok(mut render_context) => {
+                            match ensure_render_target(&ui, &mut render_context) {
+                                Ok(ready) => render_target_ready = ready,
+                                Err(error) => tracing::error!(
+                                    %error,
+                                    "MPV video render target creation failed"
+                                ),
                             }
-                            Err(error) => tracing::error!(
-                                %error,
-                                "MPV video render target creation failed"
-                            ),
+                            let size = ui.window().size();
+                            allocated_size = Some((
+                                i32::try_from(size.width).unwrap_or(i32::MAX),
+                                i32::try_from(size.height).unwrap_or(i32::MAX),
+                            ));
+                            pending_size = allocated_size;
+                            pending_size_since = Instant::now();
+                            context = Some(render_context);
+                            missing_context_logged = false;
+                            tracing::info!("MPV OpenGL render context created");
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, "could not create MPV render context")
                         }
                     }
                 } else {
-                    render_target_ready = false;
+                    context_initialization_attempted = false;
                 }
-                if !render_target_ready {
-                    return;
-                }
-                let size = ui.window().size();
-                if let Some(context) = context.as_mut() {
-                    let render_result = context.render();
-                    if let Some(code) = context.take_gl_error()
-                        && last_gl_error_logged != Some(code)
-                    {
-                        last_gl_error_logged = Some(code);
-                        tracing::error!(
-                            code = format_args!("{code:#x}"),
-                            "OpenGL error after MPV render"
+            }
+
+            match state {
+                slint::RenderingState::RenderingSetup => {}
+                slint::RenderingState::BeforeRendering => {
+                    let Some(ui) = window_weak.upgrade() else {
+                        return;
+                    };
+                    let player_visible = ui.get_show_player();
+                    if last_player_visible != Some(player_visible) {
+                        last_player_visible = Some(player_visible);
+                        tracing::info!(
+                            player_visible,
+                            "BeforeRendering: player visibility changed"
                         );
                     }
-                    match render_result {
-                        Ok(RenderOutcome::Rendered {
-                            texture,
-                            frame_ready,
-                        }) => {
-                            let image = unsafe {
-                                BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(
-                                    texture.texture_id(),
-                                    (texture.width(), texture.height()).into(),
-                                )
-                            }
-                            .origin(BorrowedOpenGLTextureOrigin::TopLeft)
-                            .build();
-                            ui.set_player_video_frame(image);
-                            crate::performance::counters().record_mpv_frame_published();
+                    if context.is_none() && player_visible && !missing_context_logged {
+                        missing_context_logged = true;
+                        tracing::warn!(
+                            "player is visible but the MPV render context is unavailable"
+                        );
+                    }
+                    if !player_visible {
+                        if let Some(context) = context.as_mut()
+                            && let Err(error) = context.process_updates(false)
+                        {
+                            tracing::error!(%error, "MPV hidden-frame update processing failed");
+                        }
+                        return;
+                    }
 
-                            if frame_ready {
-                                ui.set_player_has_video_frame(true);
-                            }
-
-                            let playable_frame = frame_ready && read_state(&playback_state).loaded;
-
-                            if !initial_surface_logged {
-                                initial_surface_logged = true;
-                                tracing::info!(
-                                    width = size.width,
-                                    height = size.height,
-                                    texture_id = texture.texture_id().get(),
-                                    "initial MPV video surface submitted to Slint"
-                                );
-                            }
-                            let load_started_at = playable_frame
-                                .then(|| lock_session(&session).load_requested_at)
-                                .flatten();
-                            if load_started_at.is_some() && load_started_at != last_reported_load {
-                                last_reported_load = load_started_at;
-                                tracing::info!(
-                                    width = size.width,
-                                    height = size.height,
-                                    texture_id = texture.texture_id().get(),
-                                    load_to_first_frame_ms = load_started_at
-                                        .map(|started_at| started_at.elapsed().as_millis()),
-                                    "first post-load MPV video frame submitted to Slint"
-                                );
+                    if let Some(context) = context.as_mut() {
+                        let size = ui.window().size();
+                        let requested_size = (
+                            i32::try_from(size.width).unwrap_or(i32::MAX),
+                            i32::try_from(size.height).unwrap_or(i32::MAX),
+                        );
+                        if pending_size != Some(requested_size) {
+                            pending_size = Some(requested_size);
+                            pending_size_since = Instant::now();
+                        }
+                        let resize_settled =
+                            pending_size_since.elapsed() >= Duration::from_millis(100);
+                        if !context.has_video_textures()
+                            || (allocated_size != Some(requested_size) && resize_settled)
+                        {
+                            match ensure_render_target_size(&ui, context, requested_size) {
+                                Ok(ready) => {
+                                    render_target_ready = ready;
+                                    allocated_size = Some(requested_size);
+                                }
+                                Err(error) => tracing::error!(
+                                    %error,
+                                    "MPV video render target creation failed"
+                                ),
                             }
                         }
-                        Ok(RenderOutcome::NoFrame) => {
-                            tracing::trace!("BeforeRendering: MPV has no new frame to render");
-                        }
-                        Err(error) => {
+                    } else {
+                        render_target_ready = false;
+                    }
+                    if !render_target_ready {
+                        return;
+                    }
+                    let size = ui.window().size();
+                    if let Some(context) = context.as_mut() {
+                        let render_result = context.render();
+                        if let Some(code) = context.take_gl_error()
+                            && last_gl_error_logged != Some(code)
+                        {
+                            last_gl_error_logged = Some(code);
                             tracing::error!(
-                                %error,
-                                width = size.width,
-                                height = size.height,
-                                "MPV frame rendering failed"
+                                code = format_args!("{code:#x}"),
+                                "OpenGL error after MPV render"
                             );
+                        }
+                        match render_result {
+                            Ok(RenderOutcome::Rendered {
+                                texture,
+                                frame_ready,
+                            }) => {
+                                let image = unsafe {
+                                    BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(
+                                        texture.texture_id(),
+                                        (texture.width(), texture.height()).into(),
+                                    )
+                                }
+                                .origin(BorrowedOpenGLTextureOrigin::TopLeft)
+                                .build();
+                                ui.set_player_video_frame(image);
+                                crate::performance::counters().record_mpv_frame_published();
+
+                                if frame_ready {
+                                    ui.set_player_has_video_frame(true);
+                                }
+
+                                let playable_frame =
+                                    frame_ready && read_state(&playback_state).loaded;
+
+                                if !initial_surface_logged {
+                                    initial_surface_logged = true;
+                                    tracing::info!(
+                                        width = size.width,
+                                        height = size.height,
+                                        texture_id = texture.texture_id().get(),
+                                        "initial MPV video surface submitted to Slint"
+                                    );
+                                }
+                                let load_started_at = playable_frame
+                                    .then(|| lock_session(&session).load_requested_at)
+                                    .flatten();
+                                if load_started_at.is_some()
+                                    && load_started_at != last_reported_load
+                                {
+                                    last_reported_load = load_started_at;
+                                    tracing::info!(
+                                        width = size.width,
+                                        height = size.height,
+                                        texture_id = texture.texture_id().get(),
+                                        load_to_first_frame_ms = load_started_at
+                                            .map(|started_at| started_at.elapsed().as_millis()),
+                                        "first post-load MPV video frame submitted to Slint"
+                                    );
+                                }
+                            }
+                            Ok(RenderOutcome::NoFrame) => {
+                                tracing::trace!("BeforeRendering: MPV has no new frame to render");
+                            }
+                            Err(error) => {
+                                tracing::error!(
+                                    %error,
+                                    width = size.width,
+                                    height = size.height,
+                                    "MPV frame rendering failed"
+                                );
+                            }
                         }
                     }
                 }
-            }
-            slint::RenderingState::AfterRendering => {}
-            slint::RenderingState::RenderingTeardown => {
-                tracing::info!("Slint rendering teardown started");
-                if let Some(ui) = window_weak.upgrade() {
-                    ui.set_player_video_frame(slint::Image::default());
-                    ui.set_player_has_video_frame(false);
+                slint::RenderingState::AfterRendering => {}
+                slint::RenderingState::RenderingTeardown => {
+                    tracing::info!("Slint rendering teardown started");
+                    if let Some(ui) = window_weak.upgrade() {
+                        ui.set_player_video_frame(slint::Image::default());
+                        ui.set_player_has_video_frame(false);
+                    }
+                    context = None;
+                    render_target_ready = false;
+                    initial_surface_logged = false;
+                    last_reported_load = None;
+                    last_gl_error_logged = None;
+                    last_player_visible = None;
+                    context_initialization_attempted = false;
+                    missing_context_logged = false;
+                    allocated_size = None;
+                    pending_size = None;
                 }
-                context = None;
-                render_target_ready = false;
-                initial_surface_logged = false;
-                last_reported_load = None;
-                last_gl_error_logged = None;
-                last_player_visible = None;
-                allocated_size = None;
-                pending_size = None;
+                _ => {}
             }
-            _ => {}
         })
         .map_err(|error| anyhow!("Slint renderer cannot host MPV: {error}"))?;
+    // Installing the notifier after first paint must still produce a callback,
+    // even when the loading page is otherwise static.
+    ui.window().request_redraw();
     Ok(())
+}
+
+fn create_render_context(
+    source: &RenderSource,
+    window_weak: &slint::Weak<MainWindow>,
+    graphics_api: &slint::GraphicsAPI<'_>,
+) -> anyhow::Result<RenderContext> {
+    let slint::GraphicsAPI::NativeOpenGL { get_proc_address } = graphics_api else {
+        return Err(anyhow!(
+            "MPV requires Slint's NativeOpenGL renderer, got {graphics_api:?}"
+        ));
+    };
+    let redraw_weak = window_weak.clone();
+    let render_context = source.create_context(get_proc_address, move || {
+        crate::performance::counters().record_mpv_redraw_post();
+        let redraw_weak = redraw_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = redraw_weak.upgrade()
+                && ui.get_show_player()
+            {
+                ui.window().request_redraw();
+            }
+        });
+    })?;
+    let diagnostics = render_context.open_gl_diagnostics();
+    tracing::info!(
+        vendor = %diagnostics.vendor,
+        renderer = %diagnostics.renderer,
+        version = %diagnostics.version,
+        "MPV is sharing Slint's OpenGL context"
+    );
+    Ok(render_context)
 }
 
 fn ensure_render_target(ui: &MainWindow, context: &mut RenderContext) -> anyhow::Result<bool> {

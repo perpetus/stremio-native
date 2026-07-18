@@ -94,8 +94,8 @@ export component LibraryPage inherits Rectangle {
             vertical-stretch: 1;
             unit: root.unit;
             icon-source: @image-url("../assets/images/icons/library.svg");
-            title: "Your library is empty";
-            message: "Add movies and series to find them here.";
+            title: @tr("MOBILE_EMPTY_LIBRARY" => "Your library is empty");
+            message: @tr("Add movies and series to find them here.");
         }
 
         if (!root.loading && root.rows.length > 0) : library-scroll := ListView {

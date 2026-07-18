@@ -54,8 +54,8 @@ export component BoardPage inherits Rectangle {
         height: 20 * root.unit;
         unit: root.unit;
         icon-source: @image-url("../assets/images/icons/home-outline.svg");
-        title: "Nothing to watch yet";
-        message: "Your recommendations and continue-watching items will appear here.";
+        title: @tr("Nothing to watch yet");
+        message: @tr("Your recommendations and continue-watching items will appear here.");
     }
 
     // Board rows are virtualized vertically. This prevents every poster in

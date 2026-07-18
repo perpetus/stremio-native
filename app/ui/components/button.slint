@@ -327,7 +327,7 @@ export component IconAction inherits ButtonSurface {
     border-radius: root.height / 2;
     background: root.active ? root.active-color
         : (root.has-hover ? root.hover-color : root.surface-color);
-    accessible-name: root.label == "" ? "Action" : root.label;
+    accessible-name: root.label == "" ? @tr("Action" => "Action") : root.label;
 
     animate background { duration: Theme.motion-fast; }
 
@@ -370,8 +370,8 @@ export component IconActionPair inherits Rectangle {
     in property <length> unit: Theme.root-font-size;
     in property <image> first-icon;
     in property <image> second-icon;
-    in property <string> first-accessible-name: "First action";
-    in property <string> second-accessible-name: "Second action";
+    in property <string> first-accessible-name: @tr("First action");
+    in property <string> second-accessible-name: @tr("Second action");
     in property <bool> first-active: false;
     in property <bool> second-active: false;
     in property <bool> enabled: true;

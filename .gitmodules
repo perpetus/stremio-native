@@ -1,0 +1,3 @@
+[submodule "vendor/stremio-translations"]
+	path = vendor/stremio-translations
+	url = https://github.com/Stremio/stremio-translations.git

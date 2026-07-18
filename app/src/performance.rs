@@ -1,11 +1,7 @@
-use std::{
-    path::PathBuf,
-    sync::{
-        OnceLock,
-        atomic::{AtomicU64, Ordering},
-    },
-    time::Duration,
-};
+use std::{path::PathBuf, sync::OnceLock, time::Duration};
+
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ProfileMode {
@@ -32,6 +28,7 @@ impl ProfileMode {
         self != Self::Off
     }
 
+    #[cfg(debug_assertions)]
     pub fn includes_target(self, target: &str) -> bool {
         match self {
             Self::Off => false,
@@ -81,16 +78,25 @@ impl ProfileConfig {
 
 #[derive(Default)]
 pub struct PerformanceCounters {
+    #[cfg(debug_assertions)]
     ui_patches: AtomicU64,
+    #[cfg(debug_assertions)]
     ui_patch_micros: AtomicU64,
+    #[cfg(debug_assertions)]
     image_memory_hits: AtomicU64,
+    #[cfg(debug_assertions)]
     image_disk_hits: AtomicU64,
+    #[cfg(debug_assertions)]
     image_downloads: AtomicU64,
+    #[cfg(debug_assertions)]
     image_failures: AtomicU64,
+    #[cfg(debug_assertions)]
     mpv_redraw_posts: AtomicU64,
+    #[cfg(debug_assertions)]
     mpv_frames_published: AtomicU64,
 }
 
+#[cfg(debug_assertions)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PerformanceSnapshot {
     pub ui_patches: u64,
@@ -104,12 +110,12 @@ pub struct PerformanceSnapshot {
 }
 
 impl PerformanceCounters {
-    pub fn record_ui_patch(&self, elapsed: Duration) {
+    pub fn record_ui_patch(&self, _elapsed: Duration) {
         #[cfg(debug_assertions)]
         {
             self.ui_patches.fetch_add(1, Ordering::Relaxed);
             self.ui_patch_micros.fetch_add(
-                elapsed.as_micros().try_into().unwrap_or(u64::MAX),
+                _elapsed.as_micros().try_into().unwrap_or(u64::MAX),
                 Ordering::Relaxed,
             );
         }
@@ -145,6 +151,7 @@ impl PerformanceCounters {
         self.mpv_frames_published.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[cfg(debug_assertions)]
     pub fn snapshot(&self) -> PerformanceSnapshot {
         PerformanceSnapshot {
             ui_patches: self.ui_patches.load(Ordering::Relaxed),

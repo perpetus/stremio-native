@@ -11,8 +11,15 @@ use crate::MainWindow;
 /// behavior.
 pub fn install_platform_shortcuts(ui: &MainWindow) {
     let weak_ui = ui.as_weak();
+    let mut native_window_style_applied = false;
 
-    ui.window().on_winit_window_event(move |_window, event| {
+    ui.window().on_winit_window_event(move |window, event| {
+        if !native_window_style_applied {
+            native_window_style_applied = window
+                .with_winit_window(crate::window_style::apply)
+                .unwrap_or(false);
+        }
+
         let Some(ui) = weak_ui.upgrade() else {
             return EventResult::Propagate;
         };

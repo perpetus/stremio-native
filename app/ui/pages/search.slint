@@ -33,7 +33,7 @@ export component SearchPage inherits Rectangle {
         padding-right: 2 * root.unit;
 
         Text {
-            text: "You Can Search Anything...";
+            text: @tr("SEARCH_ANYTHING" => "You Can Search Anything...");
             color: Theme.text-primary;
             opacity: 0.4;
             font-size: 1.6 * root.unit;
@@ -51,22 +51,22 @@ export component SearchPage inherits Rectangle {
                 SearchHint {
                     unit: root.unit;
                     icon-source: @image-url("../assets/images/icons/trailer.svg");
-                    label: "Movies, Series,\nYouTube & TV";
+                    label: @tr("SEARCH_CATEGORIES" => "Movies, Series, YouTube & TV");
                 }
                 SearchHint {
                     unit: root.unit;
                     icon-source: @image-url("../assets/images/icons/actors.svg");
-                    label: "Actors, Directors &\nWriters";
+                    label: @tr("SEARCH_PERSONS" => "Actors, Directors & Writers");
                 }
                 SearchHint {
                     unit: root.unit;
                     icon-source: @image-url("../assets/images/icons/link.svg");
-                    label: "HTTP & Magnet\nLinks";
+                    label: @tr("SEARCH_PROTOCOLS" => "HTTP & Magnet Links");
                 }
                 SearchHint {
                     unit: root.unit;
                     icon-source: @image-url("../assets/images/icons/imdb-outline.svg");
-                    label: "IMDB / TVDB\nlinks";
+                    label: @tr("SEARCH_TYPES" => "IMDB / TVDB links");
                 }
             }
         }
@@ -91,7 +91,7 @@ export component SearchPage inherits Rectangle {
         height: 18 * root.unit;
         unit: root.unit;
         icon-source: @image-url("../assets/images/icons/addons-outline.svg");
-        title: "No installed addons support search";
+        title: @tr("No installed addons support search");
     }
 
     if (root.query != "" && !root.loading && root.catalog-count > 0 && root.sections.length == 0) : EmptyState {
@@ -100,7 +100,7 @@ export component SearchPage inherits Rectangle {
         height: 18 * root.unit;
         unit: root.unit;
         icon-source: @image-url("../assets/images/icons/search-outline.svg");
-        title: "No results found";
+        title: @tr("SEARCH_NO_RESULTS" => "No results were found");
     }
 
     if (root.query != "" && root.sections.length > 0) : ListView {

@@ -7,7 +7,7 @@ import { ButtonSurface } from "button.slint";
 export component SelectField inherits Rectangle {
     in property <length> unit: Theme.root-font-size;
     in-out property <string> value;
-    in property <string> placeholder: "Select";
+    in property <string> placeholder: @tr("SELECT" => "Select");
     in property <[string]> options: [];
     in-out property <bool> open: false;
     in property <bool> enabled: true;
@@ -24,12 +24,68 @@ export component SelectField inherits Rectangle {
     background: root.surface-color;
     z: root.open ? 10000 : 0;
 
+    pure function translate-option(val: string) -> string {
+        return val == "All" ? @tr("ALL" => "All") :
+               val == "Movies" ? @tr("Movies" => "Movies") :
+               val == "Series" ? @tr("TYPE_series" => "Series") :
+               val == "Others" ? @tr("TYPE_other_PL" => "Others") :
+               val == "Movie" ? @tr("TYPE_movie" => "Movie") :
+               val == "Channel" ? @tr("TYPE_channel" => "Channel") :
+               val == "TV channel" ? @tr("TYPE_tv" => "TV channel") :
+               val == "Other" ? @tr("TYPE_other" => "Other") :
+               val == "Last Watched" ? @tr("SORT_LASTWATCHED" => "last watched") :
+               val == "A–Z" ? @tr("SORT_NAME" => "a-z") :
+               val == "A-Z" ? @tr("SORT_NAME" => "a-z") :
+               val == "Z–A" ? @tr("SORT_NAMEREVERSE" => "z-a") :
+               val == "Z-a" ? @tr("SORT_NAMEREVERSE" => "z-a") :
+               val == "Most Watched" ? @tr("SORT_TIMESWATCHED" => "most watched") :
+               val == "Watched" ? @tr("SORT_WATCHED" => "watched") :
+               val == "Not Watched" ? @tr("SORT_NOTWATCHED" => "not watched") :
+               val == "Type" ? @tr("TYPE" => "Type") :
+               val == "Catalog" ? @tr("CATALOG" => "Catalog") :
+               val == "Genre" ? @tr("GENRE" => "Genre") :
+               val == "Select" ? @tr("SELECT" => "Select") :
+               val == "Popular" ? @tr("CATALOG_com_linvo_cinemeta_top" => "Popular") :
+               val == "Featured" ? @tr("CATALOG_com_linvo_cinemeta_imdbRating" => "Featured") :
+               val == "New" ? @tr("CATALOG_com_linvo_cinemeta_year" => "New") :
+               val == "Public Domain Movies" ? @tr("CATALOG_org_stremio_pubdomainmovies_publicdomainmovies" => "Public Domain Movies") :
+               val == "YouTube" ? "YouTube" :
+               val == "Action" ? @tr("Action" => "Action") :
+               val == "Adventure" ? @tr("Adventure" => "Adventure") :
+               val == "Animation" ? @tr("Animation" => "Animation") :
+               val == "Biography" ? @tr("Biography" => "Biography") :
+               val == "Comedy" ? @tr("COMEDY" => "Comedy") :
+               val == "Crime" ? @tr("Crime" => "Crime") :
+               val == "Documentary" ? @tr("Documentary" => "Documentary") :
+               val == "Drama" ? @tr("Drama" => "Drama") :
+               val == "Family" ? @tr("Family" => "Family") :
+               val == "Fantasy" ? @tr("Fantasy" => "Fantasy") :
+               val == "Film-Noir" ? @tr("Film-Noir" => "Film-Noir") :
+               val == "History" ? @tr("History" => "History") :
+               val == "Horror" ? @tr("Horror" => "Horror") :
+               val == "Music" ? @tr("MUSIC" => "Music") :
+               val == "Musical" ? @tr("Musical" => "Musical") :
+               val == "Mystery" ? @tr("Mystery" => "Mystery") :
+               val == "News" ? @tr("NEWS" => "News") :
+               val == "Romance" ? @tr("Romance" => "Romance") :
+               val == "Sci-Fi" ? @tr("Sci-Fi" => "Sci-Fi") :
+               val == "Sport" ? @tr("Sport" => "Sport") :
+               val == "Thriller" ? @tr("Thriller" => "Thriller") :
+               val == "War" ? @tr("War" => "War") :
+               val == "Western" ? @tr("Western" => "Western") :
+               val == "Installed" ? @tr("ADDON_INSTALLED" => "Installed") :
+               val == "Community" ? @tr("WEBSITE_COMMUNITY" => "Community") :
+               val == "Anime" ? "Anime" :
+               val == "TV Channel" ? @tr("TYPE_tv" => "TV channel") :
+               val == "Special" ? @tr("SPECIAL" => "Special") : val;
+    }
+
     label-button := ButtonSurface {
         width: parent.width;
         height: parent.height;
         border-radius: parent.border-radius;
         enabled: root.enabled;
-        accessible-name: root.value == "" ? root.placeholder : root.value;
+        accessible-name: root.value == "" ? translate-option(root.placeholder) : translate-option(root.value);
         clicked => {
             root.toggle();
             if (root.open) {
@@ -46,7 +102,7 @@ export component SelectField inherits Rectangle {
 
             Text {
                 horizontal-stretch: 1;
-                text: root.value == "" ? root.placeholder : root.value;
+                text: root.value == "" ? translate-option(root.placeholder) : translate-option(root.value);
                 color: Theme.primary-foreground;
                 opacity: root.value == "" ? 0.6 : 1;
                 font-size: root.unit;
@@ -95,7 +151,7 @@ export component SelectField inherits Rectangle {
         if (root.options.length == 0) : Text {
             width: parent.width;
             height: parent.height;
-            text: "No options";
+            text: @tr("No options");
             color: Theme.surface-light-90;
             font-size: 1.2 * root.unit;
             font-weight: 500;
@@ -114,7 +170,7 @@ export component SelectField inherits Rectangle {
                 for option in root.options : option-button := ButtonSurface {
                     horizontal-stretch: 1;
                     height: 3 * root.unit;
-                    accessible-name: option;
+                    accessible-name: translate-option(option);
                     background: self.has-hover || self.has-focus
                         ? Theme.overlay-color
                         : transparent;
@@ -126,7 +182,7 @@ export component SelectField inherits Rectangle {
 
                         Text {
                             horizontal-stretch: 1;
-                            text: option;
+                            text: translate-option(option);
                             color: Theme.primary-foreground;
                             font-size: root.unit;
                             vertical-alignment: center;
@@ -170,7 +226,7 @@ export component SeasonSelectField inherits Rectangle {
         height: parent.height;
         border-radius: parent.border-radius;
         enabled: root.enabled;
-        accessible-name: root.value > 0 ? "Season " + root.value : "Special";
+        accessible-name: root.value > 0 ? @tr("SEASON_NUMBER" => "Season {}", root.value) : @tr("SPECIAL" => "Special");
         clicked => {
             root.toggle();
             if (root.open) {
@@ -187,7 +243,7 @@ export component SeasonSelectField inherits Rectangle {
 
             Text {
                 horizontal-stretch: 1;
-                text: root.value > 0 ? "Season " + root.value : "Special";
+                text: root.value > 0 ? @tr("SEASON_NUMBER" => "Season {}", root.value) : @tr("SPECIAL" => "Special");
                 color: Theme.primary-foreground;
                 font-size: root.unit;
                 font-weight: 500;
@@ -232,7 +288,7 @@ export component SeasonSelectField inherits Rectangle {
         if (root.options.length == 0) : Text {
             width: parent.width;
             height: parent.height;
-            text: "No seasons";
+            text: @tr("No seasons");
             color: Theme.surface-light-90;
             font-size: 1.2 * root.unit;
             font-weight: 500;
@@ -251,7 +307,7 @@ export component SeasonSelectField inherits Rectangle {
                 for option in root.options : option-button := ButtonSurface {
                     horizontal-stretch: 1;
                     height: 3 * root.unit;
-                    accessible-name: option > 0 ? "Season " + option : "Special";
+                    accessible-name: option > 0 ? @tr("SEASON_NUMBER" => "Season {}", option) : @tr("SPECIAL" => "Special");
                     background: self.has-hover || self.has-focus
                         ? Theme.overlay-color
                         : transparent;
@@ -263,7 +319,7 @@ export component SeasonSelectField inherits Rectangle {
 
                         Text {
                             horizontal-stretch: 1;
-                            text: option > 0 ? "Season " + option : "Special";
+                            text: option > 0 ? @tr("SEASON_NUMBER" => "Season {}", option) : @tr("SPECIAL" => "Special");
                             color: Theme.primary-foreground;
                             font-size: root.unit;
                             vertical-alignment: center;

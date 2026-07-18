@@ -1,8 +1,7 @@
-use crate::models::details::load_meta_details_for_video;
+use crate::models::details::{load_meta_details_for_video, open_details_route};
 use crate::models::{Fingerprint, SyncFingerprint, sync_fingerprint_changed};
 use crate::{
     AppModel, CalendarCell, CalendarMediaItem, CalendarRow, MainWindow, NavigationController,
-    NavigationIntent,
 };
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
@@ -13,6 +12,7 @@ use stremio_core::{
         Runtime, RuntimeAction,
         msg::{Action, ActionLoad},
     },
+    types::{addon::Descriptor, library::LibraryBucket},
 };
 
 const MONTH_NAMES: [&str; 12] = [
@@ -31,6 +31,7 @@ const MONTH_NAMES: [&str; 12] = [
 ];
 
 static LAST_SYNC_STATE: OnceLock<Mutex<Option<SyncFingerprint>>> = OnceLock::new();
+static LAST_SOURCE_STATE: OnceLock<Mutex<Option<SyncFingerprint>>> = OnceLock::new();
 
 fn month_name(month: u32) -> &'static str {
     month
@@ -40,11 +41,55 @@ fn month_name(month: u32) -> &'static str {
         .unwrap_or("")
 }
 
-fn dispatch_month(runtime: &Arc<Runtime<DesktopEnv, AppModel>>, selected: YearMonthDate) {
+fn dispatch_calendar(
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    selected: Option<YearMonthDate>,
+) -> bool {
+    let Some((source, current_selection)) = runtime.model().ok().map(|model| {
+        (
+            source_fingerprint(&model.ctx.library, &model.ctx.profile.addons),
+            model.calendar.selected.clone(),
+        )
+    }) else {
+        return false;
+    };
+    let source_changed = {
+        let cache = LAST_SOURCE_STATE.get_or_init(|| Mutex::new(None));
+        let mut previous = cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let changed = previous
+            .as_ref()
+            .is_some_and(|previous| previous != &source);
+        *previous = Some(source);
+        changed
+    };
+    let selection_changed = selected
+        .as_ref()
+        .is_some_and(|selected| current_selection.as_ref() != Some(selected));
+    if current_selection.is_some() && !source_changed && !selection_changed {
+        return false;
+    }
+
+    if source_changed {
+        runtime.dispatch(RuntimeAction {
+            field: Some(crate::AppModelField::Calendar),
+            action: Action::Unload,
+        });
+    }
     runtime.dispatch(RuntimeAction {
-        field: None,
-        action: Action::Load(ActionLoad::Calendar(Some(selected))),
+        field: Some(crate::AppModelField::Calendar),
+        action: Action::Load(ActionLoad::Calendar(selected)),
     });
+    true
+}
+
+pub(crate) fn ensure_loaded(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) -> bool {
+    let selected = runtime
+        .model()
+        .ok()
+        .and_then(|model| model.calendar.selected.clone());
+    dispatch_calendar(runtime, selected)
 }
 
 pub fn setup(
@@ -63,10 +108,11 @@ pub fn setup(
                 .ok()
                 .map(|model| model.calendar.selectable.prev.clone());
             if let Some(selected) = selected {
-                if let Some(ui) = ui_weak.upgrade() {
+                if dispatch_calendar(&runtime, Some(selected))
+                    && let Some(ui) = ui_weak.upgrade()
+                {
                     ui.set_calendar_loading(true);
                 }
-                dispatch_month(&runtime, selected);
             }
         }
     });
@@ -80,10 +126,11 @@ pub fn setup(
                 .ok()
                 .map(|model| model.calendar.selectable.next.clone());
             if let Some(selected) = selected {
-                if let Some(ui) = ui_weak.upgrade() {
+                if dispatch_calendar(&runtime, Some(selected))
+                    && let Some(ui) = ui_weak.upgrade()
+                {
                     ui.set_calendar_loading(true);
                 }
-                dispatch_month(&runtime, selected);
             }
         }
     });
@@ -96,13 +143,7 @@ pub fn setup(
             let id = id.to_string();
             let media_type = media_type.to_string();
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_details_loading(true);
-                navigation.dispatch_and_project(
-                    &ui,
-                    NavigationIntent::OpenDetails {
-                        media_id: id.clone(),
-                    },
-                );
+                open_details_route(&ui, &runtime, &navigation, &id);
             }
             load_meta_details_for_video(&runtime, id, Some(media_type), None);
         }
@@ -219,6 +260,46 @@ pub(crate) fn state_fingerprint(calendar: &Calendar) -> SyncFingerprint {
             fingerprint.str(&preview.r#type);
             fingerprint.str(&preview.name);
             fingerprint.optional_str(preview.poster.as_ref().map(url::Url::as_str));
+        }
+    }
+    fingerprint.finish()
+}
+
+pub(crate) fn source_fingerprint(
+    library: &LibraryBucket,
+    addons: &[Descriptor],
+) -> SyncFingerprint {
+    let mut relevant_items = library
+        .items
+        .values()
+        .filter(|item| !item.removed && !item.temp)
+        .collect::<Vec<_>>();
+    relevant_items.sort_unstable_by(|left, right| {
+        right
+            .mtime
+            .cmp(&left.mtime)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    relevant_items.truncate(stremio_core::constants::CALENDAR_ITEMS_COUNT);
+    // Request order does not affect the resulting schedule. Canonicalizing the
+    // selected ID set avoids a metadata reload when playback only changes mtime.
+    relevant_items.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+
+    let mut fingerprint = Fingerprint::new();
+    for item in relevant_items {
+        fingerprint.str(&item.id);
+        fingerprint.str(&item.r#type);
+    }
+    fingerprint.bytes(&crate::models::profile_addons_fingerprint(addons));
+    for addon in addons {
+        for catalog in &addon.manifest.catalogs {
+            for extra in catalog.extra.iter() {
+                fingerprint.str(&extra.name);
+                fingerprint.bool(extra.is_required);
+                for option in &extra.options {
+                    fingerprint.str(option);
+                }
+            }
         }
     }
     fingerprint.finish()

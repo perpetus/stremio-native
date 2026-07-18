@@ -56,6 +56,7 @@ export component MediaCardGridRow inherits Rectangle {
     in property <length> spacing: 0.5 * root.unit;
     in property <bool> enable-lazy-loading: false;
     callback item-selected(string, string, string);
+    callback item-activated(string, string, string);
     callback poster-requested(string);
 
     height: root.card-height;
@@ -71,6 +72,9 @@ export component MediaCardGridRow inherits Rectangle {
         enable-lazy-loading: root.enable-lazy-loading;
         clicked => {
             root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
+        }
+        double-clicked => {
+            root.item-activated(card-item.id, card-item.media-type, card-item.video-id);
         }
         poster-requested(url) => { root.poster-requested(url); }
     }

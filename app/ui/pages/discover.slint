@@ -46,6 +46,7 @@ export component DiscoverPage inherits Rectangle {
     callback catalog-changed(string);
     callback genre-changed(string);
     callback item-selected(string);
+    callback item-activated(string);
     callback poster-requested(string);
     callback play-preview;
     callback toggle-library-preview;
@@ -86,7 +87,7 @@ export component DiscoverPage inherits Rectangle {
                         unit: root.unit;
                         field-width: 15 * root.unit;
                         value: root.active-type;
-                        placeholder: "Type";
+                        placeholder: @tr("Type");
                         options: root.available-types;
                         open: root.type-open;
                         toggle => {
@@ -104,7 +105,7 @@ export component DiscoverPage inherits Rectangle {
                         unit: root.unit;
                         field-width: 15 * root.unit;
                         value: root.active-catalog;
-                        placeholder: "Catalog";
+                        placeholder: @tr("Catalog");
                         options: root.available-catalogs;
                         open: root.catalog-open;
                         toggle => {
@@ -122,7 +123,7 @@ export component DiscoverPage inherits Rectangle {
                         unit: root.unit;
                         field-width: 15 * root.unit;
                         value: root.active-genre;
-                        placeholder: "Genre";
+                        placeholder: @tr("Genre");
                         options: root.available-genres;
                         open: root.genre-open;
                         toggle => {
@@ -151,8 +152,8 @@ export component DiscoverPage inherits Rectangle {
                 vertical-stretch: 1;
                 unit: root.unit;
                 icon-source: @image-url("../assets/images/icons/discover.svg");
-                title: "No items found";
-                message: "Try changing the catalog filters.";
+                title: @tr("No items found");
+                message: @tr("Try changing the catalog filters.");
             }
 
             if (!root.loading && root.rows.length > 0) : catalog-scroll := ListView {
@@ -177,6 +178,7 @@ export component DiscoverPage inherits Rectangle {
                         card-height: root.card-height;
                         spacing: 0.5 * root.unit;
                         item-selected(id, _media-type, _video-id) => { root.item-selected(id); }
+                        item-activated(id, _media-type, _video-id) => { root.item-activated(id); }
                         poster-requested(url) => { root.poster-requested(url); }
                     }
                 }
@@ -270,7 +272,7 @@ export component DiscoverPage inherits Rectangle {
                         horizontal-stretch: 1;
                         max-width: preview.width - 5 * root.unit;
                         unit: root.unit;
-                        label: "GENRES";
+                        label: @tr("LINKS_GENRES" => "Genres");
                         values: root.preview-genres;
                     }
 
@@ -278,7 +280,7 @@ export component DiscoverPage inherits Rectangle {
                         horizontal-stretch: 1;
                         max-width: preview.width - 5 * root.unit;
                         unit: root.unit;
-                        label: "CAST";
+                        label: @tr("CAST" => "Cast");
                         values: root.preview-cast;
                     }
 
@@ -286,7 +288,7 @@ export component DiscoverPage inherits Rectangle {
                         horizontal-stretch: 1;
                         max-width: preview.width - 5 * root.unit;
                         unit: root.unit;
-                        label: "DIRECTORS";
+                        label: @tr("LINKS_DIRECTORS" => "Directors");
                         values: root.preview-directors;
                     }
                 }
@@ -304,7 +306,7 @@ export component DiscoverPage inherits Rectangle {
                     width: 3.5 * root.unit;
                     height: 3.5 * root.unit;
                     icon-size: 1.55 * root.unit;
-                    label: "Trailer";
+                    label: @tr("TRAILER" => "Trailer");
                     surface-color: #14121b99;
                     icon-source: @image-url("../assets/images/icons/trailer.svg");
                     clicked => { root.play-trailer-preview(root.preview-trailer-selection-id); }
@@ -316,8 +318,8 @@ export component DiscoverPage inherits Rectangle {
                     height: 3.5 * root.unit;
                     icon-size: 1.55 * root.unit;
                     label: root.preview-is-in-library
-                        ? "Remove from Library"
-                        : "Add to Library";
+                        ? @tr("REMOVE_FROM_LIB" => "Remove from Library")
+                        : @tr("ADD_TO_LIB" => "Add to Library");
                     active: root.preview-is-in-library;
                     active-color: Theme.accent;
                     surface-color: #14121b99;
@@ -333,8 +335,8 @@ export component DiscoverPage inherits Rectangle {
                     height: 3.5 * root.unit;
                     icon-size: 1.55 * root.unit;
                     label: root.preview-is-watched
-                        ? "Mark as unwatched"
-                        : "Mark as watched";
+                        ? @tr("MARK_AS_UNWATCHED" => "Mark as unwatched")
+                        : @tr("MARK_AS_WATCHED" => "Mark as watched");
                     active: root.preview-is-watched;
                     active-color: Theme.accent;
                     surface-color: #14121b99;
@@ -347,7 +349,7 @@ export component DiscoverPage inherits Rectangle {
                 PillButton {
                     horizontal-stretch: 1;
                     unit: root.unit;
-                    label: "Show";
+                    label: @tr("SHOW" => "Show");
                     primary: true;
                     clicked => { root.play-preview(); }
                 }

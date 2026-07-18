@@ -108,7 +108,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 1 * root.unit;
             unit: root.unit;
-            label: "Board";
+            label: @tr("Board");
             icon-source: @image-url("../assets/images/icons/home-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/home.svg");
             selected: root.active-tab == 0;
@@ -119,7 +119,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 6.8 * root.unit;
             unit: root.unit;
-            label: "Discover";
+            label: @tr("Discover" => "Discover");
             icon-source: @image-url("../assets/images/icons/discover-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/discover.svg");
             selected: root.active-tab == 1;
@@ -130,7 +130,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 12.6 * root.unit;
             unit: root.unit;
-            label: "Library";
+            label: @tr("Library" => "Library");
             icon-source: @image-url("../assets/images/icons/library-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/library.svg");
             selected: root.active-tab == 2;
@@ -141,7 +141,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 18.4 * root.unit;
             unit: root.unit;
-            label: "Calendar";
+            label: @tr("Calendar");
             icon-source: @image-url("../assets/images/icons/calendar-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/calendar.svg");
             selected: root.active-tab == 5;
@@ -152,7 +152,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 24.2 * root.unit;
             unit: root.unit;
-            label: "Addons";
+            label: @tr("ADDONS" => "Addons");
             icon-source: @image-url("../assets/images/icons/addons-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/addons.svg");
             selected: root.active-tab == 3;
@@ -163,7 +163,7 @@ export component Sidebar inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: 30 * root.unit;
             unit: root.unit;
-            label: "Settings";
+            label: @tr("SETTINGS" => "Settings");
             icon-source: @image-url("../assets/images/icons/settings-outline.svg");
             active-icon-source: @image-url("../assets/images/icons/settings.svg");
             selected: root.active-tab == 4;

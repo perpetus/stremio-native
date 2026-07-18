@@ -42,6 +42,60 @@ fn get_search_query() -> &'static Mutex<String> {
     EPISODE_SEARCH_QUERY.get_or_init(|| Mutex::new(String::new()))
 }
 
+fn selected_details_are_ready(model: &AppModel, id: &str) -> bool {
+    model
+        .meta_details
+        .selected
+        .as_ref()
+        .is_some_and(|selected| selected.meta_path.id == id)
+        && model.meta_details.meta_items.iter().any(|resource| {
+            matches!(
+                &resource.content,
+                Some(Loadable::Ready(item)) if item.preview.id == id
+            )
+        })
+}
+
+/// Opens the full details route and immediately reprojects a matching cached
+/// selection. Core may intentionally emit no state change for a cached reload,
+/// so every navigation entry point must use this instead of waiting for an
+/// event that may never arrive.
+pub fn open_details_route(
+    ui: &MainWindow,
+    rt: &Arc<Runtime<DesktopEnv, AppModel>>,
+    navigation: &NavigationController,
+    id: &str,
+) {
+    navigation.dispatch_and_project(
+        ui,
+        crate::NavigationIntent::OpenDetails {
+            media_id: id.to_owned(),
+        },
+    );
+
+    let ready = rt.model().ok().is_some_and(|model| {
+        if !selected_details_are_ready(&model, id) {
+            return false;
+        }
+        let is_in_library = model
+            .ctx
+            .library
+            .items
+            .get(id)
+            .is_some_and(|item| !item.removed);
+        sync(
+            ui,
+            &model.meta_details,
+            is_in_library,
+            &ui.as_weak(),
+            rt,
+            navigation,
+        );
+        true
+    });
+    ui.set_details_loading(!ready);
+}
+
 /// Core function to load meta details and streams for an item
 pub fn load_meta_details(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: String) {
     load_meta_details_for_video(rt, id, None, None);

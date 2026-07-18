@@ -15,7 +15,7 @@ export component ToggleSwitch inherits ButtonSurface {
     height: 1.7 * root.unit;
     border-radius: root.height / 2;
     background: root.checked ? root.active-color : root.inactive-color;
-    accessible-name: root.checked ? "On" : "Off";
+    accessible-name: root.checked ? @tr("NAVIGATION_ON" => "On") : @tr("NAVIGATION_OFF" => "Off");
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-checked: root.checked;

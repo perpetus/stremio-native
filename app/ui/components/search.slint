@@ -13,7 +13,7 @@ export struct SearchSuggestion {
 export component SearchBox inherits Rectangle {
     in property <length> unit: 16px;
     in-out property <string> text;
-    in property <string> placeholder-text: "Search or paste link";
+    in property <string> placeholder-text: @tr("SEARCH_OR_PASTE_LINK" => "Search or paste link");
     in property <[SearchSuggestion]> suggestions: [];
     in property <bool> menu-enabled: true;
     out property <bool> has-focus: field.has-focus;
@@ -62,7 +62,7 @@ export component SearchBox inherits Rectangle {
 
             Text {
                 height: 1.5 * root.unit;
-                text: "Search Suggestions";
+                text: @tr("SEARCH_SUGGESTIONS" => "Search Suggestions");
                 color: Theme.text-secondary;
                 font-size: 0.85 * root.unit;
                 font-weight: 600;

@@ -24,58 +24,52 @@ pub async fn init_db(app_data_dir: PathBuf) -> anyhow::Result<()> {
     tracing::info!(path = %db_path, "Initializing Turso local database...");
     let db = Builder::new_local(&db_path).build().await?;
 
-    let conn = db.connect()?;
+    let mut conn = db.connect()?;
 
-    // Apply performance tuning PRAGMAs
-    let _ = conn.execute("PRAGMA journal_mode = WAL;", ()).await;
-    let _ = conn.execute("PRAGMA synchronous = NORMAL;", ()).await;
-    let _ = conn.execute("PRAGMA temp_store = MEMORY;", ()).await;
-    let _ = conn.execute("PRAGMA cache_size = -10000;", ()).await;
+    // `journal_mode` returns the selected mode, so it must use the query path;
+    // Turso's no-row executor rejects it with "unexpected row during execution".
+    // Keep the remaining no-row pragmas and schema in one batch, and keep all
+    // of this work after the first window is already being serviced.
+    let mut journal_mode_rows = conn.query("PRAGMA journal_mode = WAL", ()).await?;
+    let journal_mode = journal_mode_rows
+        .next()
+        .await?
+        .map(|row| row.get::<String>(0))
+        .transpose()?;
+    if !matches!(journal_mode.as_deref(), Some(mode) if mode.eq_ignore_ascii_case("wal")) {
+        tracing::warn!(
+            journal_mode = journal_mode.as_deref().unwrap_or("unknown"),
+            "database did not enable WAL journal mode"
+        );
+    }
+    drop(journal_mode_rows);
 
-    // Initialize tables: settings, logs, and core_storage
-    conn.execute(
+    conn.execute_batch(
         "
+        PRAGMA synchronous = NORMAL;
+        PRAGMA temp_store = MEMORY;
+        PRAGMA cache_size = -10000;
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
-    ",
-        (),
-    )
-    .await?;
-
-    conn.execute(
-        "
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp INTEGER NOT NULL,
             level TEXT NOT NULL,
             message TEXT NOT NULL
         );
-    ",
-        (),
-    )
-    .await?;
-
-    conn.execute(
-        "
         CREATE TABLE IF NOT EXISTS core_storage (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
-    ",
-        (),
+        ",
     )
     .await?;
 
-    // The active image pipeline uses the bounded memory cache and filesystem
-    // cache. Remove the legacy BLOB table so existing installations can reuse
-    // those database pages.
-    conn.execute("DROP TABLE IF EXISTS image_cache", ()).await?;
-    prune_logs(&conn).await?;
-
     // Migrate legacy JSON storage files to the SQLite database
-    if let Err(e) = migrate_json_to_db(&conn, &app_data_dir).await {
+    if let Err(e) = migrate_json_to_db(&mut conn, &app_data_dir).await {
         tracing::error!("Failed to run JSON database migration: {:?}", e);
     }
 
@@ -91,78 +85,104 @@ pub async fn init_db(app_data_dir: PathBuf) -> anyhow::Result<()> {
         "Turso database schemas created/verified and optimizations applied"
     );
 
-    // Log database startup event
-    let _ = insert_log("INFO", "Embedded Turso database initialized successfully.").await;
+    tokio::spawn(async {
+        // Keep cleanup I/O out of the cold-start and first-frame window.
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Err(error) = run_startup_maintenance().await {
+            tracing::warn!(%error, "deferred database maintenance failed");
+        }
+    });
 
     Ok(())
 }
 
 async fn migrate_json_to_db(
-    conn: &Connection,
+    conn: &mut Connection,
     app_data_dir: &std::path::Path,
 ) -> anyhow::Result<()> {
     // Check if profile.json exists to see if we need migration
     let profile_json_path = app_data_dir.join("profile.json");
-    if !profile_json_path.exists() {
+    if !tokio::fs::try_exists(&profile_json_path).await? {
         return Ok(());
     }
 
     tracing::info!("Starting JSON files to Turso SQLite database migration...");
 
-    let keys = [
-        "profile",
-        "library",
-        "library_recent",
-        "streams",
-        "search_history",
-        "server_urls",
-        "notifications",
-        "dismissed_events",
+    let buckets = [
+        ("profile", stremio_core::constants::PROFILE_STORAGE_KEY),
+        ("library", stremio_core::constants::LIBRARY_STORAGE_KEY),
+        (
+            "library_recent",
+            stremio_core::constants::LIBRARY_RECENT_STORAGE_KEY,
+        ),
+        ("streams", stremio_core::constants::STREAMS_STORAGE_KEY),
+        (
+            "search_history",
+            stremio_core::constants::SEARCH_HISTORY_STORAGE_KEY,
+        ),
+        (
+            "server_urls",
+            stremio_core::constants::STREAMING_SERVER_URLS_STORAGE_KEY,
+        ),
+        (
+            "notifications",
+            stremio_core::constants::NOTIFICATIONS_STORAGE_KEY,
+        ),
+        (
+            "dismissed_events",
+            stremio_core::constants::DISMISSED_EVENTS_STORAGE_KEY,
+        ),
     ];
 
-    for &key in &keys {
-        let json_path = app_data_dir.join(format!("{}.json", key));
-        if json_path.exists() {
-            match std::fs::read_to_string(&json_path) {
-                Ok(data) => {
-                    let res = conn
-                        .execute(
-                            "INSERT OR REPLACE INTO core_storage (key, value) VALUES (?, ?)",
-                            (key.to_owned(), data),
-                        )
-                        .await;
-                    if let Err(e) = res {
-                        tracing::error!("Migration: failed to save key {}: {:?}", key, e);
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "Migration: failed to read legacy file {}: {:?}",
-                        json_path.display(),
-                        e
-                    );
-                }
-            }
-        }
-    }
-
-    // Rename migrated files to .json.bak
-    for &key in &keys {
-        let json_path = app_data_dir.join(format!("{}.json", key));
-        if json_path.exists() {
-            let backup_path = app_data_dir.join(format!("{}.json.bak", key));
-            if let Err(e) = std::fs::rename(&json_path, &backup_path) {
-                tracing::warn!(
-                    "Migration: failed to rename legacy file {}: {:?}",
+    let mut pending = Vec::with_capacity(buckets.len());
+    for &(file_stem, storage_key) in &buckets {
+        let json_path = app_data_dir.join(format!("{file_stem}.json"));
+        match tokio::fs::read_to_string(&json_path).await {
+            Ok(data) => pending.push((file_stem, storage_key, json_path, data)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::error!(
+                    "Migration: failed to read legacy file {}: {:?}",
                     json_path.display(),
-                    e
+                    error
                 );
             }
         }
     }
 
+    let transaction = conn.transaction().await?;
+    for (_, storage_key, _, data) in &pending {
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO core_storage (key, value) VALUES (?, ?)",
+                ((*storage_key).to_owned(), data.clone()),
+            )
+            .await?;
+    }
+    transaction.commit().await?;
+
+    // Rename files only after every migrated value has committed.
+    for (file_stem, _, json_path, _) in pending {
+        let backup_path = app_data_dir.join(format!("{file_stem}.json.bak"));
+        if let Err(error) = tokio::fs::rename(&json_path, &backup_path).await {
+            tracing::warn!(
+                "Migration: failed to rename legacy file {}: {:?}",
+                json_path.display(),
+                error
+            );
+        }
+    }
+
     tracing::info!("JSON to SQLite migration completed successfully.");
     Ok(())
+}
+
+async fn run_startup_maintenance() -> anyhow::Result<()> {
+    let conn = get_conn()?;
+    // The active image pipeline uses the bounded memory and filesystem caches.
+    conn.execute("DROP TABLE IF EXISTS image_cache", ()).await?;
+    prune_logs(&conn).await?;
+    insert_log("INFO", "Embedded Turso database initialized successfully.").await
 }
 
 pub fn get_conn() -> anyhow::Result<Connection> {

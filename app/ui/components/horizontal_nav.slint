@@ -84,7 +84,7 @@ export component HorizontalNavBar inherits Rectangle {
         y: (parent.height - self.height) / 2;
         unit: root.unit;
         icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-        accessible-name: "Back";
+        accessible-name: @tr("BACK" => "Back");
         clicked => { root.back-requested(); }
     }
 
@@ -155,7 +155,7 @@ export component HorizontalNavBar inherits Rectangle {
                 icon-source: root.fullscreen
                     ? @image-url("../assets/images/icons/minimize.svg")
                     : @image-url("../assets/images/icons/maximize.svg");
-                accessible-name: root.fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+                accessible-name: root.fullscreen ? @tr("EXIT_FULLSCREEN" => "Exit fullscreen mode") : @tr("ENTER_FULLSCREEN" => "Enter fullscreen mode");
                 clicked => { root.fullscreen-requested(!root.fullscreen); }
             }
 
@@ -163,7 +163,7 @@ export component HorizontalNavBar inherits Rectangle {
                 unit: root.unit;
                 icon-source: @image-url("../assets/images/icons/person-outline.svg");
                 active: root.profile-active;
-                accessible-name: "Profile menu";
+                accessible-name: @tr("Profile menu");
                 clicked => { root.profile-requested(); }
 
                 if (root.has-avatar) : Image {
@@ -183,8 +183,8 @@ export component NavMenuPanel inherits Rectangle {
     in property <length> unit: Theme.root-font-size;
     in property <image> avatar-source;
     in property <bool> has-avatar: false;
-    in property <string> user-label: "Anonymous User";
-    in property <string> auth-label: "Log in / Sign up";
+    in property <string> user-label: @tr("ANONYMOUS_USER" => "Anonymous user");
+    in property <string> auth-label: @tr("Log in / Sign up");
     in property <[MenuOption]> options: [];
     in property <length> panel-max-height: 40 * root.unit;
     callback auth-requested;

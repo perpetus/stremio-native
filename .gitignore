@@ -1,10 +1,13 @@
 # Rust and generated build output
 /target/
+/dist/mpv/
 
 # Runtime-generated application state and downloaded artwork
 /storage/
 /image_cache/
 /config.json
+/config.json.bak
+/artifacts/
 
 # Local diagnostics and performance captures
 /trace-*.json
@@ -12,13 +15,14 @@
 
 # Local agent, editor, and automation metadata
 /.agents/
-/.github/
 /docs/
 /skills-lock.json
 /.idea/
 /.vscode/
 *.swp
 *.tmp
+/app/ui/debug/
+/vendor/skia/
 
 # Non-build documentation
 /README.md

@@ -41,6 +41,7 @@ struct StencilFaceState {
 }
 
 struct OpenGlState {
+    capabilities: OpenGlCapabilities,
     draw_framebuffer: Option<glow::NativeFramebuffer>,
     read_framebuffer: Option<glow::NativeFramebuffer>,
     renderbuffer: Option<glow::NativeRenderbuffer>,
@@ -82,26 +83,48 @@ struct OpenGlState {
     rasterizer_discard: bool,
     sample_alpha_to_coverage: bool,
     sample_coverage: bool,
-    sampler_objects: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct OpenGlCapabilities {
     sampler_objects: bool,
+    separate_framebuffers: bool,
+    pixel_buffer_objects: bool,
+    vertex_array_objects: bool,
+    texture_swizzle: bool,
+    rasterizer_discard: bool,
+    sized_rgba8: bool,
     desktop_multisample: bool,
     framebuffer_srgb: bool,
 }
 
 impl OpenGlCapabilities {
     fn from_version(major: u32, minor: u32, is_embedded: bool) -> Self {
+        let at_least = |required_major, required_minor| {
+            major > required_major || (major == required_major && minor >= required_minor)
+        };
         Self {
             // Sampler objects are core in OpenGL ES 3.0 and desktop OpenGL 3.3.
             // Slint uses GLES on Windows even for GraphicsAPI::NativeOpenGL.
             sampler_objects: if is_embedded {
                 major >= 3
             } else {
-                major > 3 || (major == 3 && minor >= 3)
+                at_least(3, 3)
             },
+            separate_framebuffers: at_least(3, 0),
+            pixel_buffer_objects: if is_embedded {
+                major >= 3
+            } else {
+                at_least(2, 1)
+            },
+            vertex_array_objects: at_least(3, 0),
+            texture_swizzle: if is_embedded {
+                major >= 3
+            } else {
+                at_least(3, 3)
+            },
+            rasterizer_discard: at_least(3, 0),
+            sized_rgba8: !is_embedded || major >= 3,
             // These enable flags are desktop GL state. Querying them on GLES can
             // produce GL_INVALID_ENUM and contaminate the shared context.
             desktop_multisample: !is_embedded,
@@ -111,7 +134,15 @@ impl OpenGlCapabilities {
 
     fn for_context(gl: &glow::Context) -> Self {
         let version = gl.version();
-        Self::from_version(version.major, version.minor, version.is_embedded)
+        let mut capabilities =
+            Self::from_version(version.major, version.minor, version.is_embedded);
+        if !capabilities.vertex_array_objects {
+            let extensions = gl.supported_extensions();
+            capabilities.vertex_array_objects = extensions.contains("GL_OES_vertex_array_object")
+                || extensions.contains("GL_ARB_vertex_array_object")
+                || extensions.contains("GL_APPLE_vertex_array_object");
+        }
+        capabilities
     }
 }
 
@@ -129,7 +160,9 @@ fn prepare_for_mpv(gl: &glow::Context) {
         }
         gl.active_texture(glow::TEXTURE0);
         gl.use_program(None);
-        gl.bind_vertex_array(None);
+        if capabilities.vertex_array_objects {
+            gl.bind_vertex_array(None);
+        }
         gl.bind_buffer(glow::ARRAY_BUFFER, None);
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
         gl.disable(glow::BLEND);
@@ -176,26 +209,38 @@ impl OpenGlState {
                 });
             }
             gl.active_texture(active_texture);
+            let (draw_framebuffer, read_framebuffer) = if capabilities.separate_framebuffers {
+                (
+                    native_framebuffer(gl.get_parameter_i32(glow::DRAW_FRAMEBUFFER_BINDING)),
+                    native_framebuffer(gl.get_parameter_i32(glow::READ_FRAMEBUFFER_BINDING)),
+                )
+            } else {
+                let framebuffer =
+                    native_framebuffer(gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING));
+                (framebuffer, framebuffer)
+            };
             Self {
-                draw_framebuffer: native_framebuffer(
-                    gl.get_parameter_i32(glow::DRAW_FRAMEBUFFER_BINDING),
-                ),
-                read_framebuffer: native_framebuffer(
-                    gl.get_parameter_i32(glow::READ_FRAMEBUFFER_BINDING),
-                ),
+                capabilities,
+                draw_framebuffer,
+                read_framebuffer,
                 renderbuffer: native_renderbuffer(gl.get_parameter_i32(glow::RENDERBUFFER_BINDING)),
                 program: native_program(gl.get_parameter_i32(glow::CURRENT_PROGRAM)),
-                vertex_array: native_vertex_array(gl.get_parameter_i32(glow::VERTEX_ARRAY_BINDING)),
+                vertex_array: capabilities
+                    .vertex_array_objects
+                    .then(|| native_vertex_array(gl.get_parameter_i32(glow::VERTEX_ARRAY_BINDING)))
+                    .flatten(),
                 array_buffer: native_buffer(gl.get_parameter_i32(glow::ARRAY_BUFFER_BINDING)),
                 element_array_buffer: native_buffer(
                     gl.get_parameter_i32(glow::ELEMENT_ARRAY_BUFFER_BINDING),
                 ),
-                pixel_pack_buffer: native_buffer(
-                    gl.get_parameter_i32(glow::PIXEL_PACK_BUFFER_BINDING),
-                ),
-                pixel_unpack_buffer: native_buffer(
-                    gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING),
-                ),
+                pixel_pack_buffer: capabilities
+                    .pixel_buffer_objects
+                    .then(|| native_buffer(gl.get_parameter_i32(glow::PIXEL_PACK_BUFFER_BINDING)))
+                    .flatten(),
+                pixel_unpack_buffer: capabilities
+                    .pixel_buffer_objects
+                    .then(|| native_buffer(gl.get_parameter_i32(glow::PIXEL_UNPACK_BUFFER_BINDING)))
+                    .flatten(),
                 active_texture,
                 texture_units,
                 viewport,
@@ -226,10 +271,10 @@ impl OpenGlState {
                 multisample: capabilities.desktop_multisample && gl.is_enabled(glow::MULTISAMPLE),
                 framebuffer_srgb: capabilities.framebuffer_srgb
                     && gl.is_enabled(glow::FRAMEBUFFER_SRGB),
-                rasterizer_discard: gl.is_enabled(glow::RASTERIZER_DISCARD),
+                rasterizer_discard: capabilities.rasterizer_discard
+                    && gl.is_enabled(glow::RASTERIZER_DISCARD),
                 sample_alpha_to_coverage: gl.is_enabled(glow::SAMPLE_ALPHA_TO_COVERAGE),
                 sample_coverage: gl.is_enabled(glow::SAMPLE_COVERAGE),
-                sampler_objects: capabilities.sampler_objects,
             }
         }
     }
@@ -238,8 +283,12 @@ impl OpenGlState {
         // SAFETY: These values were captured from the same current context
         // immediately before MPV rendering.
         unsafe {
-            gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, self.draw_framebuffer);
-            gl.bind_framebuffer(glow::READ_FRAMEBUFFER, self.read_framebuffer);
+            if self.capabilities.separate_framebuffers {
+                gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, self.draw_framebuffer);
+                gl.bind_framebuffer(glow::READ_FRAMEBUFFER, self.read_framebuffer);
+            } else {
+                gl.bind_framebuffer(glow::FRAMEBUFFER, self.draw_framebuffer);
+            }
             gl.bind_renderbuffer(glow::RENDERBUFFER, self.renderbuffer);
             gl.viewport(
                 self.viewport[0],
@@ -254,15 +303,19 @@ impl OpenGlState {
                 self.scissor_box[3],
             );
             gl.use_program(self.program);
-            gl.bind_vertex_array(self.vertex_array);
+            if self.capabilities.vertex_array_objects {
+                gl.bind_vertex_array(self.vertex_array);
+            }
             gl.bind_buffer(glow::ARRAY_BUFFER, self.array_buffer);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
-            gl.bind_buffer(glow::PIXEL_PACK_BUFFER, self.pixel_pack_buffer);
-            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, self.pixel_unpack_buffer);
+            if self.capabilities.pixel_buffer_objects {
+                gl.bind_buffer(glow::PIXEL_PACK_BUFFER, self.pixel_pack_buffer);
+                gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, self.pixel_unpack_buffer);
+            }
             for texture_unit in self.texture_units {
                 gl.active_texture(texture_unit.unit);
                 gl.bind_texture(glow::TEXTURE_2D, texture_unit.texture_2d);
-                if self.sampler_objects {
+                if self.capabilities.sampler_objects {
                     gl.bind_sampler(texture_unit.unit - glow::TEXTURE0, texture_unit.sampler);
                 }
             }
@@ -306,14 +359,15 @@ impl OpenGlState {
             restore_capability(gl, glow::SCISSOR_TEST, self.scissor_test);
             restore_capability(gl, glow::STENCIL_TEST, self.stencil_test);
             restore_capability(gl, glow::DITHER, self.dither);
-            let capabilities = OpenGlCapabilities::for_context(gl);
-            if capabilities.desktop_multisample {
+            if self.capabilities.desktop_multisample {
                 restore_capability(gl, glow::MULTISAMPLE, self.multisample);
             }
-            if capabilities.framebuffer_srgb {
+            if self.capabilities.framebuffer_srgb {
                 restore_capability(gl, glow::FRAMEBUFFER_SRGB, self.framebuffer_srgb);
             }
-            restore_capability(gl, glow::RASTERIZER_DISCARD, self.rasterizer_discard);
+            if self.capabilities.rasterizer_discard {
+                restore_capability(gl, glow::RASTERIZER_DISCARD, self.rasterizer_discard);
+            }
             restore_capability(
                 gl,
                 glow::SAMPLE_ALPHA_TO_COVERAGE,
@@ -436,6 +490,7 @@ struct OpenGlRenderTarget {
     texture: glow::NativeTexture,
     width: i32,
     height: i32,
+    mpv_internal_format: c_int,
 }
 
 struct OpenGlRenderTargets {
@@ -478,11 +533,14 @@ fn create_render_target(
 ) -> Result<OpenGlRenderTarget, MpvError> {
     let _state_guard = OpenGlStateGuard::new(gl);
     (|| {
+        let capabilities = OpenGlCapabilities::for_context(gl);
         // SAFETY: All resources are created in Slint's current OpenGL context.
         let texture = unsafe { gl.create_texture() }.map_err(MpvError::OpenGl)?;
         unsafe {
             gl.active_texture(glow::TEXTURE0);
-            gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
+            if capabilities.pixel_buffer_objects {
+                gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, None);
+            }
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
@@ -504,15 +562,21 @@ fn create_render_target(
                 glow::TEXTURE_WRAP_T,
                 glow::CLAMP_TO_EDGE as i32,
             );
-            // libmpv's render API does not promise a meaningful alpha channel.
-            // Slint composites borrowed textures using alpha, so force the
-            // sampled video surface to be opaque regardless of the decoder's
-            // output. This does not alter the RGB video data in the FBO.
-            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_SWIZZLE_A, glow::ONE as i32);
+            // Texture swizzle is core only in desktop GL 3.3 / GLES 3.0. MPV's
+            // video shader writes opaque output on GLES2, where querying this
+            // state would contaminate Slint's shared context with INVALID_ENUM.
+            if capabilities.texture_swizzle {
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_SWIZZLE_A, glow::ONE as i32);
+            }
+            let texture_internal_format = if capabilities.sized_rgba8 {
+                glow::RGBA8
+            } else {
+                glow::RGBA
+            };
             gl.tex_image_2d(
                 glow::TEXTURE_2D,
                 0,
-                glow::RGBA8 as i32,
+                texture_internal_format as i32,
                 width,
                 height,
                 0,
@@ -556,6 +620,10 @@ fn create_render_target(
             texture,
             width,
             height,
+            mpv_internal_format: capabilities
+                .sized_rgba8
+                .then_some(glow::RGBA8 as c_int)
+                .unwrap_or(0),
         })
     })()
 }
@@ -877,6 +945,7 @@ impl RenderContext {
         };
         let width = target.width;
         let height = target.height;
+        let mpv_internal_format = target.mpv_internal_format;
 
         let result = {
             let _state_guard = OpenGlStateGuard::new(&self.gl);
@@ -896,7 +965,7 @@ impl RenderContext {
                 fbo: framebuffer_id,
                 width,
                 height,
-                internal_format: glow::RGBA8 as c_int,
+                internal_format: mpv_internal_format,
             };
             // Slint's borrowed OpenGL texture path samples this FBO in the same
             // orientation produced by libmpv. Requesting MPV's optional flip
@@ -990,5 +1059,18 @@ mod tests {
         let capabilities = OpenGlCapabilities::from_version(3, 2, true);
 
         assert!(!capabilities.desktop_multisample && !capabilities.framebuffer_srgb);
+    }
+
+    #[test]
+    fn opengl_es_2_skips_es_3_only_shared_state() {
+        let capabilities = OpenGlCapabilities::from_version(2, 0, true);
+
+        assert!(!capabilities.sampler_objects);
+        assert!(!capabilities.separate_framebuffers);
+        assert!(!capabilities.pixel_buffer_objects);
+        assert!(!capabilities.vertex_array_objects);
+        assert!(!capabilities.texture_swizzle);
+        assert!(!capabilities.rasterizer_discard);
+        assert!(!capabilities.sized_rgba8);
     }
 }

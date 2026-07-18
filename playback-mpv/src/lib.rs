@@ -1,8 +1,9 @@
 //! Native MPV playback and render integration primitives.
 //!
-//! The crate statically links the MPV SDK pinned by `mpv.lock.json`, validates
-//! its client API, serializes player commands on one actor thread, and exposes
-//! an OpenGL render context for the GUI thread.
+//! On Windows the crate links the import library for the optimized MPV DLL
+//! pinned by `mpv.lock.json`; other desktop platforms resolve dynamic libmpv
+//! through the system toolchain. It validates the client API, serializes player
+//! commands on one actor thread, and exposes a render context for the GUI.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 

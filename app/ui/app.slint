@@ -36,8 +36,85 @@ import "./assets/fonts/PlusJakartaSans.ttf";
 
 export { Theme, IconData, MediaCardItem, StreamLink, EpisodeItem, BoardSection, DiscoverRow, LibraryRow, AddonItem, CalendarRow, CalendarCell, CalendarMediaItem, SearchSuggestion }
 
+export component AppTray inherits SystemTrayIcon {
+    icon: @image-url("assets/images/app_icon.png");
+    title: "Stremio";
+    tooltip: "Stremio";
+
+    in property <string> version: "";
+    in property <int> update-state: 0;
+    in property <string> update-version: "";
+    in property <bool> update-can-install: false;
+    in property <bool> update-installing: false;
+
+    callback open-window();
+    callback open-settings();
+    callback open-logs();
+    callback check-update();
+    callback install-update();
+    callback quit();
+
+    clicked => { root.open-window(); }
+
+    Menu {
+        MenuItem {
+            title: "Stremio";
+            icon: @image-url("assets/images/app_icon.png");
+            enabled: false;
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: @tr("Open Stremio");
+            activated => { root.open-window(); }
+        }
+        MenuItem {
+            title: @tr("SETTINGS" => "Settings");
+            activated => { root.open-settings(); }
+        }
+        MenuItem {
+            title: @tr("Open Logs Folder");
+            activated => { root.open-logs(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: root.update-installing
+                ? @tr("Downloading update…")
+                : (root.update-state == 1
+                ? @tr("Checking for updates…")
+                : (root.update-state == 2
+                    ? @tr("Update available") + ": v" + root.update-version
+                    : (root.update-state == 3
+                        ? @tr("Stremio is up to date")
+                        : (root.update-state == 4
+                            ? @tr("Update check failed")
+                            : @tr("Current version") + ": v" + root.update-version))));
+            enabled: false;
+        }
+        MenuItem {
+            title: @tr("Check for Updates");
+            enabled: root.update-state != 1 && !root.update-installing;
+            activated => { root.check-update(); }
+        }
+        MenuItem {
+            title: root.update-can-install ? @tr("Install Update") : @tr("View Update");
+            enabled: root.update-state == 2 && !root.update-installing;
+            activated => { root.install-update(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: @tr("QUIT" => "Quit");
+            activated => { root.quit(); }
+        }
+        MenuItem {
+            title: @tr("SETTINGS_SHELL_VERSION" => "Shell Version") + ": " + root.version;
+            enabled: false;
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Stremio";
+    icon: @image-url("assets/images/app_icon.png");
     preferred-width: 1280px;
     preferred-height: 720px;
     min-width: 1000px;
@@ -58,106 +135,106 @@ export component MainWindow inherits Window {
     in-out property <string> debug-preview-state: "loaded";
 
     private property <[DebugPageOption]> debug-pages: [
-        { label: "Auth", page: -1 },
-        { label: "Board", page: 0 },
-        { label: "Discover", page: 1 },
-        { label: "Library", page: 2 },
-        { label: "Addons", page: 3 },
-        { label: "Settings", page: 4 },
-        { label: "Calendar", page: 5 },
-        { label: "Search", page: 6 },
-        { label: "Details", page: 7 },
-        { label: "Player", page: 8 }
+        { label: @tr("Auth"), page: -1 },
+        { label: @tr("Board"), page: 0 },
+        { label: @tr("Discover" => "Discover"), page: 1 },
+        { label: @tr("Library" => "Library"), page: 2 },
+        { label: @tr("ADDONS" => "Addons"), page: 3 },
+        { label: @tr("SETTINGS" => "Settings"), page: 4 },
+        { label: @tr("Calendar"), page: 5 },
+        { label: @tr("STREMIO_TV_NAV_SEARCH" => "Search"), page: 6 },
+        { label: @tr("Details"), page: 7 },
+        { label: @tr("SETTINGS_NAV_PLAYER" => "Player"), page: 8 }
     ];
     private property <[DebugStateOption]> debug-auth-states: [
-        { label: "Login", value: "login" },
-        { label: "Register", value: "register" },
-        { label: "Loading", value: "auth-loading" },
-        { label: "Invalid credentials", value: "auth-error" }
+        { label: @tr("LOGIN_LABEL" => "Login"), value: "login" },
+        { label: @tr("Register"), value: "register" },
+        { label: @tr("Loading"), value: "auth-loading" },
+        { label: @tr("Invalid credentials"), value: "auth-error" }
     ];
     private property <[DebugStateOption]> debug-board-states: [
-        { label: "Loaded", value: "loaded" },
-        { label: "Loading", value: "loading" },
-        { label: "Empty", value: "empty" },
-        { label: "Continue watching only", value: "continue-only" },
-        { label: "Catalogs only", value: "catalogs-only" },
-        { label: "Profile menu", value: "profile-menu" }
+        { label: @tr("Loaded"), value: "loaded" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("Empty"), value: "empty" },
+        { label: @tr("Continue watching only"), value: "continue-only" },
+        { label: @tr("Catalogs only"), value: "catalogs-only" },
+        { label: @tr("Profile menu"), value: "profile-menu" }
     ];
     private property <[DebugStateOption]> debug-discover-states: [
-        { label: "Catalog", value: "catalog" },
-        { label: "Loading", value: "loading" },
-        { label: "Empty", value: "empty" },
-        { label: "Movie selected", value: "movie-selected" },
-        { label: "Series selected", value: "series-selected" },
-        { label: "Type dropdown", value: "type-dropdown" },
-        { label: "Catalog dropdown", value: "catalog-dropdown" },
-        { label: "Genre dropdown", value: "genre-dropdown" }
+        { label: @tr("CATALOG" => "Catalog"), value: "catalog" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("Empty"), value: "empty" },
+        { label: @tr("Movie selected"), value: "movie-selected" },
+        { label: @tr("Series selected"), value: "series-selected" },
+        { label: @tr("Type dropdown"), value: "type-dropdown" },
+        { label: @tr("Catalog dropdown"), value: "catalog-dropdown" },
+        { label: @tr("Genre dropdown"), value: "genre-dropdown" }
     ];
     private property <[DebugStateOption]> debug-library-states: [
-        { label: "Loaded", value: "loaded" },
-        { label: "Loading", value: "loading" },
-        { label: "Empty", value: "empty" },
-        { label: "Type dropdown", value: "type-dropdown" },
-        { label: "Sort dropdown", value: "sort-dropdown" }
+        { label: @tr("Loaded"), value: "loaded" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("Empty"), value: "empty" },
+        { label: @tr("Type dropdown"), value: "type-dropdown" },
+        { label: @tr("Sort dropdown"), value: "sort-dropdown" }
     ];
     private property <[DebugStateOption]> debug-addons-states: [
-        { label: "Loaded", value: "loaded" },
-        { label: "Loading", value: "loading" },
-        { label: "Empty", value: "empty" },
-        { label: "Addon details", value: "addon-details" },
-        { label: "Details loading", value: "addon-details-loading" },
-        { label: "Details error", value: "addon-details-error" },
-        { label: "Filter dropdown", value: "filter-dropdown" },
-        { label: "Type dropdown", value: "type-dropdown" },
-        { label: "Add addon dialog", value: "add-addon" }
+        { label: @tr("Loaded"), value: "loaded" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("Empty"), value: "empty" },
+        { label: @tr("Addon details"), value: "addon-details" },
+        { label: @tr("Details loading"), value: "addon-details-loading" },
+        { label: @tr("Details error"), value: "addon-details-error" },
+        { label: @tr("Filter dropdown"), value: "filter-dropdown" },
+        { label: @tr("Type dropdown"), value: "type-dropdown" },
+        { label: @tr("Add addon dialog"), value: "add-addon" }
     ];
     private property <[DebugStateOption]> debug-settings-states: [
-        { label: "General", value: "general" },
-        { label: "Interface", value: "interface" },
-        { label: "Player", value: "player-settings" },
-        { label: "Streaming", value: "streaming" },
-        { label: "Shortcuts", value: "shortcuts" },
-        { label: "Diagnostics", value: "diagnostics" },
-        { label: "Exporting", value: "exporting" }
+        { label: @tr("SETTINGS_NAV_GENERAL" => "General"), value: "general" },
+        { label: @tr("INTERFACE" => "Interface"), value: "interface" },
+        { label: @tr("SETTINGS_NAV_PLAYER" => "Player"), value: "player-settings" },
+        { label: @tr("SETTINGS_NAV_STREAMING" => "Streaming"), value: "streaming" },
+        { label: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts"), value: "shortcuts" },
+        { label: @tr("Diagnostics"), value: "diagnostics" },
+        { label: @tr("Exporting"), value: "exporting" }
     ];
     private property <[DebugStateOption]> debug-calendar-states: [
-        { label: "Month loaded", value: "loaded" },
-        { label: "Loading", value: "loading" },
-        { label: "Signed out", value: "signed-out" },
-        { label: "Empty month", value: "empty" }
+        { label: @tr("Month loaded"), value: "loaded" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("Signed out"), value: "signed-out" },
+        { label: @tr("Empty month"), value: "empty" }
     ];
     private property <[DebugStateOption]> debug-search-states: [
-        { label: "Results", value: "results" },
-        { label: "Loading", value: "loading" },
-        { label: "No results", value: "empty" },
-        { label: "No query", value: "idle" }
+        { label: @tr("Results"), value: "results" },
+        { label: @tr("Loading"), value: "loading" },
+        { label: @tr("No results"), value: "empty" },
+        { label: @tr("No query"), value: "idle" }
     ];
     private property <[DebugStateOption]> debug-details-states: [
-        { label: "Loading title", value: "details-loading" },
-        { label: "Movie streams", value: "movie-streams" },
-        { label: "Movie no streams", value: "movie-no-streams" },
-        { label: "Movie filter open", value: "movie-filter" },
-        { label: "Series episodes", value: "series-episodes" },
-        { label: "Season dropdown", value: "series-season-menu" },
-        { label: "Selected episode streams", value: "series-streams" },
-        { label: "Streams still loading", value: "series-stream-loading" },
-        { label: "Episode no streams", value: "series-no-streams" }
+        { label: @tr("Loading title"), value: "details-loading" },
+        { label: @tr("Movie streams"), value: "movie-streams" },
+        { label: @tr("Movie no streams"), value: "movie-no-streams" },
+        { label: @tr("Movie filter open"), value: "movie-filter" },
+        { label: @tr("Series episodes"), value: "series-episodes" },
+        { label: @tr("Season dropdown"), value: "series-season-menu" },
+        { label: @tr("Selected episode streams"), value: "series-streams" },
+        { label: @tr("Streams still loading"), value: "series-stream-loading" },
+        { label: @tr("Episode no streams"), value: "series-no-streams" }
     ];
     private property <[DebugStateOption]> debug-player-states: [
-        { label: "Loading", value: "player-loading" },
-        { label: "Buffering", value: "buffering" },
-        { label: "Paused controls", value: "paused" },
-        { label: "Playing controls", value: "playing" },
-        { label: "Skip intro", value: "skip-intro" },
-        { label: "Subtitle menu", value: "subtitles" },
-        { label: "Audio menu", value: "audio" },
-        { label: "Speed menu", value: "speed" },
-        { label: "Playback info", value: "stats" },
-        { label: "More options", value: "options" },
-        { label: "Context menu", value: "context-menu" },
-        { label: "Episode drawer", value: "episodes" },
-        { label: "Playback error", value: "player-error" },
-        { label: "Controls hidden", value: "controls-hidden" }
+        { label: @tr("Loading"), value: "player-loading" },
+        { label: @tr("Buffering"), value: "buffering" },
+        { label: @tr("Paused controls"), value: "paused" },
+        { label: @tr("Playing controls"), value: "playing" },
+        { label: @tr("Skip intro"), value: "skip-intro" },
+        { label: @tr("Subtitle menu"), value: "subtitles" },
+        { label: @tr("Audio menu"), value: "audio" },
+        { label: @tr("Speed menu"), value: "speed" },
+        { label: @tr("Playback info"), value: "stats" },
+        { label: @tr("More options"), value: "options" },
+        { label: @tr("Context menu"), value: "context-menu" },
+        { label: @tr("Episode drawer"), value: "episodes" },
+        { label: @tr("Playback error"), value: "player-error" },
+        { label: @tr("Controls hidden"), value: "controls-hidden" }
     ];
     private property <[DebugStateOption]> debug-state-options:
         root.debug-preview-page == -1 ? root.debug-auth-states :
@@ -343,7 +420,7 @@ export component MainWindow inherits Window {
     in-out property <float> player-seek-step-seconds: 10.0;
     in-out property <float> player-short-seek-step-seconds: 3.0;
     in-out property <bool> player-show-skip-button: false;
-    in-out property <string> player-skip-button-label: "Skip Intro";
+    in-out property <string> player-skip-button-label: @tr("PLAYER_SKIP_INTRO" => "Skip Intro");
     in-out property <bool> player-controls-visible: true;
     in-out property <bool> player-show-subtitles-menu: false;
     in-out property <bool> player-show-audio-menu: false;
@@ -381,6 +458,7 @@ export component MainWindow inherits Window {
     // Settings Page values
     in-out property <string> torrent-cache-size: "2.0 GB";
     in-out property <string> settings-interface-language: "English";
+    in-out property <[string]> settings-interface-language-options: [];
     in-out property <string> settings-subtitles-language: "English";
     in-out property <string> settings-torrent-profile: "Default";
     in-out property <bool> settings-hardware-acceleration: true;
@@ -403,13 +481,28 @@ export component MainWindow inherits Window {
     in-out property <bool> settings-pause-on-minimize: false;
     in-out property <bool> settings-quit-on-close: true;
     in-out property <bool> settings-export-loading: false;
-    in-out property <string> settings-export-status: "";
+    in-out property <int> settings-export-state: 0;
+    in-out property <string> settings-export-detail: "";
+    in-out property <string> settings-application-version: "";
+    in-out property <string> settings-build-version: "";
+    in-out property <string> settings-server-version: "";
+    in-out property <string> settings-shell-version: "";
+    in-out property <int> settings-update-state: 0;
+    in-out property <string> settings-update-version: "";
+    in-out property <int> settings-update-action-kind: 0;
+    in-out property <bool> settings-update-action-enabled: true;
+    in-out property <bool> update-dialog-open: false;
+    in-out property <string> update-dialog-version: "";
+    in-out property <string> update-dialog-notes: "";
+    in-out property <bool> update-dialog-can-install: false;
+    in-out property <int> update-dialog-status-state: 0;
+    in-out property <bool> update-installing: false;
     in-out property <bool> settings-streaming-seeding: false;
     in-out property <bool> settings-streaming-dht: true;
     in-out property <bool> settings-streaming-pex: true;
     in-out property <bool> settings-streaming-lsd: true;
     in-out property <string> settings-streaming-remote-url: "";
-    in-out property <string> settings-streaming-logs-text: "No logs loaded. Click Refresh.";
+    in-out property <string> settings-streaming-logs-text: @tr("No logs loaded. Click Refresh.");
     in property <IconData> refresh-icon;
     in property <IconData> folder-icon;
 
@@ -420,6 +513,9 @@ export component MainWindow inherits Window {
     callback settings-refresh-logs();
     callback settings-open-logs-folder();
     callback settings-export-data();
+    callback settings-update-action();
+    callback update-install();
+    callback update-dismiss();
     callback settings-change-binge-watching(bool);
     callback settings-change-discord-rpc-enabled(bool);
     callback settings-change-tidb-api-key(string);
@@ -492,6 +588,7 @@ export component MainWindow inherits Window {
     callback discover-genre-changed(string);
     callback discover-search-changed(string);
     callback discover-item-selected(string);
+    callback discover-item-activated(string);
     callback play-preview();
     callback toggle-library-preview();
     
@@ -848,13 +945,15 @@ export component MainWindow inherits Window {
 
                     // Left Block: Logo symbol
                     Rectangle {
-                        width: 6 * root.ui-unit;
-                        height: 5.5 * root.ui-unit;
+                        width: Theme.vertical-nav-bar-size;
+                        height: Theme.horizontal-nav-bar-size;
                         
                         Image {
                             source: @image-url("assets/images/stremio-logo.svg");
                             width: 2.5 * root.ui-unit;
                             height: 2.5 * root.ui-unit;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                             opacity: 0.9;
@@ -1038,13 +1137,13 @@ export component MainWindow inherits Window {
                                 alignment: center;
                                 spacing: 0.5 * root.ui-unit;
                                 Text {
-                                    text: username == "" || username == "Guest" ? "Anonymous user" : username;
+                                    text: username == "" || username == "Guest" ? @tr("ANONYMOUS_USER" => "Anonymous user") : username;
                                     color: Theme.text-primary;
                                     font-size: root.ui-unit;
                                     overflow: elide;
                                 }
                                 Text {
-                                    text: username == "" || username == "Guest" ? "Log in / Sign up" : "Log out";
+                                    text: username == "" || username == "Guest" ? @tr("Log in / Sign up") : @tr("LOG_OUT" => "Log out");
                                     color: Theme.accent;
                                     font-size: 0.9 * root.ui-unit;
                                     font-weight: 600;
@@ -1067,7 +1166,7 @@ export component MainWindow inherits Window {
 
                         MenuButton {
                             unit: root.ui-unit;
-                            label: root.is-fullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
+                            label: root.is-fullscreen ? @tr("EXIT_FULLSCREEN" => "Exit fullscreen mode") : @tr("ENTER_FULLSCREEN" => "Enter fullscreen mode");
                             show-icon: true;
                             icon-source: root.is-fullscreen ? @image-url("assets/images/icons/minimize.svg") : @image-url("assets/images/icons/maximize.svg");
                             clicked => {
@@ -1080,7 +1179,7 @@ export component MainWindow inherits Window {
 
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Settings";
+                            label: @tr("SETTINGS" => "Settings");
                             show-icon: true;
                             icon-source: @image-url("assets/images/icons/settings.svg");
                             clicked => {
@@ -1090,7 +1189,7 @@ export component MainWindow inherits Window {
                         }
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Addons";
+                            label: @tr("ADDONS" => "Addons");
                             show-icon: true;
                             icon-source: @image-url("assets/images/icons/addons.svg");
                             clicked => {
@@ -1100,7 +1199,7 @@ export component MainWindow inherits Window {
                         }
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Play URL or magnet link";
+                            label: @tr("PLAY_URL_MAGNET_LINK" => "Play URL/Magnet link");
                             show-icon: true;
                             icon-source: @image-url("assets/images/icons/magnet-link.svg");
                             clicked => {
@@ -1110,7 +1209,7 @@ export component MainWindow inherits Window {
                         }
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Help & Feedback";
+                            label: @tr("HELP_FEEDBACK" => "Help & Feedback");
                             show-icon: true;
                             icon-source: @image-url("assets/images/icons/help.svg");
                             clicked => {
@@ -1123,7 +1222,7 @@ export component MainWindow inherits Window {
 
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Terms of Service";
+                            label: @tr("TERMS_OF_SERVICE" => "Terms of Service");
                             show-icon: false;
                             clicked => {
                                 root.profile-menu-open = false;
@@ -1132,7 +1231,7 @@ export component MainWindow inherits Window {
                         }
                         MenuButton {
                             unit: root.ui-unit;
-                            label: "Privacy Policy";
+                            label: @tr("PRIVACY_POLICY" => "Privacy Policy");
                             show-icon: false;
                             clicked => {
                                 root.profile-menu-open = false;
@@ -1141,7 +1240,7 @@ export component MainWindow inherits Window {
                         }
                         if (username != "" && username != "Guest") : MenuButton {
                             unit: root.ui-unit;
-                            label: "User Panel";
+                            label: @tr("USER_PANEL" => "User Panel");
                             show-icon: false;
                             clicked => {
                                 root.profile-menu-open = false;
@@ -1275,6 +1374,7 @@ export component MainWindow inherits Window {
                         catalog-changed(c) => { discover-catalog-changed(c); }
                         genre-changed(g) => { discover-genre-changed(g); }
                         item-selected(id) => { discover-item-selected(id); }
+                        item-activated(id) => { discover-item-activated(id); }
                         poster-requested(url) => { request-poster(url); }
                         play-preview => { play-preview(); }
                         toggle-library-preview => { toggle-library-preview(); }
@@ -1367,6 +1467,7 @@ export component MainWindow inherits Window {
                         torrent-cache-size: torrent-cache-size;
                         server-url: server-url;
                         interface-language: settings-interface-language;
+                        interface-language-options: settings-interface-language-options;
                         subtitles-language: settings-subtitles-language;
                         torrent-profile: settings-torrent-profile;
                         hardware-acceleration: settings-hardware-acceleration;
@@ -1391,10 +1492,19 @@ export component MainWindow inherits Window {
                         export-loading: root.debug-preview-enabled && root.debug-preview-page == 4
                             ? root.debug-preview-state == "exporting"
                             : settings-export-loading;
-                        export-status: root.debug-preview-enabled && root.debug-preview-page == 4
+                        export-state: root.debug-preview-enabled && root.debug-preview-page == 4
                             && root.debug-preview-state == "exporting"
-                            ? "Exporting profile data…"
-                            : settings-export-status;
+                            ? 2
+                            : settings-export-state;
+                        export-detail: settings-export-detail;
+                        application-version: settings-application-version;
+                        build-version: settings-build-version;
+                        server-version: settings-server-version;
+                        shell-version: settings-shell-version;
+                        update-state: settings-update-state;
+                        update-version: settings-update-version;
+                        update-action-kind: settings-update-action-kind;
+                        update-action-enabled: settings-update-action-enabled;
 
                         streaming-seeding: settings-streaming-seeding;
                         streaming-dht: settings-streaming-dht;
@@ -1420,6 +1530,7 @@ export component MainWindow inherits Window {
                         refresh-logs => { settings-refresh-logs(); }
                         open-logs-folder => { settings-open-logs-folder(); }
                         export-data => { settings-export-data(); }
+                        update-action => { settings-update-action(); }
                         change-binge-watching(val) => { settings-change-binge-watching(val); }
                         change-discord-rpc-enabled(val) => { settings-change-discord-rpc-enabled(val); }
                         change-tidb-api-key(val) => { settings-change-tidb-api-key(val); }
@@ -1744,6 +1855,94 @@ export component MainWindow inherits Window {
             toggle-fullscreen => { player-toggle-fullscreen(); }
             close => { player-close(); }
             activity => { player-activity(); }
+        }
+
+        update-dialog := ModalDialog {
+            width: 100%;
+            height: 100%;
+            z: 2000;
+            unit: root.ui-unit;
+            open: root.update-dialog-open;
+            title: @tr("UPDATER_TITLE" => "A new version of Stremio is available");
+            dialog-width: 42 * root.ui-unit;
+            dialog-height: 34 * root.ui-unit;
+            actions: [
+                {
+                    id: "later",
+                    label: @tr("BUTTON_UPDATE_LATTER" => "Not now"),
+                    icon: @image-url("assets/images/icons/close.svg"),
+                    has-icon: false,
+                    enabled: !root.update-installing,
+                    primary: false,
+                },
+                {
+                    id: "install",
+                    label: root.update-installing
+                        ? @tr("Updating…")
+                        : (root.update-dialog-can-install
+                            ? @tr("UPDATER_INSTALL_BUTTON" => "Install now")
+                            : @tr("View on GitHub")),
+                    icon: @image-url("assets/images/icons/download.svg"),
+                    has-icon: true,
+                    enabled: !root.update-installing,
+                    primary: true,
+                },
+            ];
+            close-requested => {
+                if (!root.update-installing) {
+                    root.update-dialog-open = false;
+                    root.update-dismiss();
+                }
+            }
+            action-triggered(action) => {
+                if (action == "install") {
+                    root.update-install();
+                } else {
+                    root.update-dialog-open = false;
+                    root.update-dismiss();
+                }
+            }
+
+            VerticalLayout {
+                spacing: root.ui-unit;
+
+                Text {
+                    text: @tr("Stremio v{} is ready to install", root.update-dialog-version);
+                    color: Theme.text-primary;
+                    font-size: 1.15 * root.ui-unit;
+                    font-weight: 700;
+                    wrap: word-wrap;
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Theme.overlay;
+                }
+
+                Text {
+                    vertical-stretch: 1;
+                    text: root.update-dialog-notes == ""
+                        ? @tr("This update includes fixes and improvements.")
+                        : root.update-dialog-notes;
+                    color: Theme.text-primary;
+                    opacity: 0.72;
+                    font-size: 0.9 * root.ui-unit;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                if (root.update-dialog-status-state != 0) : Text {
+                    text: root.update-dialog-status-state == 1
+                        ? @tr("Downloading Stremio v{}…", root.update-dialog-version)
+                        : (root.update-dialog-status-state == 2
+                            ? @tr("Could not open the GitHub release page.")
+                            : @tr("The update could not be downloaded or launched."));
+                    color: root.update-installing ? Theme.accent : Theme.danger;
+                    font-size: 0.85 * root.ui-unit;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+            }
         }
 
         if (root.debug-preview-enabled) : AppDebugMenu {

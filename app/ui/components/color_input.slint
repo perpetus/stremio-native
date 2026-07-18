@@ -6,13 +6,13 @@ import { ButtonSurface } from "button.slint";
 export component ColorInput inherits ButtonSurface {
     in property <length> unit: Theme.root-font-size;
     in property <color> value: #ffffffff;
-    in property <string> transparent-label: "Transparent";
+    in property <string> transparent-label: @tr("BUTTON_COLOR_TRANSPARENT" => "Transparent");
     callback open-requested(color);
 
     height: 3.5 * root.unit;
     border-radius: Theme.border-radius;
     background: root.value;
-    accessible-name: root.value.alpha == 0 ? root.transparent-label : "Choose color";
+    accessible-name: root.value.alpha == 0 ? root.transparent-label : @tr("Choose color");
     clicked => { root.open-requested(root.value); }
 
     if (root.value.alpha == 0) : Text {

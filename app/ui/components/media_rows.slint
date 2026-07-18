@@ -53,18 +53,25 @@ export component StreamRow inherits Rectangle {
 
         if (root.selected || area.has-hover) : Rectangle {
             width: 3 * root.unit;
-            height: 3 * root.unit;
-            border-radius: self.width / 2;
-            background: Theme.success;
+            height: parent.height;
+            background: transparent;
 
-            Image {
-                x: (parent.width - self.width) / 2;
+            play-button := Rectangle {
                 y: (parent.height - self.height) / 2;
-                width: 1.4 * root.unit;
-                height: 1.4 * root.unit;
-                source: @image-url("../assets/images/icons/play.svg");
-                colorize: Theme.text-primary;
-                image-fit: contain;
+                width: 3 * root.unit;
+                height: 3 * root.unit;
+                border-radius: self.width / 2;
+                background: Theme.success;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 1.4 * root.unit;
+                    height: 1.4 * root.unit;
+                    source: @image-url("../assets/images/icons/play.svg");
+                    colorize: Theme.text-primary;
+                    image-fit: contain;
+                }
             }
         }
     }
@@ -126,7 +133,7 @@ export component EpisodeRow inherits Rectangle {
         background: self.has-hover || self.has-focus || root.selected-row
             ? Theme.overlay-color
             : transparent;
-        accessible-name: "Episode " + root.episode-number + " " + root.title;
+        accessible-name: @tr("EPISODE" => "Episode") + " " + root.episode-number + " " + root.title;
         long-press-enabled: true;
         clicked => { root.selected(); }
         long-pressed => { root.context-requested(); }
@@ -208,7 +215,7 @@ export component EpisodeRow inherits Rectangle {
                 y: 3.4 * root.unit;
                 width: max(0px, parent.width - badges.width - 0.5 * root.unit);
                 height: 1.2 * root.unit;
-                text: root.released != "" ? root.released : (root.scheduled ? "TBA" : "");
+                text: root.released != "" ? root.released : (root.scheduled ? @tr("TBA" => "TBA") : "");
                 color: Theme.primary-foreground;
                 opacity: 0.44;
                 font-size: 0.8 * root.unit;
@@ -237,7 +244,7 @@ export component EpisodeRow inherits Rectangle {
                     Text {
                         width: parent.width;
                         height: parent.height;
-                        text: "UPCOMING";
+                        text: @tr("UPCOMING" => "Upcoming");
                         color: Theme.secondary-foreground;
                         font-size: 0.8 * root.unit;
                         font-weight: 800;
@@ -254,7 +261,7 @@ export component EpisodeRow inherits Rectangle {
                     height: parent.height;
                     border-radius: 0.3 * root.unit;
                     background: Theme.tertiary-accent;
-                    accessible-name: "Mark as unwatched";
+                    accessible-name: @tr("CTX_MARK_UNWATCHED" => "Mark as unwatched");
                     clicked => { root.toggle-watched(); }
 
                     HorizontalLayout {
@@ -271,7 +278,7 @@ export component EpisodeRow inherits Rectangle {
                             image-fit: contain;
                         }
                         Text {
-                            text: "WATCHED";
+                            text: @tr("WATCHED" => "Watched");
                             color: Theme.secondary-foreground;
                             font-size: 0.8 * root.unit;
                             font-weight: 800;

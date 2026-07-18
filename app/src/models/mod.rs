@@ -32,6 +32,11 @@ impl Fingerprint {
         self.0.update(value.as_bytes());
     }
 
+    pub(crate) fn bytes(&mut self, value: &[u8]) {
+        self.usize(value.len());
+        self.0.update(value);
+    }
+
     pub(crate) fn optional_str(&mut self, value: Option<&str>) {
         self.bool(value.is_some());
         if let Some(value) = value {

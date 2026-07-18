@@ -119,6 +119,20 @@ export component DetailsPage inherits Rectangle {
         background: Theme.background.with-alpha(0.18);
     }
 
+    // Navigation must remain available while metadata or streams are loading.
+    IconAction {
+        x: root.unit;
+        y: root.unit;
+        width: 3.5 * root.unit;
+        height: 3.5 * root.unit;
+        unit: root.unit;
+        icon-source: @image-url("../assets/images/icons/chevron-back.svg");
+        accessible-name: @tr("BACK" => "Back");
+        surface-color: transparent;
+        z: 10;
+        clicked => { root.close(); }
+    }
+
     if (root.loading) : Rectangle {
         MetaPreviewPlaceholder {
             x: 4 * root.unit;
@@ -160,19 +174,6 @@ export component DetailsPage inherits Rectangle {
         height: parent.height;
         background: transparent;
         clip: true;
-
-        IconAction {
-            x: root.unit;
-            y: root.unit;
-            width: 3.5 * root.unit;
-            height: 3.5 * root.unit;
-            unit: root.unit;
-            icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-            accessible-name: "Back";
-            surface-color: transparent;
-            z: 10;
-            clicked => { root.close(); }
-        }
 
         MetaPreview {
             x: 4 * root.unit;
@@ -251,7 +252,7 @@ export component DetailsPage inherits Rectangle {
                     y: 0px;
                     width: parent.width - self.x;
                     height: parent.height;
-                    text: "Receive notifications for new episodes";
+                    text: @tr("DETAIL_RECEIVE_NOTIF_SERIES" => "Receive notifications for new episodes");
                     color: Theme.surface-light-90;
                     font-size: root.unit;
                     vertical-alignment: center;
@@ -268,7 +269,7 @@ export component DetailsPage inherits Rectangle {
                     x: 0px;
                     y: 0.5 * root.unit;
                     unit: root.unit;
-                    label: "Prev";
+                    label: @tr("Prev");
                     icon-source: @image-url("../assets/images/icons/chevron-back.svg");
                     enabled: root.active-season > root.first-season;
                     clicked => {
@@ -297,7 +298,7 @@ export component DetailsPage inherits Rectangle {
                     x: parent.width - self.width;
                     y: 0.5 * root.unit;
                     unit: root.unit;
-                    label: "Next";
+                    label: @tr("Next");
                     trailing-icon: true;
                     icon-source: @image-url("../assets/images/icons/chevron-forward.svg");
                     enabled: root.active-season < root.last-season;
@@ -313,7 +314,7 @@ export component DetailsPage inherits Rectangle {
                 height: 3 * root.unit;
                 unit: root.unit;
                 text <=> root.episode-search-query;
-                title: "Search videos";
+                title: @tr("SEARCH_VIDEOS" => "search videos");
                 edited => { root.episode-search-changed(root.episode-search-query); }
             }
 
@@ -327,7 +328,7 @@ export component DetailsPage inherits Rectangle {
                     unit: root.unit;
                     icon-size: 1.25 * root.unit;
                     icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-                    label: "Back to episodes";
+                    label: @tr("Back to episodes");
                     surface-color: transparent;
                     clicked => { root.in-stream-view = false; }
                 }
@@ -336,17 +337,16 @@ export component DetailsPage inherits Rectangle {
                     horizontal-stretch: 1;
                     text: root.episode-names.length > root.active-episode-idx
                         ? root.episode-names[root.active-episode-idx]
-                        : "Episode streams";
+                        : @tr("Episode streams");
                     color: Theme.text-primary;
                     font-size: 1.05 * root.unit;
                     font-weight: 500;
                     vertical-alignment: center;
                     overflow: elide;
                 }
-
                 Text {
                     width: 4 * root.unit;
-                    text: "All  ▾";
+                    text: @tr("ALL" => "All") + "  ▾";
                     color: Theme.text-primary;
                     opacity: 0.8;
                     font-size: root.unit;
@@ -378,8 +378,8 @@ export component DetailsPage inherits Rectangle {
                 height: 8 * root.unit;
                 unit: root.unit;
                 icon-source: @image-url("../assets/images/icons/addons-outline.svg");
-                title: "No streams found";
-                message: "Install more addons and try again.";
+                title: @tr("NO_STREAM" => "No streams were found");
+                message: @tr("INSTALL_MORE_ADDONS" => "For more streams, please install more addons");
             }
 
             if ((!root.is-series || root.in-stream-view) && root.streams.length > 0) : ListView {
@@ -416,7 +416,7 @@ export component DetailsPage inherits Rectangle {
                 height: 4 * root.unit;
                 spacing: 0.75 * root.unit;
                 Text {
-                    text: root.stream-loading-count + " addons are still loading";
+                    text: @tr("STREMIO_TV_STREAMS_STILL_LOADING" => "{} addon is still loading...", root.stream-loading-count);
                     color: Theme.text-primary;
                     font-size: root.unit;
                     horizontal-alignment: center;
@@ -445,7 +445,7 @@ export component DetailsPage inherits Rectangle {
             border-radius: 0.75 * root.unit;
             icon-size: 2 * root.unit;
             icon-source: @image-url("../assets/images/icons/maximize.svg");
-            label: "Toggle fullscreen";
+            label: @tr("SETTINGS_SHORTCUT_FULLSCREEN" => "Toggle Fullscreen");
             surface-color: transparent;
             clicked => { root.toggle-fullscreen(); }
         }

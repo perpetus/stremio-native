@@ -1,6 +1,6 @@
-use crate::models::details::load_meta_details_for_video;
+use crate::models::details::{load_meta_details_for_video, open_details_route};
 use crate::models::{Fingerprint, SyncFingerprint, catalog_name_index, sync_fingerprint_changed};
-use crate::{AppModel, MainWindow, NavigationController, NavigationIntent};
+use crate::{AppModel, MainWindow, NavigationController};
 use crate::{BoardSection, MediaCardItem};
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
@@ -34,13 +34,7 @@ pub fn setup(
         move |id, media_type, video_id| {
             let id = id.to_string();
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_details_loading(true);
-                navigation.dispatch_and_project(
-                    &ui,
-                    NavigationIntent::OpenDetails {
-                        media_id: id.clone(),
-                    },
-                );
+                open_details_route(&ui, &runtime, &navigation, &id);
             }
             let media_type = media_type.to_string();
             let video_id = (!video_id.is_empty()).then(|| video_id.to_string());

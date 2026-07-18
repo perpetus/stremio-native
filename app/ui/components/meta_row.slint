@@ -5,7 +5,7 @@ import { SkeletonBlock } from "feedback.slint";
 
 export component SeeAllButton inherits ButtonSurface {
     in property <length> unit: Theme.root-font-size;
-    in property <string> label: "See All";
+    in property <string> label: @tr("BUTTON_SEE_ALL" => "See All");
 
     width: 7 * root.unit;
     height: 2.5 * root.unit;
@@ -55,7 +55,7 @@ export component MetaRow inherits Rectangle {
     in property <string> title: "";
     in property <string> message: "";
     in property <bool> show-see-all: false;
-    in property <string> see-all-label: "See All";
+    in property <string> see-all-label: @tr("BUTTON_SEE_ALL" => "See All");
     in property <length> content-width: root.width;
     in property <length> content-height: 19 * root.unit;
     in property <color> fade-surface-color: Theme.background;
