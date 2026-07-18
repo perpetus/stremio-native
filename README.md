@@ -45,7 +45,7 @@ The native values were captured on July 18, 2026 from the already-running, settl
 
 ### 📦 Secure Offline Database Cache (Turso & Limbo)
 * **Local-First Database Storage**: Stores all settings, historical logs, and metadata inside a single local database file (`stremio.db`) using the native `turso` engine.
-* **Memory-Based Image Loading**: Poster artwork and thumbnails are cached as database blobs and decoded asynchronously on background thread pools (using the Rust `image` crate), keeping your UI rendering at a locked $60\text{ FPS}$ without disk lag.
+* **Asynchronous Image Loading**: Poster artwork and thumbnails are fetched, cached, and decoded on bounded background workers, keeping disk and decode work off the UI thread.
 * **Privacy-Focused**: No cloud synchronizations, trackers, or telemetry. Your viewing history, settings, and logs remain 100% private and stored locally.
 
 ---
@@ -53,6 +53,8 @@ The native values were captured on July 18, 2026 from the already-running, settl
 ## 🚀 How to Build and Run the App
 
 Windows x64 builds automatically download and verify the pinned optimized `libmpv-2.dll`; no media binaries are stored in this repository. Linux builds use the system's dynamic `libmpv` through `pkg-config`. The Windows runtime currently targets the `x86-64-v3` CPU baseline.
+
+Pushing a `v*` tag builds both platforms and publishes a GitHub release automatically after both jobs pass. The release contains the Windows installer, the updater-compatible Windows archive, the Linux x64 binary, SHA-256 checksums, direct download links, version-matched changelog notes, and linked commits since the previous tag.
 
 ### 1. Prerequisites
 On Windows, install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK. On Linux, install Rust, `pkg-config`, the libmpv development package, and the native GUI packages listed in the release workflow.

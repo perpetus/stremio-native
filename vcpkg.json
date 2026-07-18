@@ -1,0 +1,15 @@
+{
+  "name": "stremio-native",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "libtorrent",
+    "openssl"
+  ],
+  "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35",
+  "overrides": [
+    {
+      "name": "libtorrent",
+      "version": "2.0.13"
+    }
+  ]
+}

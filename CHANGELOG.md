@@ -2,7 +2,7 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
-## Unreleased - 2026-07-18
+## 1.0.0 - 2026-07-18
 
 ### Desktop lifecycle and startup
 
@@ -43,6 +43,8 @@ This file records notable changes to Stremio Native relative to the initial sour
 - Disables stream-server's standalone Windows EXE resource table only when it is embedded, preventing duplicate `VERSIONINFO`/icon resources while preserving the GUI executable's own `1.0.0` metadata.
 - Preserves only OpenGL state supported by the active context and uses an ES2-compatible RGBA render target, preventing ES3-only libmpv sharing operations from leaking `GL_INVALID_ENUM` into Slint/FemtoVG on Windows.
 - Adds clean Windows and Linux release jobs. The Windows job also produces the Inno Setup installer and GitHub updater archive.
+- Provisions the optimized static libtorrent 2.0.13 dependency on clean Windows runners through stream-server's pinned vcpkg baseline, overlay, triplet, and GitHub Actions cache.
+- Publishes tagged `v*` builds automatically after both platforms pass, with updater-compatible assets, the Linux binary, SHA-256 checksums, direct download links, the matching detailed changelog section, categorized commit links, and a full comparison link.
 
 ### Resource baseline
 

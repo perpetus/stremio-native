@@ -6,13 +6,18 @@ on:
     branches: [main]
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "**/*.rs"
       - "**/*.slint"
       - "**/Cargo.toml"
       - "Cargo.lock"
       - "mpv.lock.json"
+      - "vcpkg.json"
+      - "triplets/**"
+      - "vcpkg-overlays/**"
       - "setup/**"
+      - "scripts/generate_release_notes.py"
       - ".github/workflows/**"
 
 env:
@@ -24,16 +29,49 @@ jobs:
   windows:
     name: Windows x64
     runs-on: windows-2022
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           target: x86_64-pc-windows-msvc
+      - name: Export GitHub Actions cache environment for vcpkg
+        uses: actions/github-script@v9
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL);
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN);
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v6
+        with:
+          path: vcpkg_installed
+          key: Windows-vcpkg-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
+          restore-keys: |
+            Windows-vcpkg-static-release-v1-
+            Windows-vcpkg-static-release-
+      - name: Install optimized static libtorrent
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "84bab45d415d22042bd0b9081aea57f362da3f35"
+          vcpkgDirectory: "${{ github.workspace }}/vcpkg"
+          vcpkgJsonGlob: "vcpkg.json"
+          runVcpkgInstall: true
+        env:
+          VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+          VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
+          VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/triplets
+          VCPKG_OVERLAY_PORTS: ${{ github.workspace }}/vcpkg-overlays
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --locked --release --package stremio-native
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+          VCPKGRS_TRIPLET: x64-windows-static-release
+          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows-static-release/lib/pkgconfig
       - name: Verify runtime bundle
         shell: pwsh
         run: |
@@ -46,7 +84,7 @@ jobs:
         run: |
           set "SKIP_BUILD=1"
           call setup\create_setup.cmd
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: stremio-native-windows-x64
           path: |
@@ -61,7 +99,7 @@ jobs:
     name: Linux x64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
@@ -72,8 +110,75 @@ jobs:
           sudo apt-get install -y build-essential clang cmake ninja-build pkg-config libssl-dev libtorrent-rasterbar-dev libboost-dev libclang-dev libgtk-3-dev libayatana-appindicator3-dev libmpv-dev libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
       - name: Build release
         run: cargo build --locked --release --package stremio-native
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: stremio-native-linux-x64
           path: target/release/stremio-native
           if-no-files-found: error
+
+  release:
+    name: Publish tagged release
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+
+          copy_latest() {
+            local pattern="$1"
+            local source
+            source="$(find artifacts -type f -name "$pattern" | sort -V | tail -n 1)"
+            if [[ -z "$source" ]]; then
+              echo "Missing required release asset: $pattern" >&2
+              exit 1
+            fi
+            cp "$source" release/
+          }
+
+          copy_latest "StremioSetup-v*-x64.exe"
+          copy_latest "stremio-native-v*-x86_64-pc-windows-msvc.zip"
+
+          linux_binary="$(find artifacts/stremio-native-linux-x64 -type f -name stremio-native | head -n 1)"
+          if [[ -z "$linux_binary" ]]; then
+            echo "Missing required Linux release binary" >&2
+            exit 1
+          fi
+          linux_asset="release/stremio-native-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu"
+          cp "$linux_binary" "$linux_asset"
+          chmod +x "$linux_asset"
+
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          find release -maxdepth 1 -type f -printf '%f\n' | sort
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          python scripts/generate_release_notes.py \
+            --repo "${GITHUB_REPOSITORY}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --previous-tag "${previous_tag}" \
+            --asset-dir release \
+            --changelog CHANGELOG.md \
+            --output "${GITHUB_WORKSPACE}/RELEASE_BODY.md"
+          cat "${GITHUB_WORKSPACE}/RELEASE_BODY.md"
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          body_path: RELEASE_BODY.md
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') || contains(github.ref, 'rc') }}

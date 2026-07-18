@@ -13,5 +13,5 @@ pkg-config = "0.3.33"
 reqwest = { workspace = true, features = ["blocking", "rustls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 sevenz-rust = "0.6.1"

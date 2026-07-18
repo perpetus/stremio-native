@@ -418,6 +418,8 @@ fn validate_file_hash(path: &Path, expected: &str) -> Result<(), io::Error> {
 }
 
 fn sha256_file(path: &Path) -> Result<String, io::Error> {
+    const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
     let mut reader = BufReader::new(fs::File::open(path)?);
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 128 * 1024];
@@ -428,7 +430,14 @@ fn sha256_file(path: &Path) -> Result<String, io::Error> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest.iter().copied() {
+        encoded.push(char::from(HEX_DIGITS[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX_DIGITS[usize::from(byte & 0x0f)]));
+    }
+    Ok(encoded)
 }
 
 fn validate_sha256(value: &str) -> Result<(), io::Error> {

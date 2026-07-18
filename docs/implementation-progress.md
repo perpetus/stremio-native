@@ -236,6 +236,10 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] This durable implementation ledger was created for context compaction.
 - [x] Windows CI produces the executable, verified MPV runtime/licenses, installer, and updater archive from a clean checkout.
 - [x] Linux CI installs system libmpv development metadata and builds the portable release path.
+- [x] Linux MPV artifact hashing is compatible with `sha2` 0.11 without digest-type formatting assumptions.
+- [x] Windows CI mirrors stream-server's pinned optimized static libtorrent 2.0.13 vcpkg baseline, overlay, triplet, and GitHub Actions cache instead of relying on runner-local libraries.
+- [x] All GitHub Actions references use their current stable major lines; checkout and artifact upload are on v7.
+- [x] A pushed `v*` tag automatically waits for Windows and Linux builds, collects updater-compatible assets, writes SHA-256 checksums, and publishes a release with direct downloads, version-matched changelog notes, categorized commit links, and a full comparison link.
 - [x] Stremio Core and stream-server dependencies use pinned remote Git revisions for clean CI/CD checkouts.
 - [x] Update the implementation ledger, rendering reference, MPV guide, README, and changelog.
 - [x] Run `cargo fmt --all`.
@@ -273,6 +277,7 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] Final combined validation passed after the cache, GLES2, immediate Player Back, tray-shutdown, and logo-alignment corrections: `slint-viewer --check .\\app\\ui\\app.slint`, formatting, diff hygiene, and `cargo check --workspace --release` all completed successfully on 2026-07-18.
 - [x] One combined validation passed on 2026-07-18 for persisted hydration, FIFO storage, and first-login catalogs: Slint syntax, formatting, diff hygiene, the focused FIFO executor test, and `cargo check --workspace --release` all succeeded.
 - [x] Validated the corrected Discover single-click-preview/double-click-details callback path while retaining Library's one-click details behavior: Slint syntax, formatting, diff hygiene, and the release package check passed on 2026-07-18.
+- [ ] Confirm the corrected Linux and Windows release jobs pass after the CI dependency patch; failed run `29631460575` identified the `sha2` 0.11 digest-format incompatibility and missing Windows vcpkg toolchain.
 - [ ] Restart twice and confirm Continue Watching and Calendar project current data immediately; runtime verification remains with the user.
 - [ ] Confirm addon-provider Movie/Series Board cards populate on the first authenticated launch, Discover previews on one click and opens details on double-click, and Library opens details with one click; runtime verification remains with the user.
 - [ ] Rebuild and restart, then confirm repeat details visits leave the skeleton immediately and Back remains visible during loading; runtime verification remains with the user.
