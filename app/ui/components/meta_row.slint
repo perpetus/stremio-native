@@ -60,6 +60,7 @@ export component MetaRow inherits Rectangle {
     in property <length> content-height: 19 * root.unit;
     in property <color> fade-surface-color: Theme.background;
     in property <bool> show-edge-fades: false;
+    in-out property <length> content-scroll-offset: 0px;
     callback see-all-requested;
 
     height: 3 * root.unit + root.content-height;
@@ -120,6 +121,7 @@ export component MetaRow inherits Rectangle {
         unit: root.unit;
         content-width: root.content-width;
         content-height: root.content-height;
+        scroll-offset <=> root.content-scroll-offset;
         fade-surface-color: root.fade-surface-color;
         show-edge-fades: root.show-edge-fades;
 

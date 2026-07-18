@@ -45,8 +45,9 @@ export component DiscoverPage inherits Rectangle {
     callback type-changed(string);
     callback catalog-changed(string);
     callback genre-changed(string);
-    callback item-selected(string);
-    callback item-activated(string);
+    callback item-selected(string, string, string);
+    callback item-activated(string, string, string);
+    callback load-next-page;
     callback poster-requested(string);
     callback play-preview;
     callback toggle-library-preview;
@@ -163,10 +164,16 @@ export component DiscoverPage inherits Rectangle {
                 mouse-drag-pan-enabled: true;
                 horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
 
-                for row in root.rows : Rectangle {
+                for row[row-index] in root.rows : Rectangle {
                     width: catalog.width;
                     height: root.card-height + 0.5 * root.unit;
                     clip: true;
+
+                    init => {
+                        if (row-index == root.rows.length - 1) {
+                            root.load-next-page();
+                        }
+                    }
 
                     MediaCardGridRow {
                         x: 1.5 * root.unit;
@@ -177,8 +184,12 @@ export component DiscoverPage inherits Rectangle {
                         card-width: root.card-width;
                         card-height: root.card-height;
                         spacing: 0.5 * root.unit;
-                        item-selected(id, _media-type, _video-id) => { root.item-selected(id); }
-                        item-activated(id, _media-type, _video-id) => { root.item-activated(id); }
+                        item-selected(id, media-type, video-id) => {
+                            root.item-selected(id, media-type, video-id);
+                        }
+                        item-activated(id, media-type, video-id) => {
+                            root.item-activated(id, media-type, video-id);
+                        }
                         poster-requested(url) => { root.poster-requested(url); }
                     }
                 }

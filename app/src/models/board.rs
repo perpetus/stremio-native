@@ -1,5 +1,9 @@
 use crate::models::details::{load_meta_details_for_video, open_details_route};
-use crate::models::{Fingerprint, SyncFingerprint, catalog_name_index, sync_fingerprint_changed};
+use crate::models::{
+    CatalogScope, Fingerprint, SyncFingerprint, catalog_name_index, fingerprint_catalog_projection,
+    library_details_video_id, project_catalog_section, queue_visible_catalog,
+    spawn_catalog_visibility_loader, sync_fingerprint_changed,
+};
 use crate::{AppModel, MainWindow, NavigationController};
 use crate::{BoardSection, MediaCardItem};
 use core_env::DesktopEnv;
@@ -7,8 +11,7 @@ use slint::ComponentHandle;
 use std::sync::{Arc, Mutex, OnceLock};
 use stremio_core::{
     models::{
-        catalogs_with_extra::CatalogsWithExtra, common::Loadable,
-        continue_watching_preview::ContinueWatchingPreview,
+        catalogs_with_extra::CatalogsWithExtra, continue_watching_preview::ContinueWatchingPreview,
     },
     runtime::{
         Runtime, RuntimeAction,
@@ -26,6 +29,11 @@ pub fn setup(
     navigation: &NavigationController,
 ) {
     let ui_weak = ui.as_weak();
+    let catalog_loader = spawn_catalog_visibility_loader(runtime, CatalogScope::Board);
+
+    ui.on_board_catalog_visible(move |index| {
+        queue_visible_catalog(&catalog_loader, index);
+    });
 
     ui.on_board_item_selected({
         let runtime = runtime.clone();
@@ -72,23 +80,21 @@ pub fn setup(
     ui.on_board_see_all_clicked({
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
-        move |r_type, catalog_id, addon_base| {
-            let r_type = r_type.to_string();
-            let catalog_id = catalog_id.to_string();
-            let addon_base = addon_base.to_string();
-
-            let Ok(url) = url::Url::parse(&addon_base) else {
-                tracing::warn!(%addon_base, "cannot navigate to an invalid catalog URL");
+        move |catalog_index| {
+            let Ok(catalog_index) = usize::try_from(catalog_index) else {
                 return;
             };
-            let request = stremio_core::types::addon::ResourceRequest {
-                base: url,
-                path: stremio_core::types::addon::ResourcePath {
-                    resource: "catalog".to_string(),
-                    r#type: r_type,
-                    id: catalog_id,
-                    extra: vec![],
-                },
+            let request = runtime.model().ok().and_then(|model| {
+                model
+                    .board
+                    .catalogs
+                    .get(catalog_index)
+                    .and_then(|catalog| catalog.first())
+                    .map(|page| page.request.clone())
+            });
+            let Some(request) = request else {
+                tracing::warn!(catalog_index, "cannot navigate to a missing Board catalog");
+                return;
             };
             runtime.dispatch(RuntimeAction {
                 field: None,
@@ -118,6 +124,7 @@ pub fn sync(
         fingerprint.str(&library_item.id);
         fingerprint.str(&library_item.r#type);
         fingerprint.optional_str(library_item.state.video_id.as_deref());
+        fingerprint.optional_str(library_item.behavior_hints.default_video_id.as_deref());
         fingerprint.str(&library_item.name);
         fingerprint.optional_str(library_item.poster.as_ref().map(Url::as_str));
         fingerprint.u64(library_item.progress().to_bits());
@@ -130,27 +137,7 @@ pub fn sync(
             fingerprint.optional_str(catalog.name.as_deref());
         }
     }
-    for catalog in &board.catalogs {
-        for page in catalog {
-            fingerprint.str(page.request.base.as_str());
-            fingerprint.str(&page.request.path.r#type);
-            fingerprint.str(&page.request.path.id);
-            let ready_items = match &page.content {
-                Some(Loadable::Ready(items)) => Some(items),
-                _ => None,
-            };
-            fingerprint.bool(ready_items.is_some());
-            if let Some(items) = ready_items {
-                for item in items.iter().take(10) {
-                    fingerprint.str(&item.id);
-                    fingerprint.str(&item.r#type);
-                    fingerprint.str(&item.name);
-                    fingerprint.optional_str(item.poster.as_ref().map(Url::as_str));
-                    fingerprint.optional_str(item.release_info.as_deref());
-                }
-            }
-        }
-    }
+    fingerprint_catalog_projection(&mut fingerprint, board);
     if !sync_fingerprint_changed(&LAST_SYNC_STATE, fingerprint.finish()) {
         return;
     }
@@ -165,12 +152,14 @@ pub fn sync(
             items.push(MediaCardItem {
                 id: library_item.id.as_str().into(),
                 media_type: library_item.r#type.as_str().into(),
-                video_id: library_item
-                    .state
-                    .video_id
-                    .as_deref()
-                    .unwrap_or_default()
-                    .into(),
+                video_id: library_details_video_id(
+                    library_item.state.video_id.as_deref(),
+                    library_item.state.time_offset,
+                    library_item.behavior_hints.default_video_id.as_deref(),
+                    false,
+                )
+                .unwrap_or_default()
+                .into(),
                 title: library_item.name.as_str().into(),
                 poster_url: library_item
                     .poster
@@ -204,65 +193,27 @@ pub fn sync(
                 r_type: "".into(),
                 catalog_id: "".into(),
                 addon_base: "".into(),
+                catalog_index: -1,
+                loading: false,
+                error_message: "".into(),
                 items: continue_watching_model,
                 is_continue_watching: true,
             });
         }
-        for catalog in &board.catalogs {
-            for page in catalog {
-                if let Some(Loadable::Ready(items)) = &page.content {
-                    let catalog_name = catalog_names
-                        .get(&(
-                            page.request.base.as_str(),
-                            page.request.path.id.as_str(),
-                            page.request.path.r#type.as_str(),
-                        ))
-                        .copied()
-                        .unwrap_or(page.request.path.id.as_str());
-                    let mut media_type = page.request.path.r#type.clone();
-                    if let Some(first) = media_type.get_mut(0..1) {
-                        first.make_ascii_uppercase();
-                    }
-                    let title = format!("{catalog_name} – {media_type}");
-
-                    let section_items: Vec<MediaCardItem> = {
-                        let mut s_items = Vec::with_capacity(items.len().min(10));
-                        for item in items.iter().take(10) {
-                            s_items.push(MediaCardItem {
-                                id: item.id.as_str().into(),
-                                media_type: page.request.path.r#type.as_str().into(),
-                                video_id: "".into(),
-                                title: item.name.as_str().into(),
-                                poster_url: item
-                                    .poster
-                                    .as_ref()
-                                    .map(Url::as_str)
-                                    .unwrap_or_default()
-                                    .into(),
-                                poster: crate::image_cache::get_cached_image(&item.poster),
-                                description: item
-                                    .release_info
-                                    .as_deref()
-                                    .unwrap_or_default()
-                                    .into(),
-                                show_checkmark: false,
-                                show_progress: false,
-                                progress_value: 0.0,
-                            });
-                        }
-                        s_items
-                    };
-
-                    let section_items_model = slint::VecModel::from(section_items);
-                    board_sections.push(BoardSection {
-                        title: title.into(),
-                        r_type: page.request.path.r#type.as_str().into(),
-                        catalog_id: page.request.path.id.as_str().into(),
-                        addon_base: page.request.base.as_str().into(),
-                        items: slint::ModelRc::new(section_items_model),
-                        is_continue_watching: false,
-                    });
-                }
+        for (catalog_index, catalog) in board.catalogs.iter().enumerate() {
+            let Some(page) = catalog.first() else {
+                continue;
+            };
+            let catalog_name = catalog_names
+                .get(&(
+                    page.request.base.as_str(),
+                    page.request.path.id.as_str(),
+                    page.request.path.r#type.as_str(),
+                ))
+                .copied()
+                .unwrap_or(page.request.path.id.as_str());
+            if let Some(section) = project_catalog_section(catalog_index, catalog, catalog_name) {
+                board_sections.push(section);
             }
         }
         board_sections

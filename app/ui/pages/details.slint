@@ -26,6 +26,8 @@ export struct EpisodeItem {
     episode-num: int,
     is-upcoming: bool,
     is-watched: bool,
+    is-scheduled: bool,
+    progress: float,
 }
 
 export component DetailsPage inherits Rectangle {
@@ -70,8 +72,9 @@ export component DetailsPage inherits Rectangle {
     in property <image> anonymous-icon;
     callback toggle-fullscreen;
     callback season-changed(int);
+    callback season-step(int);
     callback notifications-changed(bool);
-    callback episode-changed(int);
+    callback episode-changed(int, string);
     callback toggle-episode-watched(string);
     callback episode-search-changed(string);
     callback copy-stream-link(string);
@@ -271,11 +274,8 @@ export component DetailsPage inherits Rectangle {
                     unit: root.unit;
                     label: @tr("Prev");
                     icon-source: @image-url("../assets/images/icons/chevron-back.svg");
-                    enabled: root.active-season > root.first-season;
-                    clicked => {
-                        root.active-season = max(root.first-season, root.active-season - 1);
-                        root.season-changed(root.active-season);
-                    }
+                    enabled: root.active-season != root.first-season;
+                    clicked => { root.season-step(-1); }
                 }
 
                 SeasonSelectField {
@@ -301,11 +301,8 @@ export component DetailsPage inherits Rectangle {
                     label: @tr("Next");
                     trailing-icon: true;
                     icon-source: @image-url("../assets/images/icons/chevron-forward.svg");
-                    enabled: root.active-season < root.last-season;
-                    clicked => {
-                        root.active-season = min(root.last-season, root.active-season + 1);
-                        root.season-changed(root.active-season);
-                    }
+                    enabled: root.active-season != root.last-season;
+                    clicked => { root.season-step(1); }
                 }
             }
 
@@ -365,9 +362,11 @@ export component DetailsPage inherits Rectangle {
                     episode-number: episode.episode-num;
                     upcoming: episode.is-upcoming;
                     watched: episode.is-watched;
+                    scheduled: episode.is-scheduled;
+                    progress: episode.progress;
                     selected => {
                         root.active-episode-idx = index;
-                        root.episode-changed(index);
+                        root.episode-changed(index, episode.id);
                         root.in-stream-view = true;
                     }
                     toggle-watched => { root.toggle-episode-watched(episode.id); }

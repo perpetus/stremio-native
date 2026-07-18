@@ -1,8 +1,9 @@
 use crate::models::details::{load_meta_details_for_video, open_details_route};
 use crate::models::{
-    Fingerprint, SyncFingerprint, clear_sync_fingerprint, sync_fingerprint_changed,
+    Fingerprint, SyncFingerprint, clear_sync_fingerprint, library_details_video_id,
+    sync_fingerprint_changed,
 };
-use crate::{AppModel, MainWindow, NavigationController};
+use crate::{AppModel, AppModelField, MainWindow, NavigationController};
 use crate::{LibraryRow, MediaCardItem};
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
@@ -13,7 +14,7 @@ use stremio_core::{
     },
     runtime::{
         Runtime, RuntimeAction,
-        msg::{Action, ActionLoad},
+        msg::{Action, ActionLibraryWithFilters, ActionLoad},
     },
 };
 
@@ -76,6 +77,22 @@ pub fn setup(
     navigation: &NavigationController,
 ) {
     let ui_weak = ui.as_weak();
+
+    ui.on_library_load_next_page({
+        let runtime = runtime.clone();
+        move || {
+            let has_next_page = runtime
+                .model()
+                .ok()
+                .is_some_and(|model| model.library.selectable.next_page.is_some());
+            if has_next_page {
+                runtime.dispatch(RuntimeAction {
+                    field: Some(AppModelField::Library),
+                    action: Action::LibraryWithFilters(ActionLibraryWithFilters::LoadNextPage),
+                });
+            }
+        }
+    });
 
     // Type change callback
     ui.on_library_type_changed({
@@ -165,13 +182,14 @@ pub fn setup(
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
         let navigation = navigation.clone();
-        move |id, media_type| {
+        move |id, media_type, video_id| {
             let id = id.to_string();
             let media_type = media_type.to_string();
+            let video_id = (!video_id.is_empty()).then(|| video_id.to_string());
             if let Some(ui) = ui_weak.upgrade() {
                 open_details_route(&ui, &runtime, &navigation, &id);
             }
-            load_meta_details_for_video(&runtime, id, Some(media_type), None);
+            load_meta_details_for_video(&runtime, id, Some(media_type), video_id);
         }
     });
 }
@@ -218,7 +236,9 @@ pub fn sync(
     for item in &raw_items {
         fingerprint.str(&item.id);
         fingerprint.str(&item.r#type);
-        fingerprint.optional_str(item.state.video_id.as_deref());
+        fingerprint.optional_str(item.behavior_hints.default_video_id.as_deref());
+        fingerprint.bool(item.watched());
+        fingerprint.u64(item.progress().to_bits());
         fingerprint.str(&item.name);
         fingerprint.optional_str(item.poster.as_ref().map(url::Url::as_str));
     }
@@ -235,10 +255,18 @@ pub fn sync(
         let _span = tracing::info_span!("map_library_cards").entered();
         let mut visible_items = Vec::with_capacity(raw_items.len());
         for item in raw_items {
+            let progress = item.progress();
             visible_items.push(MediaCardItem {
                 id: item.id.as_str().into(),
                 media_type: item.r#type.as_str().into(),
-                video_id: item.state.video_id.as_deref().unwrap_or_default().into(),
+                video_id: library_details_video_id(
+                    item.state.video_id.as_deref(),
+                    item.state.time_offset,
+                    item.behavior_hints.default_video_id.as_deref(),
+                    true,
+                )
+                .unwrap_or_default()
+                .into(),
                 title: item.name.as_str().into(),
                 poster_url: item
                     .poster
@@ -248,9 +276,9 @@ pub fn sync(
                     .into(),
                 poster: crate::image_cache::get_cached_image(&item.poster),
                 description: item.r#type.as_str().into(),
-                show_checkmark: true,
-                show_progress: false,
-                progress_value: 0.0,
+                show_checkmark: item.watched(),
+                show_progress: progress > 0.0,
+                progress_value: (progress / 100.0).clamp(0.0, 1.0) as f32,
             });
         }
         visible_items

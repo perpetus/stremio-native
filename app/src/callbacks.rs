@@ -82,9 +82,25 @@ pub fn setup_ui_callbacks(
                 let is_series = ui.get_detail_is_series();
                 ui.set_player_is_series(is_series);
                 if is_series {
-                    ui.set_player_episode_names(ui.get_detail_episode_names());
+                    ui.set_player_seasons(ui.get_detail_seasons());
+                    ui.set_player_active_season(ui.get_detail_active_season());
+                    ui.set_player_episodes(ui.get_detail_episodes());
                     ui.set_player_active_episode_idx(ui.get_detail_active_episode_idx());
+                    ui.set_player_active_video_id(
+                        selected
+                            .stream_request
+                            .as_ref()
+                            .map(|request| request.path.id.as_str())
+                            .unwrap_or_default()
+                            .into(),
+                    );
+                } else {
+                    ui.set_player_seasons(Default::default());
+                    ui.set_player_episodes(Default::default());
+                    ui.set_player_active_video_id("".into());
+                    ui.set_player_active_episode_idx(0);
                 }
+                ui.set_player_has_next_episode(false);
 
                 navigation.dispatch_and_project(&ui, NavigationIntent::OpenPlayer);
             }
@@ -300,12 +316,6 @@ pub fn trigger_initial_load(runtime: &Arc<Runtime<DesktopEnv, AppModel>>) {
                     extra: vec![],
                 },
             )),
-        });
-        rt.dispatch(RuntimeAction {
-            field: Some(AppModelField::Board),
-            action: Action::CatalogsWithExtra(
-                stremio_core::runtime::msg::ActionCatalogsWithExtra::LoadRange(0..20),
-            ),
         });
         rt.dispatch(RuntimeAction {
             field: Some(AppModelField::LocalSearch),

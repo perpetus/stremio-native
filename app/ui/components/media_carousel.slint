@@ -14,7 +14,9 @@ export component MediaCatalogRow inherits MetaRow {
     in property <bool> show-close-button: false;
     in property <bool> show-play-button: false;
     in property <bool> show-menu-button: false;
-    in property <bool> enable-lazy-loading: false;
+    // Match the web client's lazy image behavior. The current card plus one
+    // card on either side stays warm so horizontal scrolling remains seamless.
+    in property <bool> enable-lazy-loading: true;
     callback item-selected(string, string, string);
     callback remove-clicked(string);
     callback play-clicked(string);
@@ -35,6 +37,9 @@ export component MediaCatalogRow inherits MetaRow {
         show-play-button: root.show-play-button;
         show-menu-button: root.show-menu-button;
         enable-lazy-loading: root.enable-lazy-loading;
+        is-visible: !root.enable-lazy-loading
+            || (self.x + root.content-scroll-offset + self.width >= -root.card-width
+                && self.x + root.content-scroll-offset <= root.width + root.card-width);
         clicked => {
             root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
         }

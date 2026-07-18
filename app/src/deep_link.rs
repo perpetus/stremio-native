@@ -413,6 +413,12 @@ fn open_player(
     ui.set_player_buffering(false);
     ui.set_player_buffering_percent(0.0);
     ui.set_player_controls_visible(true);
+    ui.set_player_is_series(player.media_type.as_deref() == Some("series"));
+    ui.set_player_seasons(Default::default());
+    ui.set_player_episodes(Default::default());
+    ui.set_player_active_video_id(player.video_id.as_deref().unwrap_or_default().into());
+    ui.set_player_active_episode_idx(0);
+    ui.set_player_has_next_episode(false);
     navigation.dispatch_and_project(ui, NavigationIntent::OpenPlayer);
     runtime.dispatch(RuntimeAction {
         field: None,

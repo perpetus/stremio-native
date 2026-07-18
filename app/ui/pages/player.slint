@@ -1,8 +1,11 @@
-import { ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "../theme.slint";
-import { ButtonSurface, IconAction, MenuButton, PillButton } from "../components/button.slint";
+import { ButtonSurface, ChevronTextButton, IconAction, MenuButton, PillButton } from "../components/button.slint";
+import { Video } from "../components/media_rows.slint";
+import { SeasonSelectField } from "../components/select.slint";
 import { Slider } from "../components/slider.slint";
 import { PopupMenuSurface, ContextMenuSurface, ContextMenuOption } from "../components/overlays.slint";
+import { EpisodeItem } from "details.slint";
 
 component PlayerIconButton inherits IconAction {
     // Kept for the legacy control tree below. The active player chrome uses
@@ -212,8 +215,12 @@ export component PlayerPage inherits Rectangle {
     
     // Episode playlist
     in property <bool> is-series: false;
-    in property <[string]> episode-names: [];
+    in property <[int]> available-seasons: [];
+    in-out property <int> active-season: 1;
+    in property <[EpisodeItem]> episodes: [];
+    in-out property <string> active-video-id: "";
     in-out property <int> active-episode-idx: 0;
+    in property <bool> has-next-episode: false;
 
     // Speed options
     in-out property <float> playback-speed: 1.0;
@@ -254,7 +261,11 @@ export component PlayerPage inherits Rectangle {
     callback change-video-scale(int);
     callback copy-stream-link();
     callback download-video();
-    callback play-episode(int);
+    callback play-episode(int, string);
+    callback play-next-episode();
+    callback season-changed(int);
+    callback season-step(int);
+    callback toggle-episode-watched(string);
     callback toggle-fullscreen();
     callback close();
     callback activity();
@@ -266,6 +277,7 @@ export component PlayerPage inherits Rectangle {
     in-out property <bool> show-stats-menu: false;
     in-out property <bool> show-options-menu: false;
     in-out property <bool> show-playlist-drawer: false;
+    in-out property <bool> season-menu-open: false;
     in-out property <bool> show-context-menu: false;
     in-out property <length> context-menu-x: root.width * 0.52;
     in-out property <length> context-menu-y: root.height * 0.48;
@@ -278,6 +290,12 @@ export component PlayerPage inherits Rectangle {
     property <string> selected-subtitle-language: active-subtitle-idx >= 0 && active-subtitle-idx < subtitle-track-languages.length
         ? subtitle-track-languages[active-subtitle-idx]
         : "";
+
+    changed show-playlist-drawer => {
+        if (!root.show-playlist-drawer) {
+            root.season-menu-open = false;
+        }
+    }
 
     buffering-pulse-timer := Timer {
         interval: 1s;
@@ -374,6 +392,8 @@ export component PlayerPage inherits Rectangle {
             show-speed-menu = false;
             show-stats-menu = false;
             show-options-menu = false;
+            show-playlist-drawer = false;
+            season-menu-open = false;
             
             controls-visible = true;
             root.activity();
@@ -511,21 +531,44 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    // Right Side Drawer (Series Playlist/Episodes)
+    // Match the web player's side drawer: season navigation stays fixed while
+    // the selected season's rich episode rows scroll independently.
     if (controls-visible && show-playlist-drawer && is-series) : playlist-drawer := Rectangle {
         x: parent.width - playlist-drawer.width;
         y: 0px;
         width: min(560px, parent.width * 0.42);
         height: parent.height;
-        background: #0f0d20f0;
+        background: Theme.modal-background;
         border-radius: 16px;
         border-width: 1px;
         border-color: Theme.card-border;
         z: 175;
+        private property <int> reveal-index: root.active-episode-idx;
+        private property <int> reveal-season: root.active-season;
+
+        init => { episode-reveal-timer.restart(); }
+        changed reveal-index => { episode-reveal-timer.restart(); }
+        changed reveal-season => {
+            episode-list.viewport-y = 0px;
+            episode-reveal-timer.restart();
+        }
+
+        episode-reveal-timer := Timer {
+            interval: 1ms;
+            running: false;
+            triggered => {
+                self.stop();
+                let row-height = 104px;
+                let selected-y = playlist-drawer.reveal-index * row-height;
+                let centered-y = max(0px, selected-y - (episode-list.visible-height - row-height) / 2);
+                let max-y = max(0px, episode-list.viewport-height - episode-list.visible-height);
+                episode-list.viewport-y = -min(centered-y, max-y);
+            }
+        }
 
         VerticalLayout {
             padding: 24px;
-            spacing: 16px;
+            spacing: 8px;
 
             HorizontalLayout {
                 height: 64px;
@@ -535,15 +578,70 @@ export component PlayerPage inherits Rectangle {
                 PlayerIconButton {
                     icon-source: @image-url("../assets/images/icons/chevron-forward.svg");
                     tooltip: @tr("Close episode list");
-                    clicked => { show-playlist-drawer = false; }
+                    clicked => {
+                        show-playlist-drawer = false;
+                        season-menu-open = false;
+                    }
                 }
 
                 Text {
-                    text: @tr("Episodes");
+                    horizontal-stretch: 1;
+                    text: item-title;
                     color: #ffffff;
-                    font-size: 24px;
-                    font-weight: 700;
+                    font-size: 20px;
+                    font-weight: 600;
                     vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            if (stream-name != "") : Text {
+                height: 24px;
+                text: stream-name;
+                color: #ffffff80;
+                font-size: 14px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            if (available-seasons.length > 0) : season-bar := Rectangle {
+                height: 64px;
+                background: transparent;
+                z: 10000;
+
+                ChevronTextButton {
+                    x: 0px;
+                    y: 8px;
+                    label: @tr("BUTTON_PREV" => "Prev");
+                    icon-source: @image-url("../assets/images/icons/chevron-back.svg");
+                    enabled: root.active-season != root.available-seasons[0];
+                    clicked => { root.season-step(-1); }
+                }
+
+                SeasonSelectField {
+                    x: (parent.width - self.width) / 2;
+                    y: 8px;
+                    field-width: min(176px, parent.width - 232px);
+                    value: root.active-season;
+                    options: root.available-seasons;
+                    open: root.season-menu-open;
+                    surface-color: transparent;
+                    toggle => { root.season-menu-open = !root.season-menu-open; }
+                    selected(season) => {
+                        root.active-season = season;
+                        root.season-menu-open = false;
+                        root.season-changed(season);
+                    }
+                }
+
+                ChevronTextButton {
+                    x: parent.width - self.width;
+                    y: 8px;
+                    label: @tr("BUTTON_NEXT" => "Next");
+                    trailing-icon: true;
+                    icon-source: @image-url("../assets/images/icons/chevron-forward.svg");
+                    enabled: root.active-season != root.available-seasons[root.available-seasons.length - 1];
+                    clicked => { root.season-step(1); }
                 }
             }
 
@@ -552,23 +650,31 @@ export component PlayerPage inherits Rectangle {
                 background: #ffffff1f;
             }
 
-            ScrollView {
+            episode-list := ListView {
                 vertical-stretch: 1;
-                viewport-width: self.width;
                 horizontal-scrollbar-policy: always-off;
                 mouse-drag-pan-enabled: true;
 
-                VerticalLayout {
-                    spacing: 8px;
-                    for ep-name[idx] in episode-names : TrackItem {
-                        row-height: 64px;
-                        label: (idx + 1) + ". " + ep-name;
-                        active: active-episode-idx == idx;
-                        clicked => {
-                            play-episode(idx);
-                            active-episode-idx = idx;
-                        }
+                for episode[idx] in episodes : Video {
+                    width: parent.width;
+                    unit: 16px;
+                    title: episode.title;
+                    released: episode.released;
+                    thumbnail: episode.thumbnail;
+                    episode-number: episode.episode-num;
+                    upcoming: episode.is-upcoming;
+                    watched: episode.is-watched;
+                    scheduled: episode.is-scheduled;
+                    progress: episode.id == root.active-video-id
+                        ? root.progress * 100.0
+                        : episode.progress;
+                    selected-row: episode.id == root.active-video-id;
+                    selected => {
+                        root.active-episode-idx = idx;
+                        root.active-video-id = episode.id;
+                        root.play-episode(idx, episode.id);
                     }
+                    toggle-watched => { root.toggle-episode-watched(episode.id); }
                 }
             }
         }
@@ -692,12 +798,8 @@ export component PlayerPage inherits Rectangle {
             if (is-series) : PlayerIconButton {
                 icon-source: @image-url("../assets/images/icons/next.svg");
                 tooltip: @tr("PLAYER_NEXT_VIDEO" => "Next Video");
-                clicked => {
-                    if (active-episode-idx + 1 < episode-names.length) {
-                        play-episode(active-episode-idx + 1);
-                        active-episode-idx = active-episode-idx + 1;
-                    }
-                }
+                disabled: !root.has-next-episode;
+                clicked => { root.play-next-episode(); }
             }
 
             PlayerIconButton {
@@ -1294,12 +1396,8 @@ export component PlayerPage inherits Rectangle {
                 if (is-series) : PlayerIconButton {
                     icon: icon-next;
                     tooltip: @tr("PLAYER_NEXT_VIDEO" => "Next Video");
-                    clicked => {
-                        if (active-episode-idx + 1 < episode-names.length) {
-                            play-episode(active-episode-idx + 1);
-                            active-episode-idx = active-episode-idx + 1;
-                        }
-                    }
+                    disabled: !root.has-next-episode;
+                    clicked => { root.play-next-episode(); }
                 }
 
                 // Volume and Slider

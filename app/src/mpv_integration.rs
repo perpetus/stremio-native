@@ -36,6 +36,10 @@ use stremio_core::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{AppModel, AppModelField, MainWindow, NavigationController, NavigationIntent};
+use crate::{
+    EpisodeItem,
+    models::{Fingerprint, SyncFingerprint},
+};
 use core_env::DesktopEnv;
 
 const PLAYER_DEVICE: &str = "libmpv";
@@ -183,6 +187,212 @@ struct SessionState {
     last_skip_button_state: Option<SkipButtonState>,
     video_hash_resolved: bool,
     cached_video_hash: Option<String>,
+    episode_selector_meta_id: Option<String>,
+    episode_selector_video_id: Option<String>,
+    episode_selector_season: Option<i32>,
+    episode_selector_fingerprint: Option<SyncFingerprint>,
+}
+
+#[derive(Clone)]
+struct PlayerEpisodeProjection {
+    id: String,
+    title: String,
+    released: String,
+    thumbnail_url: String,
+    season: i32,
+    episode_num: i32,
+    is_upcoming: bool,
+    is_watched: bool,
+    is_scheduled: bool,
+    progress: f32,
+}
+
+struct PlayerEpisodeSelectorProjection {
+    fingerprint: SyncFingerprint,
+    meta_id: String,
+    seasons: Vec<i32>,
+    active_season: i32,
+    active_episode_idx: i32,
+    active_video_id: String,
+    has_next_episode: bool,
+    episodes: Vec<PlayerEpisodeProjection>,
+}
+
+fn selected_player_video_id(player: &Player) -> String {
+    player
+        .selected
+        .as_ref()
+        .and_then(|selected| selected.stream_request.as_ref())
+        .map(|request| request.path.id.clone())
+        .unwrap_or_default()
+}
+
+fn player_episode_selector_projection(
+    player: &Player,
+    requested_season: Option<i32>,
+) -> Option<PlayerEpisodeSelectorProjection> {
+    let meta_item = player
+        .meta_item
+        .as_ref()?
+        .content
+        .as_ref()
+        .and_then(Loadable::ready)?;
+    let seasons = crate::models::details::ordered_series_seasons(meta_item);
+    if seasons.is_empty() {
+        return None;
+    }
+
+    let active_video_id = selected_player_video_id(player);
+    let selected_season = player
+        .series_info
+        .as_ref()
+        .map(|info| info.season as i32)
+        .or_else(|| {
+            meta_item
+                .videos
+                .iter()
+                .find(|video| video.id == active_video_id)
+                .and_then(|video| video.series_info.as_ref())
+                .map(|info| info.season as i32)
+        });
+    let active_season = requested_season
+        .filter(|season| seasons.contains(season))
+        .or_else(|| selected_season.filter(|season| seasons.contains(season)))
+        .unwrap_or(seasons[0]);
+    let videos = crate::models::details::series_videos(meta_item, active_season);
+    let is_scheduled = meta_item.preview.behavior_hints.has_scheduled_videos;
+    let now = chrono::Utc::now();
+    let mut fingerprint = Fingerprint::new();
+    fingerprint.str(&meta_item.preview.id);
+    fingerprint.usize(seasons.len());
+    for season in &seasons {
+        fingerprint.u64(*season as u64);
+    }
+    fingerprint.u64(active_season as u64);
+    fingerprint.str(&active_video_id);
+    fingerprint.bool(player.next_video.is_some());
+
+    let episodes = videos
+        .into_iter()
+        .map(|video| {
+            let episode_num = video
+                .series_info
+                .as_ref()
+                .map(|info| info.episode as i32)
+                .unwrap_or_default();
+            let released = video
+                .released
+                .map(|date| date.format("%b %d, %Y").to_string())
+                .unwrap_or_default();
+            let thumbnail_url = video
+                .thumbnail
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            let is_upcoming = is_scheduled
+                && video
+                    .released
+                    .map(|released| released > now)
+                    .unwrap_or(false);
+            let is_watched = player
+                .watched
+                .as_ref()
+                .map(|watched| watched.get_video(&video.id))
+                .unwrap_or_default();
+            let progress = player
+                .library_item
+                .as_ref()
+                .filter(|item| item.state.video_id.as_deref() == Some(video.id.as_str()))
+                .map(|item| item.progress() as f32)
+                .unwrap_or_default();
+
+            fingerprint.str(&video.id);
+            fingerprint.str(&video.title);
+            fingerprint.str(&released);
+            fingerprint.str(&thumbnail_url);
+            fingerprint.u64(episode_num as u64);
+            fingerprint.bool(is_upcoming);
+            fingerprint.bool(is_watched);
+            fingerprint.bool(is_scheduled);
+
+            PlayerEpisodeProjection {
+                id: video.id.clone(),
+                title: video.title.clone(),
+                released,
+                thumbnail_url,
+                season: active_season,
+                episode_num,
+                is_upcoming,
+                is_watched,
+                is_scheduled,
+                progress,
+            }
+        })
+        .collect::<Vec<_>>();
+    let active_episode_idx = episodes
+        .iter()
+        .position(|episode| episode.id == active_video_id)
+        .unwrap_or_default() as i32;
+
+    Some(PlayerEpisodeSelectorProjection {
+        fingerprint: fingerprint.finish(),
+        meta_id: meta_item.preview.id.clone(),
+        seasons,
+        active_season,
+        active_episode_idx,
+        active_video_id,
+        has_next_episode: player.next_video.is_some(),
+        episodes,
+    })
+}
+
+fn apply_player_episode_selector(
+    ui: &MainWindow,
+    ui_weak: &slint::Weak<MainWindow>,
+    projection: PlayerEpisodeSelectorProjection,
+) {
+    let episodes = projection
+        .episodes
+        .into_iter()
+        .map(|episode| {
+            let thumbnail_url = url::Url::parse(&episode.thumbnail_url).ok();
+            EpisodeItem {
+                id: episode.id.into(),
+                title: episode.title.into(),
+                released: episode.released.into(),
+                thumbnail_url: thumbnail_url
+                    .as_ref()
+                    .map(url::Url::as_str)
+                    .unwrap_or_default()
+                    .into(),
+                thumbnail: crate::image_cache::get_poster_image(&thumbnail_url, ui_weak),
+                season: episode.season,
+                episode_num: episode.episode_num,
+                is_upcoming: episode.is_upcoming,
+                is_watched: episode.is_watched,
+                is_scheduled: episode.is_scheduled,
+                progress: episode.progress,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    ui.set_player_is_series(true);
+    ui.set_player_seasons(ModelRc::new(VecModel::from(projection.seasons)));
+    ui.set_player_active_season(projection.active_season);
+    ui.set_player_episodes(ModelRc::new(VecModel::from(episodes)));
+    ui.set_player_active_episode_idx(projection.active_episode_idx);
+    ui.set_player_active_video_id(projection.active_video_id.into());
+    ui.set_player_has_next_episode(projection.has_next_episode);
+}
+
+fn clear_player_episode_selector(ui: &MainWindow) {
+    ui.set_player_is_series(false);
+    ui.set_player_seasons(ModelRc::new(VecModel::from(Vec::<i32>::new())));
+    ui.set_player_episodes(ModelRc::new(VecModel::from(Vec::<EpisodeItem>::new())));
+    ui.set_player_active_video_id("".into());
+    ui.set_player_active_episode_idx(0);
+    ui.set_player_has_next_episode(false);
+    ui.set_player_show_playlist_drawer(false);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -357,6 +567,116 @@ impl NativePlayback {
 }
 
 impl NativePlaybackBridge {
+    fn sync_episode_selector(&self, player: &Player, ui: &slint::Weak<MainWindow>) {
+        let meta_id = player
+            .meta_item
+            .as_ref()
+            .and_then(|resource| resource.content.as_ref().and_then(Loadable::ready))
+            .map(|meta_item| meta_item.preview.id.clone());
+        let Some(meta_id) = meta_id else {
+            return;
+        };
+        let active_video_id = selected_player_video_id(player);
+
+        let requested_season = {
+            let mut session = lock_session(&self.session);
+            if session.episode_selector_meta_id.as_deref() != Some(meta_id.as_str())
+                || session.episode_selector_video_id.as_deref() != Some(active_video_id.as_str())
+            {
+                session.episode_selector_meta_id = Some(meta_id.clone());
+                session.episode_selector_video_id = Some(active_video_id);
+                session.episode_selector_season =
+                    player.series_info.as_ref().map(|info| info.season as i32);
+                session.episode_selector_fingerprint = None;
+            }
+            session.episode_selector_season
+        };
+        let Some(projection) = player_episode_selector_projection(player, requested_season) else {
+            let mut fingerprint = Fingerprint::new();
+            fingerprint.str(&meta_id);
+            fingerprint.bool(false);
+            let fingerprint = fingerprint.finish();
+            {
+                let mut session = lock_session(&self.session);
+                session.episode_selector_season = None;
+                if session.episode_selector_fingerprint == Some(fingerprint) {
+                    return;
+                }
+                session.episode_selector_fingerprint = Some(fingerprint);
+            }
+            let expected_video_id = selected_player_video_id(player);
+            let session = self.session.clone();
+            let ui_weak = ui.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                let selector_is_current = {
+                    let session = lock_session(&session);
+                    session.episode_selector_meta_id.as_deref() == Some(meta_id.as_str())
+                        && session.episode_selector_video_id.as_deref()
+                            == Some(expected_video_id.as_str())
+                        && session.episode_selector_season.is_none()
+                };
+                if selector_is_current && let Some(ui) = ui_weak.upgrade() {
+                    clear_player_episode_selector(&ui);
+                }
+            });
+            return;
+        };
+
+        {
+            let mut session = lock_session(&self.session);
+            session.episode_selector_season = Some(projection.active_season);
+            if session.episode_selector_fingerprint == Some(projection.fingerprint) {
+                return;
+            }
+            session.episode_selector_fingerprint = Some(projection.fingerprint);
+        }
+
+        let expected_meta_id = projection.meta_id.clone();
+        let expected_season = projection.active_season;
+        let expected_video_id = projection.active_video_id.clone();
+        let session = self.session.clone();
+        let ui_weak = ui.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            let selector_is_current = {
+                let session = lock_session(&session);
+                session.episode_selector_meta_id.as_deref() == Some(expected_meta_id.as_str())
+                    && session.episode_selector_video_id.as_deref()
+                        == Some(expected_video_id.as_str())
+                    && session.episode_selector_season == Some(expected_season)
+            };
+            if selector_is_current && let Some(ui) = ui_weak.upgrade() {
+                apply_player_episode_selector(&ui, &ui_weak, projection);
+            }
+        });
+    }
+
+    fn select_episode_season(&self, player: &Player, season: i32, ui: &slint::Weak<MainWindow>) {
+        let Some(projection) = player_episode_selector_projection(player, Some(season)) else {
+            return;
+        };
+        {
+            let mut session = lock_session(&self.session);
+            session.episode_selector_meta_id = Some(projection.meta_id);
+            session.episode_selector_video_id = Some(projection.active_video_id.clone());
+            session.episode_selector_season = Some(projection.active_season);
+            session.episode_selector_fingerprint = None;
+        }
+        self.sync_episode_selector(player, ui);
+    }
+
+    fn step_episode_season(&self, player: &Player, direction: i32, ui: &slint::Weak<MainWindow>) {
+        let requested_season = lock_session(&self.session).episode_selector_season;
+        let Some(projection) = player_episode_selector_projection(player, requested_season) else {
+            return;
+        };
+        let season = crate::models::details::adjacent_series_season(
+            &projection.seasons,
+            projection.active_season,
+            direction,
+        );
+        self.select_episode_season(player, season, ui);
+    }
+
     #[tracing::instrument(skip_all)]
     pub fn sync_player(
         &self,
@@ -371,6 +691,7 @@ impl NativePlaybackBridge {
         let route_revision = navigation.snapshot().revision;
         self.sync_statistics_poll(player);
         let Some(Loadable::Ready((stream_urls, _))) = player.stream.as_ref() else {
+            self.sync_episode_selector(player, ui);
             if let Some(Loadable::Err(error)) = player.stream.as_ref() {
                 show_player_error(ui, format!("Could not resolve this stream: {error}"));
             }
@@ -441,6 +762,7 @@ impl NativePlaybackBridge {
                 }
             });
         }
+        self.sync_episode_selector(player, ui);
 
         for resource in &player.subtitles {
             if !navigation.is_player_visible() {
@@ -678,6 +1000,66 @@ impl NativePlaybackBridge {
             }
         });
 
+        ui.on_player_season_changed({
+            let bridge = self.clone();
+            let core = core.clone();
+            let weak = ui.as_weak();
+            move |season| {
+                let player = core.model().ok().map(|model| model.player.clone());
+                if let Some(player) = player {
+                    bridge.select_episode_season(&player, season, &weak);
+                }
+            }
+        });
+
+        ui.on_player_season_step({
+            let bridge = self.clone();
+            let core = core.clone();
+            let weak = ui.as_weak();
+            move |direction| {
+                let player = core.model().ok().map(|model| model.player.clone());
+                if let Some(player) = player {
+                    bridge.step_episode_season(&player, direction, &weak);
+                }
+            }
+        });
+
+        ui.on_player_toggle_episode_watched({
+            let core = core.clone();
+            move |video_id| {
+                let selection = core.model().ok().and_then(|model| {
+                    let player = &model.player;
+                    let meta_item = player
+                        .meta_item
+                        .as_ref()?
+                        .content
+                        .as_ref()
+                        .and_then(Loadable::ready)?;
+                    let video = meta_item
+                        .videos
+                        .iter()
+                        .find(|video| video.id == video_id.as_str())?
+                        .clone();
+                    let watched = player
+                        .watched
+                        .as_ref()
+                        .map(|watched| watched.get_video(&video.id))
+                        .unwrap_or_default();
+                    Some((video, !watched))
+                });
+                if let Some((video, watched)) = selection {
+                    dispatch_player(&core, ActionPlayer::MarkVideoAsWatched(video, watched));
+                }
+            }
+        });
+
+        ui.on_player_next_episode({
+            let core = core.clone();
+            move || {
+                play_next(&core);
+            }
+        });
+
         ui.on_player_play_episode({
             let core = core.clone();
             let controller = self.controller.clone();
@@ -686,33 +1068,57 @@ impl NativePlaybackBridge {
             let session = self.session.clone();
             let navigation = navigation.clone();
             let discord_rpc = self.discord_rpc.clone();
-            move |index| {
-                let current = weak
-                    .upgrade()
-                    .map(|ui| ui.get_player_active_episode_idx())
-                    .unwrap_or(-1);
-                if index == current + 1 {
+            move |index, video_id| {
+                let video_id = video_id.to_string();
+                let selection = core.model().ok().map(|model| {
+                    let player = &model.player;
+                    let is_current = selected_player_video_id(player) == video_id;
+                    let is_next = player
+                        .next_video
+                        .as_ref()
+                        .is_some_and(|video| video.id == video_id);
+                    let season = player
+                        .meta_item
+                        .as_ref()
+                        .and_then(|resource| resource.content.as_ref().and_then(Loadable::ready))
+                        .and_then(|meta_item| {
+                            meta_item.videos.iter().find(|video| video.id == video_id)
+                        })
+                        .and_then(|video| video.series_info.as_ref())
+                        .map(|info| info.season as i32);
+                    (is_current, is_next, season)
+                });
+                let (is_current, is_next, season) = selection.unwrap_or_default();
+                if is_current {
+                    return;
+                }
+                if is_next {
                     play_next(&core);
                     return;
                 }
 
+                unload_player(&controller, &core, &statistics_poll, &session, &discord_rpc);
                 if let Some(ui) = weak.upgrade() {
                     if !navigation.is_player_visible() {
                         return;
                     }
+                    if let Some(season) = season {
+                        ui.set_detail_active_season(season);
+                        ui.invoke_details_season_changed(season);
+                    }
                     navigation.dispatch_and_project(&ui, NavigationIntent::Back);
                     ui.set_player_active_episode_idx(index);
                     ui.set_detail_active_episode_idx(index);
-                    ui.invoke_details_episode_changed(index);
+                    ui.invoke_details_episode_changed(index, video_id.into());
                     ui.set_player_loading(false);
                     ui.set_player_buffering(false);
                     ui.set_player_has_video_frame(false);
                     ui.set_player_video_frame(slint::Image::default());
+                    clear_player_episode_selector(&ui);
                     if ui.window().is_fullscreen() {
                         ui.window().set_fullscreen(false);
                     }
                 }
-                unload_player(&controller, &core, &statistics_poll, &session, &discord_rpc);
             }
         });
 
@@ -735,6 +1141,7 @@ impl NativePlaybackBridge {
                     ui.set_player_buffering(false);
                     ui.set_player_has_video_frame(false);
                     ui.set_player_video_frame(slint::Image::default());
+                    clear_player_episode_selector(&ui);
                     if ui.window().is_fullscreen() {
                         ui.window().set_fullscreen(false);
                         ui.set_is_fullscreen(false);

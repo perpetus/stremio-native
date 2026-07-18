@@ -1,9 +1,10 @@
-use crate::models::details::load_meta_details;
+use crate::DiscoverRow;
+use crate::models::details::load_meta_details_for_video;
 use crate::models::{
-    Fingerprint, SyncFingerprint, clear_sync_fingerprint, sync_fingerprint_changed,
+    Fingerprint, SyncFingerprint, catalog_media_card, clear_sync_fingerprint,
+    sync_fingerprint_changed,
 };
-use crate::{AppModel, MainWindow, NavigationController, NavigationIntent};
-use crate::{DiscoverRow, MediaCardItem};
+use crate::{AppModel, AppModelField, MainWindow, NavigationController, NavigationIntent};
 use core_env::DesktopEnv;
 use slint::ComponentHandle;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -14,7 +15,7 @@ use stremio_core::{
     },
     runtime::{
         Runtime, RuntimeAction,
-        msg::{Action, ActionCtx, ActionLoad},
+        msg::{Action, ActionCatalogWithFilters, ActionCtx, ActionLoad},
     },
     types::{addon::ExtraValue, resource::MetaItemPreview},
 };
@@ -31,6 +32,22 @@ pub fn setup(
     navigation: &NavigationController,
 ) {
     let ui_weak = ui.as_weak();
+
+    ui.on_discover_load_next_page({
+        let runtime = runtime.clone();
+        move || {
+            let has_next_page = runtime
+                .model()
+                .ok()
+                .is_some_and(|model| model.discover.selectable.next_page.is_some());
+            if has_next_page {
+                runtime.dispatch(RuntimeAction {
+                    field: Some(AppModelField::Discover),
+                    action: Action::CatalogWithFilters(ActionCatalogWithFilters::LoadNextPage),
+                });
+            }
+        }
+    });
 
     // Type change callback
     ui.on_discover_type_changed({
@@ -218,13 +235,18 @@ pub fn setup(
     ui.on_discover_item_selected({
         let runtime = runtime.clone();
         let navigation = navigation.clone();
-        move |id| {
+        move |id, media_type, video_id| {
             let id = id.to_string();
             let transition = navigation.dispatch(NavigationIntent::SelectDiscoverPreview {
                 media_id: id.clone(),
             });
             if transition.changed {
-                load_meta_details(&runtime, id);
+                load_meta_details_for_video(
+                    &runtime,
+                    id,
+                    Some(media_type.to_string()),
+                    (!video_id.is_empty()).then(|| video_id.to_string()),
+                );
             }
         }
     });
@@ -235,13 +257,18 @@ pub fn setup(
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
         let navigation = navigation.clone();
-        move |id| {
+        move |id, media_type, video_id| {
             let id = id.to_string();
             if navigation.snapshot().discover_preview_id.as_deref() != Some(id.as_str()) {
                 navigation.dispatch(NavigationIntent::SelectDiscoverPreview {
                     media_id: id.clone(),
                 });
-                load_meta_details(&runtime, id.clone());
+                load_meta_details_for_video(
+                    &runtime,
+                    id.clone(),
+                    Some(media_type.to_string()),
+                    (!video_id.is_empty()).then(|| video_id.to_string()),
+                );
             }
             if let Some(ui) = ui_weak.upgrade() {
                 crate::models::details::open_details_route(&ui, &runtime, &navigation, &id);
@@ -408,6 +435,7 @@ pub fn sync(
         fingerprint.str(&item.name);
         fingerprint.optional_str(item.poster.as_ref().map(url::Url::as_str));
         fingerprint.optional_str(item.release_info.as_deref());
+        fingerprint.optional_str(item.behavior_hints.default_video_id.as_deref());
     }
     if !sync_fingerprint_changed(&LAST_SYNC_STATE, fingerprint.finish()) {
         return;
@@ -458,23 +486,7 @@ pub fn sync(
         let _span = tracing::info_span!("map_visible_items").entered();
         let mut visible_items = Vec::with_capacity(raw_items.len());
         for item in raw_items {
-            visible_items.push(MediaCardItem {
-                id: item.id.as_str().into(),
-                media_type: item.r#type.as_str().into(),
-                video_id: "".into(),
-                title: item.name.as_str().into(),
-                poster_url: item
-                    .poster
-                    .as_ref()
-                    .map(url::Url::as_str)
-                    .unwrap_or_default()
-                    .into(),
-                poster: crate::image_cache::get_cached_image(&item.poster),
-                description: item.release_info.as_deref().unwrap_or_default().into(),
-                show_checkmark: false,
-                show_progress: false,
-                progress_value: 0.0,
-            });
+            visible_items.push(catalog_media_card(item));
         }
         visible_items
     };

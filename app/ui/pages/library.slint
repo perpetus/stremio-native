@@ -20,7 +20,8 @@ export component LibraryPage inherits Rectangle {
 
     callback type-changed(string);
     callback sort-changed(string);
-    callback item-selected(string, string);
+    callback item-selected(string, string, string);
+    callback load-next-page;
     callback poster-requested(string);
     in-out property <length> scroll-y: 0px;
 
@@ -105,9 +106,15 @@ export component LibraryPage inherits Rectangle {
             mouse-drag-pan-enabled: true;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
 
-            for row in root.rows : Rectangle {
+            for row[row-index] in root.rows : Rectangle {
                 width: root.width;
                 height: root.card-height + 0.5 * root.unit;
+
+                init => {
+                    if (row-index == root.rows.length - 1) {
+                        root.load-next-page();
+                    }
+                }
 
                 MediaCardGridRow {
                     x: 1.5 * root.unit;
@@ -118,8 +125,8 @@ export component LibraryPage inherits Rectangle {
                     card-width: root.card-width;
                     card-height: root.card-height;
                     spacing: 0.5 * root.unit;
-                    item-selected(id, media-type, _video-id) => {
-                        root.item-selected(id, media-type);
+                    item-selected(id, media-type, video-id) => {
+                        root.item-selected(id, media-type, video-id);
                     }
                     poster-requested(url) => { root.poster-requested(url); }
                 }

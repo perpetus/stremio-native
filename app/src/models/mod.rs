@@ -9,14 +9,53 @@ pub mod search;
 pub mod settings;
 
 use crate::{
-    AddonItem, CalendarMediaItem, EpisodeItem, MainWindow, MediaCardItem, SearchSuggestion,
+    AddonItem, AppModel, AppModelField, BoardSection, CalendarMediaItem, EpisodeItem, MainWindow,
+    MediaCardItem, SearchSuggestion,
 };
+use core_env::DesktopEnv;
 use slint::{ComponentHandle, Model, ModelRc};
 use std::{
     collections::HashMap,
-    sync::{Mutex, OnceLock},
+    ops::Range,
+    sync::{Arc, Mutex, OnceLock},
 };
-use stremio_core::types::addon::Descriptor;
+use stremio_core::{
+    models::{
+        catalogs_with_extra::{Catalog, CatalogsWithExtra},
+        common::{Loadable, ResourceError},
+    },
+    runtime::{
+        Runtime, RuntimeAction,
+        msg::{Action, ActionCatalogsWithExtra},
+    },
+    types::{addon::Descriptor, resource::MetaItemPreview},
+};
+
+const CATALOG_PREVIEW_SIZE: usize = 10;
+const CATALOG_PRELOAD_ROWS: usize = 5;
+const CATALOG_VISIBILITY_QUEUE_CAPACITY: usize = 32;
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CatalogScope {
+    Board,
+    Search,
+}
+
+impl CatalogScope {
+    fn catalogs<'a>(self, model: &'a AppModel) -> &'a CatalogsWithExtra {
+        match self {
+            Self::Board => &model.board,
+            Self::Search => &model.search,
+        }
+    }
+
+    fn field(self) -> AppModelField {
+        match self {
+            Self::Board => AppModelField::Board,
+            Self::Search => AppModelField::Search,
+        }
+    }
+}
 
 pub(crate) type SyncFingerprint = [u8; 32];
 
@@ -149,6 +188,225 @@ pub(crate) fn catalog_name_index<'a>(
     names
 }
 
+/// Turns visible virtual-list rows into one coalesced, bounded Core range load.
+/// The Core range uses an inclusive `end`, despite being represented by `Range`.
+pub(crate) fn spawn_catalog_visibility_loader(
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    scope: CatalogScope,
+) -> tokio::sync::mpsc::Sender<usize> {
+    let (sender, mut receiver) =
+        tokio::sync::mpsc::channel::<usize>(CATALOG_VISIBILITY_QUEUE_CAPACITY);
+    let runtime = Arc::clone(runtime);
+    tokio::spawn(async move {
+        while let Some(first_index) = receiver.recv().await {
+            // Let delegates created in the same Slint layout pass enqueue
+            // their indices before draining, producing one Core range action.
+            tokio::task::yield_now().await;
+            let mut first_visible = first_index;
+            let mut last_visible = first_index;
+            while let Ok(index) = receiver.try_recv() {
+                first_visible = first_visible.min(index);
+                last_visible = last_visible.max(index);
+            }
+
+            let range = runtime.model().ok().and_then(|model| {
+                visible_catalog_load_range(scope.catalogs(&model), first_visible, last_visible)
+            });
+            let Some(range) = range else {
+                continue;
+            };
+
+            tracing::debug!(?scope, ?range, "loading visible addon catalog rows");
+            runtime.dispatch(RuntimeAction {
+                field: Some(scope.field()),
+                action: Action::CatalogsWithExtra(ActionCatalogsWithExtra::LoadRange(range)),
+            });
+        }
+    });
+    sender
+}
+
+pub(crate) fn queue_visible_catalog(sender: &tokio::sync::mpsc::Sender<usize>, index: i32) {
+    let Ok(index) = usize::try_from(index) else {
+        return;
+    };
+    // A full queue already contains more visible rows than a viewport can
+    // display. Dropping another index keeps the UI callback non-blocking; the
+    // worker coalesces the queued indices into a preload window.
+    let _ = sender.try_send(index);
+}
+
+fn visible_catalog_load_range(
+    catalogs: &CatalogsWithExtra,
+    first_visible: usize,
+    last_visible: usize,
+) -> Option<Range<usize>> {
+    if catalogs.selected.is_none() {
+        return None;
+    }
+    bounded_catalog_load_range(
+        catalogs.catalogs.len(),
+        first_visible,
+        last_visible,
+        |index| {
+            catalogs.catalogs[index]
+                .first()
+                .is_none_or(|page| page.content.is_none())
+        },
+    )
+}
+
+fn bounded_catalog_load_range(
+    catalog_count: usize,
+    first_visible: usize,
+    last_visible: usize,
+    mut is_unloaded: impl FnMut(usize) -> bool,
+) -> Option<Range<usize>> {
+    if catalog_count == 0 || first_visible >= catalog_count {
+        return None;
+    }
+    let last_visible = last_visible.max(first_visible).min(catalog_count - 1);
+    let start = first_visible.saturating_sub(CATALOG_PRELOAD_ROWS);
+    let end = last_visible
+        .saturating_add(CATALOG_PRELOAD_ROWS)
+        .min(catalog_count - 1);
+    (start..=end).any(&mut is_unloaded).then_some(start..end)
+}
+
+pub(crate) fn fingerprint_catalog_projection(
+    fingerprint: &mut Fingerprint,
+    catalogs: &CatalogsWithExtra,
+) {
+    fingerprint.usize(catalogs.catalogs.len());
+    for catalog in &catalogs.catalogs {
+        fingerprint.usize(catalog.len());
+        let mut remaining_items = CATALOG_PREVIEW_SIZE;
+        for page in catalog {
+            fingerprint.str(page.request.base.as_str());
+            fingerprint.str(&page.request.path.r#type);
+            fingerprint.str(&page.request.path.id);
+            for extra in &page.request.path.extra {
+                fingerprint.str(&extra.name);
+                fingerprint.str(&extra.value);
+            }
+            match &page.content {
+                None => fingerprint.u64(0),
+                Some(Loadable::Loading) => fingerprint.u64(1),
+                Some(Loadable::Ready(items)) => {
+                    fingerprint.u64(2);
+                    for item in items.iter().take(remaining_items) {
+                        fingerprint.str(&item.id);
+                        fingerprint.str(&item.r#type);
+                        fingerprint.str(&item.name);
+                        fingerprint.optional_str(item.poster.as_ref().map(url::Url::as_str));
+                        fingerprint.optional_str(item.release_info.as_deref());
+                        fingerprint.optional_str(item.behavior_hints.default_video_id.as_deref());
+                    }
+                    remaining_items =
+                        remaining_items.saturating_sub(items.len().min(remaining_items));
+                }
+                Some(Loadable::Err(error)) => {
+                    fingerprint.u64(3);
+                    fingerprint.str(&error.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// Projects exactly one lightweight Slint row for one Core catalog. Unloaded
+/// catalogs remain in the model as placeholders so ListView virtualization can
+/// request them as they approach the viewport.
+pub(crate) fn project_catalog_section(
+    catalog_index: usize,
+    catalog: &Catalog<MetaItemPreview>,
+    catalog_name: &str,
+) -> Option<BoardSection> {
+    let first_page = catalog.first()?;
+    let request = &first_page.request;
+    let (loading, error_message, project_items) = match &first_page.content {
+        None | Some(Loadable::Loading) => (true, String::new(), false),
+        Some(Loadable::Ready(_)) => (false, String::new(), true),
+        Some(Loadable::Err(ResourceError::EmptyContent)) => return None,
+        Some(Loadable::Err(error)) => (false, error.to_string(), false),
+    };
+
+    let mut cards = Vec::with_capacity(CATALOG_PREVIEW_SIZE);
+    if project_items {
+        for item in catalog
+            .iter()
+            .filter_map(|page| page.content.as_ref().and_then(Loadable::ready))
+            .flatten()
+            .take(CATALOG_PREVIEW_SIZE)
+        {
+            cards.push(catalog_media_card(item));
+        }
+    }
+
+    let mut media_type = request.path.r#type.clone();
+    if let Some(first) = media_type.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+
+    Some(BoardSection {
+        title: format!("{catalog_name} – {media_type}").into(),
+        r_type: request.path.r#type.as_str().into(),
+        catalog_id: request.path.id.as_str().into(),
+        addon_base: request.base.as_str().into(),
+        catalog_index: i32::try_from(catalog_index).unwrap_or(i32::MAX),
+        loading,
+        error_message: error_message.into(),
+        items: ModelRc::new(slint::VecModel::from(cards)),
+        is_continue_watching: false,
+    })
+}
+
+pub(crate) fn catalog_media_card(item: &MetaItemPreview) -> MediaCardItem {
+    MediaCardItem {
+        id: item.id.as_str().into(),
+        media_type: item.r#type.as_str().into(),
+        video_id: item
+            .behavior_hints
+            .default_video_id
+            .as_deref()
+            .unwrap_or_default()
+            .into(),
+        title: item.name.as_str().into(),
+        poster_url: item
+            .poster
+            .as_ref()
+            .map(url::Url::as_str)
+            .unwrap_or_default()
+            .into(),
+        poster: crate::image_cache::get_cached_image(&item.poster),
+        description: item.release_info.as_deref().unwrap_or_default().into(),
+        show_checkmark: false,
+        show_progress: false,
+        progress_value: 0.0,
+    }
+}
+
+/// Reproduce `LibraryItemDeepLinks` plus the web client's
+/// `detailsVideosFirst` choice without allocating deep-link strings.
+pub(crate) fn library_details_video_id<'a>(
+    state_video_id: Option<&'a str>,
+    time_offset: u64,
+    default_video_id: Option<&'a str>,
+    videos_first: bool,
+) -> Option<&'a str> {
+    if videos_first {
+        // A regular Library card prefers the metadata/videos route. Core only
+        // suppresses that route when the item supplies a default video.
+        default_video_id
+    } else {
+        // Continue Watching prefers the progressed video and then Core's
+        // default video before falling back to metadata-only details.
+        state_video_id
+            .filter(|_| time_offset > 0)
+            .or(default_video_id)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MediaGridMetrics {
     pub columns: usize,
@@ -251,6 +509,7 @@ pub(crate) fn refresh_cached_media_images(ui: &MainWindow, urls: &[String]) -> u
     updated += patch_search_suggestions(&ui.get_search_suggestions(), &images);
     updated += patch_addons(&ui.get_addons_list(), &images);
     updated += patch_episode_items(&ui.get_detail_episodes(), &images);
+    updated += patch_episode_items(&ui.get_player_episodes(), &images);
 
     let mut addon_details = ui.get_addon_details_addon();
     if let Some(logo) = images.get(addon_details.logo_url.as_str()) {
@@ -383,4 +642,71 @@ fn patch_episode_items(
         updated += 1;
     }
     updated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_catalog_load_range_preloads_around_visible_rows() {
+        let unloaded = [
+            false, false, false, false, false, false, false, true, false, false,
+        ];
+
+        let range = bounded_catalog_load_range(unloaded.len(), 4, 4, |index| unloaded[index]);
+
+        assert_eq!(range, Some(0..9));
+    }
+
+    #[test]
+    fn bounded_catalog_load_range_skips_an_already_loaded_window() {
+        let range = bounded_catalog_load_range(50, 20, 24, |_| false);
+
+        assert_eq!(range, None);
+    }
+
+    #[test]
+    fn catalog_media_card_preserves_addon_item_details_identity() {
+        let item: MetaItemPreview = serde_json::from_value(serde_json::json!({
+            "id": "addon-series-id",
+            "type": "series",
+            "name": "Addon series",
+            "behaviorHints": {
+                "defaultVideoId": "addon-episode-id"
+            }
+        }))
+        .expect("valid metadata preview");
+
+        let card = catalog_media_card(&item);
+
+        assert_eq!(
+            (card.media_type.to_string(), card.video_id.to_string()),
+            ("series".to_owned(), "addon-episode-id".to_owned())
+        );
+    }
+
+    #[test]
+    fn regular_library_navigation_prefers_metadata_unless_core_has_a_default_video() {
+        assert_eq!(
+            library_details_video_id(Some("resume-video"), 5_000, None, true),
+            None
+        );
+        assert_eq!(
+            library_details_video_id(Some("resume-video"), 5_000, Some("default-video"), true,),
+            Some("default-video")
+        );
+    }
+
+    #[test]
+    fn continue_watching_navigation_prefers_progress_then_default_video() {
+        assert_eq!(
+            library_details_video_id(Some("resume-video"), 5_000, Some("default-video"), false,),
+            Some("resume-video")
+        );
+        assert_eq!(
+            library_details_video_id(Some("stale-video"), 0, Some("default-video"), false,),
+            Some("default-video")
+        );
+    }
 }

@@ -3,7 +3,17 @@
 # table into the Stremio GUI executable. The GUI supplies its own icon/version.
 STREAM_SERVER_SKIP_WINDOWS_RESOURCES = "1"
 
-[target.'cfg(all(windows, target_env = "msvc"))']
-# Keep Rust and its statically linked native crates on the static MSVC runtime.
-# libmpv remains isolated behind its DLL C API boundary.
-rustflags = ["-C", "target-feature=+crt-static"]
+[target.'cfg(all(target_arch = "x86_64", windows, target_env = "msvc"))']
+# Match the pinned MPV x86-64-v3 baseline while keeping Rust and statically
+# linked native crates on the static MSVC runtime.
+rustflags = [
+    "-C",
+    "target-cpu=x86-64-v3",
+    "-C",
+    "target-feature=+crt-static",
+]
+
+[target.'cfg(all(target_arch = "x86_64", target_os = "linux"))']
+# Keep official x64 artifacts reproducible across CI runners; `native` would
+# silently make the release depend on whichever CPU happened to build it.
+rustflags = ["-C", "target-cpu=x86-64-v3"]

@@ -38,15 +38,25 @@ export component MediaCard inherits Rectangle {
     callback menu-clicked;
     callback poster-requested(string);
 
-    init => {
-        if (root.item.poster.width == 0 && root.item.poster-url != "") {
+    function request-poster-if-needed() {
+        if ((!root.enable-lazy-loading || root.is-visible)
+            && root.item.poster.width == 0
+            && root.item.poster-url != "") {
             root.poster-requested(root.item.poster-url);
         }
     }
+
+    init => {
+        root.request-poster-if-needed();
+    }
     changed item => {
-        if (root.item.poster.width == 0 && root.item.poster-url != "") {
-            root.poster-requested(root.item.poster-url);
-        }
+        root.request-poster-if-needed();
+    }
+    changed is-visible => {
+        root.request-poster-if-needed();
+    }
+    changed enable-lazy-loading => {
+        root.request-poster-if-needed();
     }
 
     property <length> poster-width: max(0px, root.width - 2 * root.unit);

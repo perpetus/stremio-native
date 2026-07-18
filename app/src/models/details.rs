@@ -26,6 +26,7 @@ static ACTIVE_SEASON: OnceLock<Mutex<i32>> = OnceLock::new();
 static ACTIVE_EPISODE_IDX: OnceLock<Mutex<usize>> = OnceLock::new();
 static EPISODE_SEARCH_QUERY: OnceLock<Mutex<String>> = OnceLock::new();
 static LAST_LOADED_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static PENDING_SEASON_SELECTION_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 thread_local! {
     static LAST_SYNCED_EPISODES: std::cell::Cell<Option<SyncFingerprint>> = const { std::cell::Cell::new(None) };
 }
@@ -66,6 +67,10 @@ pub fn open_details_route(
     navigation: &NavigationController,
     id: &str,
 ) {
+    *PENDING_SEASON_SELECTION_ID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(id.to_owned());
     navigation.dispatch_and_project(
         ui,
         crate::NavigationIntent::OpenDetails {
@@ -120,14 +125,6 @@ pub fn load_meta_details_for_video(
         }
     };
 
-    // Reset season/episode selections for new details lookup
-    if let Ok(mut s) = get_active_season().lock() {
-        *s = 1;
-    }
-    if let Ok(mut ep) = get_active_episode_idx().lock() {
-        *ep = 0;
-    }
-
     let meta_path = ResourcePath {
         resource: "meta".to_string(),
         r#type: r_type.clone(),
@@ -135,23 +132,32 @@ pub fn load_meta_details_for_video(
         extra: vec![],
     };
 
-    let stream_id = video_id.filter(|value| !value.is_empty()).unwrap_or(id);
-
-    let stream_path = ResourcePath {
-        resource: "stream".to_string(),
-        r#type: r_type,
-        id: stream_id,
-        extra: vec![],
-    };
-
     rt.dispatch(RuntimeAction {
         field: None,
-        action: Action::Load(ActionLoad::MetaDetails(DetailsSelected {
-            meta_path,
-            stream_path: Some(stream_path),
-            guess_stream: false,
-        })),
+        action: Action::Load(ActionLoad::MetaDetails(details_selection(
+            meta_path, video_id,
+        ))),
     });
+}
+
+/// Match the web adapter's details route contract: an explicit video opens
+/// that video's streams, while a metadata-only route lets Core select the
+/// appropriate video after the metadata response arrives.
+fn details_selection(meta_path: ResourcePath, video_id: Option<String>) -> DetailsSelected {
+    let stream_path = video_id
+        .filter(|value| !value.is_empty())
+        .map(|id| ResourcePath {
+            resource: "stream".to_owned(),
+            r#type: meta_path.r#type.clone(),
+            id,
+            extra: vec![],
+        });
+
+    DetailsSelected {
+        meta_path,
+        stream_path,
+        guess_stream: true,
+    }
 }
 
 pub fn setup(
@@ -222,10 +228,32 @@ pub fn setup(
         }
     });
 
+    ui.on_details_notifications_changed({
+        let runtime = runtime.clone();
+        move |enabled| {
+            let item_id = runtime.model().ok().and_then(|model| {
+                model
+                    .meta_details
+                    .library_item
+                    .as_ref()
+                    .map(|item| item.id.clone())
+            });
+            if let Some(item_id) = item_id {
+                runtime.dispatch(RuntimeAction {
+                    field: None,
+                    action: Action::Ctx(ActionCtx::ToggleLibraryItemNotifications(
+                        item_id, !enabled,
+                    )),
+                });
+            }
+        }
+    });
+
     // Season changed callback
     ui.on_details_season_changed({
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
+        let navigation = navigation.clone();
         move |season| {
             if let Ok(mut s) = get_active_season().lock() {
                 *s = season;
@@ -234,27 +262,84 @@ pub fn setup(
                 *ep = 0;
             } // reset episode
 
-            let rt = runtime.clone();
-            let ui_weak = ui_weak.clone();
-            tokio::spawn(async move {
-                reload_stream_for_selected_episode(&rt, &ui_weak).await;
-            });
+            // Season selection only changes the videos list in the web client.
+            // Reproject immediately so cached metadata still refreshes episode
+            // thumbnails; streams are requested only after an episode click.
+            if let Some(ui) = ui_weak.upgrade()
+                && let Ok(model) = runtime.model()
+            {
+                let is_in_library = model
+                    .meta_details
+                    .selected
+                    .as_ref()
+                    .is_some_and(|selected| {
+                        model
+                            .ctx
+                            .library
+                            .items
+                            .get(&selected.meta_path.id)
+                            .is_some_and(|item| !item.removed)
+                    });
+                sync(
+                    &ui,
+                    &model.meta_details,
+                    is_in_library,
+                    &ui_weak,
+                    &runtime,
+                    &navigation,
+                );
+            }
+        }
+    });
+
+    ui.on_details_season_step({
+        let runtime = runtime.clone();
+        let ui_weak = ui_weak.clone();
+        move |direction| {
+            let seasons =
+                runtime.model().ok().and_then(|model| {
+                    let selected_id = model
+                        .meta_details
+                        .selected
+                        .as_ref()
+                        .map(|selected| selected.meta_path.id.as_str())?;
+                    model.meta_details.meta_items.iter().find_map(|resource| {
+                        match &resource.content {
+                            Some(Loadable::Ready(meta)) if meta.preview.id == selected_id => {
+                                Some(ordered_series_seasons(meta))
+                            }
+                            _ => None,
+                        }
+                    })
+                });
+            let Some(seasons) = seasons else {
+                return;
+            };
+            let current = *get_active_season()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let season = adjacent_series_season(&seasons, current, direction);
+            if season != current
+                && let Some(ui) = ui_weak.upgrade()
+            {
+                ui.set_detail_active_season(season);
+                ui.invoke_details_season_changed(season);
+            }
         }
     });
 
     // Episode changed callback
     ui.on_details_episode_changed({
         let runtime = runtime.clone();
-        let ui_weak = ui_weak.clone();
-        move |episode_idx| {
+        move |episode_idx, video_id| {
             if let Ok(mut ep) = get_active_episode_idx().lock() {
                 *ep = episode_idx as usize;
             }
 
             let rt = runtime.clone();
-            let ui_weak = ui_weak.clone();
+            let video_id = video_id.to_string();
             tokio::spawn(async move {
-                reload_stream_for_selected_episode(&rt, &ui_weak).await;
+                reload_stream_for_video(&rt, video_id);
             });
         }
     });
@@ -393,73 +478,91 @@ pub fn setup(
     });
 }
 
-async fn reload_stream_for_selected_episode(
-    rt: &Arc<Runtime<DesktopEnv, AppModel>>,
-    _ui_weak: &slint::Weak<MainWindow>,
-) {
+fn reload_stream_for_video(rt: &Arc<Runtime<DesktopEnv, AppModel>>, video_id: String) {
     let model = rt.model().expect("model read failed");
-    let selection =
-        model.meta_details.selected.as_ref().and_then(|selected| {
-            let meta =
-                model.meta_details.meta_items.iter().find_map(|resource| {
-                    match &resource.content {
-                        Some(Loadable::Ready(item)) if item.preview.id == selected.meta_path.id => {
-                            Some(item)
-                        }
-                        _ => None,
-                    }
-                })?;
-            let active_season = *get_active_season()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let active_episode_idx = *get_active_episode_idx()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let video_id = meta
-                .videos
-                .iter()
-                .filter(|video| {
-                    video
-                        .series_info
-                        .as_ref()
-                        .is_some_and(|info| info.season as i32 == active_season)
-                })
-                .nth(active_episode_idx)?
-                .id
-                .clone();
-            Some((selected.meta_path.clone(), video_id))
-        });
+    let meta_path = model
+        .meta_details
+        .selected
+        .as_ref()
+        .map(|selected| selected.meta_path.clone());
     drop(model);
 
-    if let Some((meta_path, video_id)) = selection {
+    if let Some(meta_path) = meta_path {
         rt.dispatch(RuntimeAction {
             field: None,
-            action: Action::Load(ActionLoad::MetaDetails(DetailsSelected {
+            action: Action::Load(ActionLoad::MetaDetails(details_selection(
                 meta_path,
-                stream_path: Some(ResourcePath {
-                    resource: "stream".to_owned(),
-                    r#type: "series".to_owned(),
-                    id: video_id,
-                    extra: vec![],
-                }),
-                guess_stream: false,
-            })),
+                Some(video_id),
+            ))),
         });
     }
 }
 
-fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>) {
+pub(crate) fn ordered_series_seasons(meta: &MetaItem) -> Vec<i32> {
+    let mut seasons = meta
+        .videos
+        .iter()
+        .filter_map(|video| video.series_info.as_ref().map(|info| info.season as i32))
+        .collect::<Vec<_>>();
+    seasons.sort_unstable_by_key(|season| if *season == 0 { i32::MAX } else { *season });
+    seasons.dedup();
+    seasons
+}
+
+pub(crate) fn adjacent_series_season(seasons: &[i32], current: i32, direction: i32) -> i32 {
+    let current_index = seasons
+        .iter()
+        .position(|season| *season == current)
+        .unwrap_or_default();
+    let next_index = if direction < 0 {
+        current_index.saturating_sub(1)
+    } else {
+        (current_index + 1).min(seasons.len().saturating_sub(1))
+    };
+    seasons.get(next_index).copied().unwrap_or(current)
+}
+
+fn preferred_series_season(seasons: &[i32], resumed_season: Option<i32>) -> Option<i32> {
+    resumed_season
+        .filter(|season| *season != 0 && seasons.contains(season))
+        .or_else(|| seasons.iter().copied().find(|season| *season != 0))
+        .or_else(|| seasons.first().copied())
+}
+
+pub(crate) fn series_videos(meta: &MetaItem, season: i32) -> Vec<&Video> {
+    let mut videos = meta
+        .videos
+        .iter()
+        .filter(|video| {
+            video
+                .series_info
+                .as_ref()
+                .is_some_and(|info| info.season as i32 == season)
+        })
+        .collect::<Vec<_>>();
+    videos.sort_unstable_by(|left, right| {
+        left.series_info
+            .as_ref()
+            .map(|info| info.episode)
+            .unwrap_or_default()
+            .cmp(
+                &right
+                    .series_info
+                    .as_ref()
+                    .map(|info| info.episode)
+                    .unwrap_or_default(),
+            )
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    videos
+}
+
+fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>, episodes: &[&Video]) {
     let is_series = ui.get_detail_is_series();
     if is_series {
         if let Some(meta) = meta_item {
             // Get available seasons
-            let mut seasons: Vec<i32> = meta
-                .videos
-                .iter()
-                .filter_map(|v| v.series_info.as_ref().map(|info| info.season as i32))
-                .collect();
-            seasons.sort();
-            seasons.dedup();
+            let seasons = ordered_series_seasons(meta);
 
             let slint_seasons: Vec<i32> = seasons.clone();
             let seasons_model = slint::VecModel::from(slint_seasons);
@@ -474,18 +577,6 @@ fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>) {
                 *s
             };
             ui.set_detail_active_season(active_season);
-
-            // Get episodes matching active season
-            let episodes: Vec<&Video> = meta
-                .videos
-                .iter()
-                .filter(|v| {
-                    v.series_info
-                        .as_ref()
-                        .map(|info| info.season as i32 == active_season)
-                        .unwrap_or(false)
-                })
-                .collect();
 
             let episode_names: Vec<slint::SharedString> = episodes
                 .iter()
@@ -507,6 +598,57 @@ fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>) {
             };
             ui.set_detail_active_episode_idx(active_episode_idx as i32);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta_path() -> ResourcePath {
+        ResourcePath {
+            resource: "meta".to_owned(),
+            r#type: "series".to_owned(),
+            id: "series-id".to_owned(),
+            extra: vec![],
+        }
+    }
+
+    #[test]
+    fn metadata_route_leaves_stream_selection_to_core() {
+        let selected = details_selection(meta_path(), None);
+
+        assert!(selected.stream_path.is_none());
+        assert!(selected.guess_stream);
+    }
+
+    #[test]
+    fn explicit_video_route_preserves_episode_identity() {
+        let selected = details_selection(meta_path(), Some("series-id:2:4".to_owned()));
+        let stream_path = selected.stream_path.expect("explicit stream path");
+
+        assert_eq!(stream_path.r#type, "series");
+        assert_eq!(stream_path.id, "series-id:2:4");
+        assert!(selected.guess_stream);
+    }
+
+    #[test]
+    fn preferred_season_uses_resume_then_first_non_special() {
+        let seasons = [1, 2, 3, 0];
+
+        assert_eq!(preferred_series_season(&seasons, Some(3)), Some(3));
+        assert_eq!(preferred_series_season(&seasons, Some(9)), Some(1));
+        assert_eq!(preferred_series_season(&[0], Some(0)), Some(0));
+    }
+
+    #[test]
+    fn season_steps_follow_core_order_including_specials() {
+        let seasons = [1, 3, 0];
+
+        assert_eq!(adjacent_series_season(&seasons, 1, 1), 3);
+        assert_eq!(adjacent_series_season(&seasons, 3, 1), 0);
+        assert_eq!(adjacent_series_season(&seasons, 0, 1), 0);
+        assert_eq!(adjacent_series_season(&seasons, 1, -1), 1);
     }
 }
 
@@ -555,6 +697,25 @@ pub(crate) fn projection_fingerprint(
             .library_item
             .as_ref()
             .is_some_and(|item| item.watched()),
+    );
+    fingerprint.bool(
+        meta_details
+            .library_item
+            .as_ref()
+            .is_none_or(|item| !item.state.no_notif),
+    );
+    fingerprint.optional_str(
+        meta_details
+            .library_item
+            .as_ref()
+            .and_then(|item| item.state.video_id.as_deref()),
+    );
+    fingerprint.u64(
+        meta_details
+            .library_item
+            .as_ref()
+            .map(|item| item.progress().to_bits())
+            .unwrap_or_default(),
     );
     fingerprint.usize(meta_details.meta_items.len());
     for resource in &meta_details.meta_items {
@@ -798,13 +959,25 @@ pub fn sync(
                 .map(|item| item.watched())
                 .unwrap_or(false),
         );
+        ui.set_detail_notifications_enabled(
+            meta_details
+                .library_item
+                .as_ref()
+                .is_none_or(|item| !item.state.no_notif),
+        );
 
-        // Detect if loaded item has changed to reset in-stream-view/search query
+        let is_series = meta_details
+            .selected
+            .as_ref()
+            .is_some_and(|selected| selected.meta_path.r#type == "series");
+
+        // Reset route-local video state for a newly opened details route, even
+        // when Core serves the same metadata from cache and emits no event.
         let id_changed = {
             let mut last_id_guard = LAST_LOADED_ID
                 .get_or_init(|| Mutex::new(None))
                 .lock()
-                .unwrap();
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if last_id_guard.as_deref() != Some(selected_id) {
                 *last_id_guard = Some(selected_id.to_owned());
                 true
@@ -812,8 +985,39 @@ pub fn sync(
                 false
             }
         };
+        let route_opened = {
+            let mut pending = PENDING_SEASON_SELECTION_ID
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if pending.as_deref() == Some(selected_id) {
+                *pending = None;
+                true
+            } else {
+                false
+            }
+        };
 
-        if id_changed {
+        if id_changed || route_opened {
+            let resumed_season = meta_details
+                .library_item
+                .as_ref()
+                .and_then(|item| item.state.video_id.as_deref())
+                .and_then(|video_id| meta_item.videos.iter().find(|video| video.id == video_id))
+                .and_then(|video| video.series_info.as_ref())
+                .map(|info| info.season as i32);
+            let preferred_season = is_series
+                .then(|| {
+                    preferred_series_season(&ordered_series_seasons(meta_item), resumed_season)
+                })
+                .flatten()
+                .unwrap_or(1);
+            *get_active_season()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = preferred_season;
+            *get_active_episode_idx()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = 0;
             if let Ok(mut query) = get_search_query().lock() {
                 query.clear();
             }
@@ -825,26 +1029,28 @@ pub fn sync(
         }
 
         // Map EpisodeItem list
-        let is_series = meta_details
-            .selected
-            .as_ref()
-            .is_some_and(|selected| selected.meta_path.r#type == "series");
         ui.set_detail_is_series(is_series);
 
         let mut slint_episodes = Vec::new();
         let mut episode_fingerprint = Fingerprint::new();
+        let mut videos_for_active_season = Vec::new();
         if is_series {
-            let active_season = *get_active_season().lock().unwrap();
+            let seasons = ordered_series_seasons(meta_item);
+            let active_season = {
+                let mut season = get_active_season()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if !seasons.contains(&*season) {
+                    *season = preferred_series_season(&seasons, None).unwrap_or(1);
+                }
+                *season
+            };
+            videos_for_active_season = series_videos(meta_item, active_season);
 
             let search_query = get_search_query().lock().unwrap().to_lowercase();
             let now = chrono::Utc::now();
 
-            for video in meta_item.videos.iter().filter(|video| {
-                video
-                    .series_info
-                    .as_ref()
-                    .is_some_and(|info| info.season as i32 == active_season)
-            }) {
+            for video in &videos_for_active_season {
                 let ep_num = video
                     .series_info
                     .as_ref()
@@ -854,7 +1060,7 @@ pub fn sync(
                 let released_str = video
                     .released
                     .map(|dt| dt.format("%b %d, %Y").to_string())
-                    .unwrap_or_else(|| "Upcoming".to_string());
+                    .unwrap_or_default();
 
                 if !search_query.is_empty() {
                     let matches_title = title.to_lowercase().contains(&search_query);
@@ -871,10 +1077,18 @@ pub fn sync(
                     .map(|watched| watched.get_video(&video.id))
                     .unwrap_or(false);
 
-                let is_upcoming = video
-                    .released
-                    .map(|released| released > now)
-                    .unwrap_or(false);
+                let is_scheduled = meta_item.preview.behavior_hints.has_scheduled_videos;
+                let is_upcoming = is_scheduled
+                    && video
+                        .released
+                        .map(|released| released > now)
+                        .unwrap_or(false);
+                let progress = meta_details
+                    .library_item
+                    .as_ref()
+                    .filter(|item| item.state.video_id.as_deref() == Some(video.id.as_str()))
+                    .map(|item| item.progress() as f32)
+                    .unwrap_or_default();
 
                 let thumb_url = video
                     .thumbnail
@@ -890,6 +1104,8 @@ pub fn sync(
                 episode_fingerprint.u64(u64::from(ep_num));
                 episode_fingerprint.bool(is_upcoming);
                 episode_fingerprint.bool(is_watched);
+                episode_fingerprint.bool(is_scheduled);
+                episode_fingerprint.u64(u64::from(progress.to_bits()));
 
                 slint_episodes.push(EpisodeItem {
                     id: video.id.as_str().into(),
@@ -905,6 +1121,8 @@ pub fn sync(
                     episode_num: ep_num as i32,
                     is_upcoming,
                     is_watched,
+                    is_scheduled,
+                    progress,
                 });
             }
         }
@@ -923,6 +1141,6 @@ pub fn sync(
             ui.set_detail_episodes(slint::ModelRc::new(episodes_model));
         }
 
-        sync_series_details(ui, Some(meta_item));
+        sync_series_details(ui, Some(meta_item), &videos_for_active_season);
     }
 }

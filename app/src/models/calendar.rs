@@ -139,13 +139,14 @@ pub fn setup(
         let runtime = runtime.clone();
         let ui_weak = ui_weak.clone();
         let navigation = navigation.clone();
-        move |id, media_type| {
+        move |id, media_type, video_id| {
             let id = id.to_string();
             let media_type = media_type.to_string();
+            let video_id = (!video_id.is_empty()).then(|| video_id.to_string());
             if let Some(ui) = ui_weak.upgrade() {
                 open_details_route(&ui, &runtime, &navigation, &id);
             }
-            load_meta_details_for_video(&runtime, id, Some(media_type), None);
+            load_meta_details_for_video(&runtime, id, Some(media_type), video_id);
         }
     });
 }
@@ -190,6 +191,7 @@ pub fn sync(ui: &MainWindow, calendar: &Calendar, ui_weak: &slint::Weak<MainWind
                 .map(|content| CalendarMediaItem {
                     meta_id: content.meta_item.preview.id.as_str().into(),
                     media_type: content.meta_item.preview.r#type.as_str().into(),
+                    video_id: content.video.id.as_str().into(),
                     title: content.meta_item.preview.name.as_str().into(),
                     poster_url: content
                         .meta_item
@@ -258,6 +260,7 @@ pub(crate) fn state_fingerprint(calendar: &Calendar) -> SyncFingerprint {
             let preview = &content.meta_item.preview;
             fingerprint.str(&preview.id);
             fingerprint.str(&preview.r#type);
+            fingerprint.str(&content.video.id);
             fingerprint.str(&preview.name);
             fingerprint.optional_str(preview.poster.as_ref().map(url::Url::as_str));
         }

@@ -163,11 +163,64 @@ The persisted Turso database contains the expected authenticated profile and Con
 
 Core marks storage effects as sequential, but the desktop environment previously spawned both sequential and concurrent effects identically. A single FIFO worker now awaits sequential effects in submission order, preventing an older profile or library snapshot from overwriting a newer database value. A focused executor test records ordering even when the first submitted future yields.
 
-The first-login addon gap came from Core's `ProfileChanged` behavior for `CatalogsWithExtra`: it rebuilds catalog request descriptors with unloaded content and intentionally does not start a range. The desktop event loop now detects unloaded pages introduced into the initial Board/Search range and dispatches only that bounded range after releasing the model lock. Persisted-profile startup still uses the existing initial range load, so it does not perform redundant full-catalog work.
+The first-login addon gap came from Core's `ProfileChanged` behavior for
+`CatalogsWithExtra`: it rebuilds catalog request descriptors with unloaded
+content and intentionally does not start a range. Board and Search now retain
+one virtualized Slint row for every Core catalog, including unloaded, loading,
+and non-empty error states. Visible delegates coalesce their indices through a
+bounded queue and request a five-row preload window. This replaces the previous
+eager first-21-catalog startup/profile workaround, so newly hydrated addon rows
+load without a restart while off-screen providers perform no request or poster
+work.
 
 Calendar metadata requests are cached by Core and do not automatically rebuild when the library or addon catalog sources change. Calendar entry now fingerprints only its relevant non-temporary library items plus addon catalogs, unloads the Calendar submodel only when that source changes, and otherwise reuses the ready schedule. Startup storage also uses Core's canonical constants, with a targeted legacy fallback for the historical `server_urls` key.
 
 The official desktop interaction distinguishes browsing from navigation: a single Discover click selects and loads the side preview, while a double-click opens full details. Native Library keeps its direct single-click details route. The shared media card now exposes both signals, but only Discover consumes the double-click activation path.
+
+### Core web behavior parity audit
+
+The media entry points now follow the same identity and route rules as the Core
+web serializers instead of reconstructing requests from catalog context:
+
+- Board, Search, and Discover use every item's own media type and
+  `behaviorHints.defaultVideoId`, so mixed-type addon catalogs open the correct
+  metadata and stream resources.
+- A metadata-only details route sends no stream path and enables Core stream
+  guessing; an explicit card/episode route sends its exact video id and still
+  enables guessing. This matches `useMetaDetails` and removes the prior fallback
+  that incorrectly used the metadata id as a stream id.
+- Calendar carries `content.video.id` through the Slint model and opens the
+  exact scheduled episode, matching `CalendarItemDeepLinks`.
+- Regular Library cards prefer metadata/videos unless Core supplies a default
+  video. Continue Watching prefers a progressed state video, then a default
+  video. These are the same `LibraryItemDeepLinks` plus
+  `detailsVideosFirst` rules used by the web client.
+- Local-search suggestions are deduplicated by title and submit that title to
+  the global Search model instead of opening the suggestion's metadata directly.
+  The UI retains the richer native suggestion projection without changing Core
+  navigation semantics.
+- Local suggestions use the web client's 250 ms debounce. Discover and Library
+  request Core's next page only when the virtualized final row becomes visible,
+  and Board `See All` reuses the original Core request including addon extras.
+- Series seasons use the resumed library video when available, then the first
+  non-special season, with Specials ordered last as on the web. Previous/next
+  follows that exact list (including gaps and Specials) instead of numeric
+  `season +/- 1`. Season changes
+  immediately rebuild the cached episode projection and request its thumbnails
+  without loading streams; an episode click carries its exact video id, so a
+  filtered list cannot load a different episode by stale positional index.
+- The player episode selector now follows the web side drawer: ordered
+  previous/dropdown/next season navigation, virtualized thumbnail episode rows,
+  exact current-video highlighting, watched/upcoming/progress state, and Core's
+  real `NextVideo` action across season boundaries. Only the visible season is
+  projected and its fingerprint intentionally excludes playback time, so normal
+  time updates do not rebuild rows or request thumbnails again.
+- The series notification toggle now projects `LibraryItem.state.noNotif` and
+  dispatches Core's `ToggleLibraryItemNotifications` action, including context
+  updates that do not require rebuilding the full details model.
+- Library cards project Core's real watched and progress values instead of an
+  unconditional checkmark, so state changes patch only the affected model
+  projection while matching the web serializer.
 
 ## Implementation checklist
 
@@ -186,6 +239,7 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] Cache buffering no longer masks decoded video.
 - [x] Network-backed MPV subtitle commands no longer block Player Back teardown.
 - [x] Playback, seek, volume, mute, fullscreen, track, speed, and episode callbacks wired.
+- [x] Match the web player episode drawer with season navigation, rich virtualized episode rows, exact video selection, watched state, and cross-season Core next-video behavior.
 - [x] Seek and volume sliders use explicit pointer-drag behavior and root-anchored progress layers.
 - [x] Top back/title/fullscreen geometry moved toward official web layout.
 - [ ] Finish exact control-bar spacing and responsive collision handling.
@@ -201,8 +255,9 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] `See All` restored to catalog headers.
 - [x] Continue Watching kept visible while catalog sections refresh.
 - [x] Make Continue Watching projection deterministic across profile/model update races.
-- [ ] Verify correct video id, progress, poster, order, and dismiss action against core's preview model.
-- [ ] Finish smooth wheel scrolling and horizontal pointer drag for catalog rows.
+- [x] Match Core's progressed-video/default-video selection order for Continue Watching details navigation.
+- [ ] Runtime-verify progress, poster, order, and dismiss action against Core's preview model.
+- [x] Keep Slint's native smooth wheel/pointer-drag physics for catalog rows while matching the web client's lazy image behavior: horizontally off-screen cards no longer request or upload poster textures, with a one-card preload margin for seamless scrolling.
 - [x] Ensure Calendar has isolated loading state, source-aware cache invalidation, and no stale tab-snapshot overwrite.
 
 ### Discovery, details, and search
@@ -215,7 +270,16 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] Repeated details visits immediately reuse and project a matching ready Core cache entry.
 - [x] Details Back navigation remains available while metadata is loading.
 - [x] Discover uses single-click preview and double-click details, while Library opens details with one click.
-- [x] First-login addon-provider Movie/Series catalogs load their bounded initial Board/Search range without an application restart.
+- [x] First-login addon-provider Movie/Series catalogs load from bounded visible Board/Search ranges without an application restart or eager off-screen requests.
+- [x] Board and Search retain every addon catalog as a virtualized ready/loading/error row, coalesce visible-row range requests with bounded preloading, and omit only Core `EmptyContent` rows like the web client.
+- [x] Addon-provided Board, Search, and Discover cards preserve each item's own media type and default video id when opening metadata details.
+- [x] Details loads match the web adapter: metadata-only routes let Core guess a stream, while explicit videos preserve their exact stream identity.
+- [x] Search suggestions deduplicate by query and open global Search results like the web client instead of bypassing Search for details.
+- [x] Calendar cards preserve the scheduled episode id; Library and Continue Watching match Core deep-link video selection priorities.
+- [x] Discover and Library perform virtualized Core `LoadNextPage` pagination; Board `See All` preserves the full addon catalog request.
+- [x] Details default to the resumed season, order episodes deterministically, refresh thumbnails immediately on season changes, and load an episode by exact video id.
+- [x] Details notification state and toggle are wired to Core with the same enabled/disabled semantics as the web client.
+- [x] Library cards use Core's watched/progress semantics rather than static status decoration.
 - [ ] Complete 1:1 discovery spacing, filters, poster grid, and right preview panel.
 - [ ] Complete 1:1 details metadata, bottom actions, provider selector, and stream rows.
 - [ ] Complete 1:1 search page layout and empty/loading states.
@@ -237,6 +301,7 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - [x] Windows CI produces the executable, verified MPV runtime/licenses, installer, and updater archive from a clean checkout.
 - [x] Linux CI installs system libmpv development metadata and builds the portable release path.
 - [x] Linux MPV artifact hashing is compatible with `sha2` 0.11 without digest-type formatting assumptions.
+- [x] Windows and Linux x64 Rust code uses MPV's reproducible `x86-64-v3` baseline; the local optimized Windows vcpkg graph uses a cache-isolated `x64-windows-v4-static-release` triplet with `/arch:AVX512`.
 - [x] Windows CI mirrors stream-server's pinned optimized static libtorrent 2.0.13 vcpkg baseline, overlay, triplet, and GitHub Actions cache instead of relying on runner-local libraries.
 - [x] All GitHub Actions references use their current stable major lines; checkout and artifact upload are on v7.
 - [x] A pushed `v*` tag automatically waits for Windows and Linux builds, collects updater-compatible assets, writes SHA-256 checksums, and publishes a release with direct downloads, version-matched changelog notes, categorized commit links, and a full comparison link.
@@ -254,6 +319,8 @@ The official desktop interaction distinguishes browsing from navigation: a singl
 - `app/src/event_loop.rs`: coalesced core-to-Slint model projection.
 - `app/src/models/board.rs`: Continue Watching and Board catalogs.
 - `app/src/models/calendar.rs`: isolated Calendar navigation and projection.
+- `app/src/models/details.rs`: cache-aware details routing and Core-compatible stream selection.
+- `app/src/models/library.rs`: Library filtering and Core deep-link selection parity.
 - `app/src/models/search.rs`: local suggestions and global catalog search.
 - `app/ui/pages/discover.slint`: official-style discovery grid and preview.
 - `app/ui/pages/details.slint`: metadata and streams detail route.

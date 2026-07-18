@@ -9,27 +9,11 @@ use core_env::DesktopEnv;
 use futures::StreamExt;
 use std::sync::Arc;
 use stremio_core::{
-    models::{catalogs_with_extra::CatalogsWithExtra, common::Loadable},
-    runtime::{
-        Runtime, RuntimeAction, RuntimeEvent,
-        msg::{Action, ActionCatalogsWithExtra, Event},
-    },
+    models::common::Loadable,
+    runtime::{Runtime, RuntimeEvent, msg::Event},
 };
 
 const STATE_COALESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(4);
-const INITIAL_CATALOG_RANGE: std::ops::Range<usize> = 0..20;
-
-fn catalogs_need_initial_range(catalogs: &CatalogsWithExtra) -> bool {
-    catalogs.selected.is_some()
-        && catalogs
-            .catalogs
-            .iter()
-            .take(INITIAL_CATALOG_RANGE.end + 1)
-            .any(|catalog| match catalog.first() {
-                Some(page) => page.content.is_none(),
-                None => true,
-            })
-}
 
 pub fn start_event_loop(
     mut rx: futures::channel::mpsc::Receiver<RuntimeEvent<DesktopEnv, AppModel>>,
@@ -118,15 +102,6 @@ pub fn start_event_loop(
                     } else {
                         false
                     };
-                    // ProfileChanged rebuilds CatalogsWithExtra requests but Core deliberately
-                    // leaves newly introduced pages unloaded. Fill only the same bounded range
-                    // requested at startup so first-login addon catalogs do not require a restart.
-                    let board_catalog_reload_needed = (profile_sync_needed
-                        || fields.contains(&AppModelField::Board))
-                        && catalogs_need_initial_range(&model.board);
-                    let search_catalog_reload_needed = (profile_sync_needed
-                        || fields.contains(&AppModelField::Search))
-                        && catalogs_need_initial_range(&model.search);
                     let auth_projection = profile_sync_needed.then(|| {
                         let email = model
                             .ctx
@@ -184,11 +159,12 @@ pub fn start_event_loop(
                     let details_route_id = details_route
                         .as_ref()
                         .map(|(media_id, _presentation)| media_id.clone());
-                    let (details_is_in_library, details_is_watched) = details_route_id
-                        .as_deref()
-                        .and_then(|id| model.ctx.library.items.get(id))
-                        .map(|item| (!item.removed, item.watched()))
-                        .unwrap_or((false, false));
+                    let (details_is_in_library, details_is_watched, details_notifications_enabled) =
+                        details_route_id
+                            .as_deref()
+                            .and_then(|id| model.ctx.library.items.get(id))
+                            .map(|item| (!item.removed, item.watched(), !item.state.no_notif))
+                            .unwrap_or((false, false, true));
                     let details_projection_changed = if meta_details_changed {
                         details_route
                             .as_ref()
@@ -352,24 +328,6 @@ pub fn start_event_loop(
                     drop(model);
                     let calendar_refresh_started = calendar_context_refresh_needed
                         && models::calendar::ensure_loaded(&runtime);
-                    if board_catalog_reload_needed {
-                        tracing::debug!("loading Board catalogs introduced by profile hydration");
-                        runtime.dispatch(RuntimeAction {
-                            field: Some(AppModelField::Board),
-                            action: Action::CatalogsWithExtra(ActionCatalogsWithExtra::LoadRange(
-                                INITIAL_CATALOG_RANGE,
-                            )),
-                        });
-                    }
-                    if search_catalog_reload_needed {
-                        tracing::debug!("loading Search catalogs introduced by profile hydration");
-                        runtime.dispatch(RuntimeAction {
-                            field: Some(AppModelField::Search),
-                            action: Action::CatalogsWithExtra(ActionCatalogsWithExtra::LoadRange(
-                                INITIAL_CATALOG_RANGE,
-                            )),
-                        });
-                    }
                     if let (Some(playback), Some(player)) =
                         (&native_playback_bridge, player_cloned.as_ref())
                         && navigation.is_player_visible()
@@ -470,6 +428,7 @@ pub fn start_event_loop(
                             if details_library_sync_needed && details_patch_allowed {
                                 ui.set_detail_is_in_library(details_is_in_library);
                                 ui.set_detail_is_watched(details_is_watched);
+                                ui.set_detail_notifications_enabled(details_notifications_enabled);
                                 ui.set_discover_preview_is_in_library(details_is_in_library);
                                 ui.set_discover_preview_is_watched(details_is_watched);
                             }

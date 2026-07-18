@@ -13,6 +13,7 @@ export component SearchPage inherits Rectangle {
     in property <bool> loading: false;
     in property <int> catalog-count: 0;
     callback item-selected(string, string, string);
+    callback catalog-visible(int);
     callback poster-requested(string);
 
     in property <length> unit: Theme.root-font-size;
@@ -109,17 +110,45 @@ export component SearchPage inherits Rectangle {
         mouse-drag-pan-enabled: true;
         horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
 
-        for section in root.sections : MediaCatalogRow {
+        for section in root.sections : Rectangle {
             width: parent.width;
-            unit: root.unit;
-            title: section.title;
-            card-width: root.card-width;
-            card-height: root.card-height;
-            items: section.items;
-            item-selected(id, media-type, video-id) => {
-                root.item-selected(id, media-type, video-id);
+            height: 3 * root.unit + root.card-height;
+            background: transparent;
+            property <int> visible-catalog-index: section.catalog-index;
+
+            init => {
+                if (self.visible-catalog-index >= 0) {
+                    root.catalog-visible(self.visible-catalog-index);
+                }
             }
-            poster-requested(url) => { root.poster-requested(url); }
+            changed visible-catalog-index => {
+                if (self.visible-catalog-index >= 0) {
+                    root.catalog-visible(self.visible-catalog-index);
+                }
+            }
+
+            if (section.loading) : MetaRowPlaceholder {
+                width: parent.width;
+                height: parent.height;
+                unit: root.unit;
+                title: section.title;
+                item-width: max(9 * root.unit, root.card-width - 2 * root.unit);
+            }
+
+            if (!section.loading) : MediaCatalogRow {
+                width: parent.width;
+                height: parent.height;
+                unit: root.unit;
+                title: section.title;
+                message: section.error-message;
+                card-width: root.card-width;
+                card-height: root.card-height;
+                items: section.items;
+                item-selected(id, media-type, video-id) => {
+                    root.item-selected(id, media-type, video-id);
+                }
+                poster-requested(url) => { root.poster-requested(url); }
+            }
         }
     }
 }

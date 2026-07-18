@@ -37,6 +37,7 @@ This file records notable changes to Stremio Native relative to the initial sour
 ### Playback dependency and release system
 
 - Replaces the tracked static MPV SDK with the pinned optimized x86-64-v3 `libmpv-2.dll` and COFF import library from the trusted shinchiro GitHub release.
+- Compiles Windows and Linux x64 Rust release code for the reproducible `x86-64-v3` CPU baseline, while the local Windows vcpkg graph uses a distinct `x64-windows-v4-static-release` triplet with `/arch:AVX512`. The separation prevents v3/v4 cache reuse and avoids runner-specific `target-cpu=native` output.
 - Downloads, extracts, SHA-256 verifies, caches, links, and deploys the DLL and pinned licenses directly from the Rust build script; Cargo builds no longer require PowerShell, 7-Zip, or repository-stored media binaries.
 - Resolves dynamic libmpv through `pkg-config` on Linux, with `STREMIO_MPV_DIR` retained as an explicit local SDK override.
 - Pins the current Core head plus its `flate2` compatibility correction from `perpetus/stremio-core`, and pins the lifecycle-fixed stream-server revision through remote Git dependencies, so clean CI checkouts do not rely on sibling repositories.

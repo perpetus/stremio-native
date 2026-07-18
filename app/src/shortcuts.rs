@@ -43,8 +43,10 @@ pub fn install_platform_shortcuts(ui: &MainWindow) {
                     Key::Named(NamedKey::MediaPause) if !ui.get_player_paused() => {
                         ui.invoke_player_toggle_pause();
                     }
-                    Key::Named(NamedKey::MediaTrackNext) if ui.get_player_is_series() => {
-                        ui.invoke_player_play_episode(ui.get_player_active_episode_idx() + 1);
+                    Key::Named(NamedKey::MediaTrackNext)
+                        if ui.get_player_is_series() && ui.get_player_has_next_episode() =>
+                    {
+                        ui.invoke_player_next_episode();
                     }
                     _ => return EventResult::Propagate,
                 }

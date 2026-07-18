@@ -23,6 +23,8 @@
 *.tmp
 /app/ui/debug/
 /vendor/skia/
+/vcpkg/
+/vcpkg_installed/
 
 # Non-build documentation
 /README.md

@@ -360,6 +360,7 @@ export component MainWindow inherits Window {
     in-out property <[string]> detail-episode-names: [];
     in-out property <int> detail-active-episode-idx: 0;
     in-out property <bool> detail-is-in-library: false;
+    in-out property <bool> detail-notifications-enabled: true;
     in-out property <image> detail-background;
     in-out property <string> detail-background-url: "";
     in-out property <[EpisodeItem]> detail-episodes: [];
@@ -403,8 +404,12 @@ export component MainWindow inherits Window {
     in-out property <float> player-subtitle-size-percent: 100.0;
     in-out property <float> player-subtitle-offset-percent: 100.0;
     in-out property <bool> player-is-series: false;
-    in-out property <[string]> player-episode-names: [];
+    in-out property <[int]> player-seasons: [];
+    in-out property <int> player-active-season: 1;
+    in-out property <[EpisodeItem]> player-episodes: [];
+    in-out property <string> player-active-video-id: "";
     in-out property <int> player-active-episode-idx: 0;
+    in-out property <bool> player-has-next-episode: false;
     in-out property <float> player-playback-speed: 1.0;
     in-out property <int> player-video-scale-mode: 0;
     in-out property <string> player-error: "";
@@ -573,13 +578,15 @@ export component MainWindow inherits Window {
     callback board-item-selected(string, string, string);
     callback remove-continue-watching(string);
     callback board-see-all-continue-watching();
-    callback board-see-all-clicked(string, string, string);
+    callback board-see-all-clicked(int);
+    callback board-catalog-visible(int);
 
     // Global search callbacks
     callback global-search-edited(string);
     callback global-search-submitted(string);
-    callback global-search-suggestion-selected(string, string);
+    callback global-search-suggestion-selected(string);
     callback search-item-selected(string, string, string);
+    callback search-catalog-visible(int);
     callback request-poster(string);
 
     // Discover page callbacks
@@ -587,8 +594,9 @@ export component MainWindow inherits Window {
     callback discover-catalog-changed(string);
     callback discover-genre-changed(string);
     callback discover-search-changed(string);
-    callback discover-item-selected(string);
-    callback discover-item-activated(string);
+    callback discover-item-selected(string, string, string);
+    callback discover-item-activated(string, string, string);
+    callback discover-load-next-page();
     callback play-preview();
     callback toggle-library-preview();
     
@@ -596,7 +604,8 @@ export component MainWindow inherits Window {
     callback library-type-changed(string);
     callback library-sort-changed(string);
     callback library-search-changed(string);
-    callback library-item-selected(string, string);
+    callback library-item-selected(string, string, string);
+    callback library-load-next-page();
 
     // Addons page callbacks
     callback install-addon(string);
@@ -610,8 +619,10 @@ export component MainWindow inherits Window {
     // Details callbacks
     callback details-toggle-library();
     callback details-toggle-watched();
+    callback details-notifications-changed(bool);
     callback details-season-changed(int);
-    callback details-episode-changed(int);
+    callback details-season-step(int);
+    callback details-episode-changed(int, string);
     callback play-stream(string);
     
     // Settings callbacks
@@ -627,7 +638,7 @@ export component MainWindow inherits Window {
     callback navigation-forward();
     callback calendar-previous();
     callback calendar-next();
-    callback calendar-item-selected(string, string);
+    callback calendar-item-selected(string, string, string);
 
     // Player Callbacks
     callback player-toggle-pause();
@@ -645,7 +656,11 @@ export component MainWindow inherits Window {
     callback player-change-video-scale(int);
     callback player-copy-stream-link();
     callback player-download-video();
-    callback player-play-episode(int);
+    callback player-play-episode(int, string);
+    callback player-next-episode();
+    callback player-season-changed(int);
+    callback player-season-step(int);
+    callback player-toggle-episode-watched(string);
     callback player-toggle-fullscreen();
     callback player-close();
     callback player-activity();
@@ -864,8 +879,8 @@ export component MainWindow inherits Window {
         KeyBinding { keys: @keys(D); enabled: root.effective-show-player; activated => { root.toggle-player-menu("stats"); } }
         KeyBinding {
             keys: @keys(Shift + N);
-            enabled: root.effective-show-player && root.player-is-series;
-            activated => { root.close-player-menus(); root.player-play-episode(root.player-active-episode-idx + 1); }
+            enabled: root.effective-show-player && root.player-is-series && root.player-has-next-episode;
+            activated => { root.close-player-menus(); root.player-next-episode(); }
         }
         KeyBinding {
             keys: @keys(Escape);
@@ -984,9 +999,9 @@ export component MainWindow inherits Window {
                                 }
                             }
                             cleared => { global-search-edited(""); }
-                            suggestion-selected(id, media-type, title) => {
+                            suggestion-selected(_id, _media-type, title) => {
                                 root.search-query = title;
-                                root.global-search-suggestion-selected(id, media-type);
+                                root.global-search-suggestion-selected(title);
                             }
                         }
                     }
@@ -1309,7 +1324,8 @@ export component MainWindow inherits Window {
                         }
                         remove-continue-watching(id) => { remove-continue-watching(id); }
                         see-all-continue-watching() => { board-see-all-continue-watching(); }
-                        see-all-clicked(t, id, base) => { board-see-all-clicked(t, id, base); }
+                        see-all-clicked(index) => { board-see-all-clicked(index); }
+                        catalog-visible(index) => { board-catalog-visible(index); }
                         poster-requested(url) => { request-poster(url); }
                     }
 
@@ -1373,8 +1389,13 @@ export component MainWindow inherits Window {
                         type-changed(t) => { discover-type-changed(t); }
                         catalog-changed(c) => { discover-catalog-changed(c); }
                         genre-changed(g) => { discover-genre-changed(g); }
-                        item-selected(id) => { discover-item-selected(id); }
-                        item-activated(id) => { discover-item-activated(id); }
+                        item-selected(id, media-type, video-id) => {
+                            discover-item-selected(id, media-type, video-id);
+                        }
+                        item-activated(id, media-type, video-id) => {
+                            discover-item-activated(id, media-type, video-id);
+                        }
+                        load-next-page => { discover-load-next-page(); }
                         poster-requested(url) => { request-poster(url); }
                         play-preview => { play-preview(); }
                         toggle-library-preview => { toggle-library-preview(); }
@@ -1403,7 +1424,10 @@ export component MainWindow inherits Window {
 
                         type-changed(t) => { library-type-changed(t); }
                         sort-changed(s) => { library-sort-changed(s); }
-                        item-selected(id, media-type) => { library-item-selected(id, media-type); }
+                        item-selected(id, media-type, video-id) => {
+                            library-item-selected(id, media-type, video-id);
+                        }
+                        load-next-page => { library-load-next-page(); }
                         poster-requested(url) => { request-poster(url); }
                         scroll-y: library-scroll-y;
                     }
@@ -1570,7 +1594,9 @@ export component MainWindow inherits Window {
                             && root.debug-preview-state == "empty" ? [] : calendar-rows;
                         previous => { calendar-previous(); }
                         next => { calendar-next(); }
-                        item-selected(id, media-type) => { calendar-item-selected(id, media-type); }
+                        item-selected(id, media-type, video-id) => {
+                            calendar-item-selected(id, media-type, video-id);
+                        }
                     }
 
                     if (root.effective-active-tab == 6) : SearchPage {
@@ -1593,6 +1619,7 @@ export component MainWindow inherits Window {
                         item-selected(id, media-type, video-id) => {
                             search-item-selected(id, media-type, video-id);
                         }
+                        catalog-visible(index) => { search-catalog-visible(index); }
                         poster-requested(url) => { request-poster(url); }
                     }
                 }
@@ -1675,11 +1702,13 @@ export component MainWindow inherits Window {
             anonymous-icon: root.anonymous-icon;
 
             is-in-library: detail-is-in-library;
+            notifications-enabled: detail-notifications-enabled;
             is-watched: detail-is-watched;
             has-trailer: detail-has-trailer;
             trailer-selection-id: detail-trailer-selection-id;
             toggle-library => { details-toggle-library(); }
             toggle-watched => { details-toggle-watched(); }
+            notifications-changed(enabled) => { details-notifications-changed(enabled); }
             play-trailer(selection-id) => { play-stream(selection-id); }
 
             is-series: root.debug-preview-enabled && root.debug-preview-page == 7
@@ -1690,11 +1719,11 @@ export component MainWindow inherits Window {
                     || root.debug-preview-state == "series-no-streams")
                 : detail-is-series;
             available-seasons: detail-seasons;
-            active-season: detail-active-season;
+            active-season <=> root.detail-active-season;
             season-menu-open: root.debug-preview-enabled && root.debug-preview-page == 7
                 && root.debug-preview-state == "series-season-menu";
             episode-names: detail-episode-names;
-            active-episode-idx: detail-active-episode-idx;
+            active-episode-idx <=> root.detail-active-episode-idx;
             episodes: detail-episodes;
             in-stream-view: root.debug-preview-enabled && root.debug-preview-page == 7
                 ? (root.debug-preview-state == "series-streams"
@@ -1712,12 +1741,13 @@ export component MainWindow inherits Window {
             icon-clapperboard: root.icon-clapperboard;
 
             season-changed(s) => { details-season-changed(s); }
-            episode-changed(idx) => {
+            season-step(direction) => { details-season-step(direction); }
+            episode-changed(idx, video-id) => {
                 if (root.debug-preview-enabled && root.debug-preview-page == 7) {
                     root.detail-active-episode-idx = idx;
                     root.debug-preview-state = "series-streams";
                 } else {
-                    details-episode-changed(idx);
+                    details-episode-changed(idx, video-id);
                 }
             }
             toggle-episode-watched(id) => { details-toggle-episode-watched(id); }
@@ -1789,8 +1819,12 @@ export component MainWindow inherits Window {
             subtitle-offset-percent: player-subtitle-offset-percent;
             is-series: root.debug-preview-enabled && root.debug-preview-page == 8
                 ? true : player-is-series;
-            episode-names: player-episode-names;
-            active-episode-idx: player-active-episode-idx;
+            available-seasons: player-seasons;
+            active-season <=> root.player-active-season;
+            episodes: player-episodes;
+            active-video-id <=> root.player-active-video-id;
+            active-episode-idx <=> root.player-active-episode-idx;
+            has-next-episode: player-has-next-episode;
             playback-speed: player-playback-speed;
             video-scale-mode: player-video-scale-mode;
             error-message: root.debug-preview-enabled && root.debug-preview-page == 8
@@ -1851,7 +1885,11 @@ export component MainWindow inherits Window {
             skip-segment => { player-skip-segment(); }
             copy-stream-link => { player-copy-stream-link(); }
             download-video => { player-download-video(); }
-            play-episode(idx) => { player-play-episode(idx); }
+            play-episode(idx, video-id) => { player-play-episode(idx, video-id); }
+            play-next-episode => { player-next-episode(); }
+            season-changed(season) => { player-season-changed(season); }
+            season-step(direction) => { player-season-step(direction); }
+            toggle-episode-watched(video-id) => { player-toggle-episode-watched(video-id); }
             toggle-fullscreen => { player-toggle-fullscreen(); }
             close => { player-close(); }
             activity => { player-activity(); }
