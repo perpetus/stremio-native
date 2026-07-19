@@ -41,6 +41,8 @@ pub mod image_cache;
 mod models;
 mod mpv_integration;
 mod performance;
+#[cfg(feature = "plugins")]
+mod plugins;
 mod playback;
 mod shortcuts;
 mod single_instance;
@@ -510,6 +512,24 @@ async fn finish_startup(
         &config,
         navigation.clone(),
     );
+
+    // Plugin system (lazy: only starts if plugins directory has .lua files)
+    #[cfg(feature = "plugins")]
+    let _plugin_manager = {
+        let plugin_dir = std::env::var_os("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("StremioRust")
+            .join("plugins");
+        let pm = plugins::PluginManager::new(ui_weak.clone(), plugin_dir);
+        if let Some(ref pm) = pm {
+            let tx = pm.sender();
+            ui.on_plugin_run_action(move |action_id| {
+                let _ = tx.try_send(plugins::LuaEvent::RunAction(action_id.to_string()));
+            });
+        }
+        pm
+    };
 
     if let Ok(initial_tab) = Tab::try_from(navigation.active_tab_index()) {
         sync_tab_from_model(initial_tab, &runtime, &ui, &ui_weak, &navigation);

@@ -1,6 +1,6 @@
 [package]
 name = "stremio-native"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 
 [dependencies]
@@ -39,6 +39,7 @@ self_update.workspace = true
 sys-locale.workspace = true
 uuid = { version = "1.23.5", features = ["v4"] }
 discord-rich-presence = { workspace = true }
+mlua = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
@@ -53,3 +54,4 @@ winres = "0.1.12"
 [features]
 default = ["stremio-core/env-future-send", "core-env/default", "server-connector/default"]
 in-process = ["core-env/in-process", "server-connector/in-process"]
+plugins = ["dep:mlua"]

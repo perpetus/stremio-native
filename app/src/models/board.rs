@@ -7,7 +7,7 @@ use crate::models::{
 use crate::{AppModel, MainWindow, NavigationController};
 use crate::{BoardSection, MediaCardItem};
 use core_env::DesktopEnv;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 use std::sync::{Arc, Mutex, OnceLock};
 use stremio_core::{
     models::{
@@ -219,6 +219,16 @@ pub fn sync(
         board_sections
     };
 
-    let sections_model = slint::VecModel::from(board_sections);
-    ui.set_board_sections(slint::ModelRc::new(sections_model));
+    // Update rows in-place when the section count is stable so the ListView
+    // keeps its current viewport-y. A full model replacement resets scroll
+    // position, which causes a visible snap-back during lazy catalog loading.
+    let existing = ui.get_board_sections();
+    if existing.row_count() == board_sections.len() {
+        for (index, section) in board_sections.into_iter().enumerate() {
+            existing.set_row_data(index, section);
+        }
+    } else {
+        let sections_model = slint::VecModel::from(board_sections);
+        ui.set_board_sections(slint::ModelRc::new(sections_model));
+    }
 }

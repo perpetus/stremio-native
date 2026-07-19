@@ -8,7 +8,7 @@ use crate::{
     AppModel, AppModelField, MainWindow, NavigationController, NavigationIntent, SearchSuggestion,
 };
 use core_env::DesktopEnv;
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex, OnceLock},
@@ -269,5 +269,15 @@ pub fn sync_results(
         }
     }
 
-    ui.set_search_sections(ModelRc::new(VecModel::from(sections)));
+    // Update rows in-place when the section count is stable so the ListView
+    // keeps its current viewport-y. A full model replacement resets scroll
+    // position, which causes a visible snap-back during lazy catalog loading.
+    let existing = ui.get_search_sections();
+    if existing.row_count() == sections.len() {
+        for (index, section) in sections.into_iter().enumerate() {
+            existing.set_row_data(index, section);
+        }
+    } else {
+        ui.set_search_sections(ModelRc::new(VecModel::from(sections)));
+    }
 }

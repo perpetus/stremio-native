@@ -34,6 +34,12 @@ import { AppDebugMenu, DebugPageOption, DebugStateOption } from "components/app_
 import { Fonts } from "imported_fonts.slint";
 import "./assets/fonts/PlusJakartaSans.ttf";
 
+export struct PluginAction {
+    id: string,
+    label: string,
+    icon: string,
+}
+
 export { Theme, IconData, MediaCardItem, StreamLink, EpisodeItem, BoardSection, DiscoverRow, LibraryRow, AddonItem, CalendarRow, CalendarCell, CalendarMediaItem, SearchSuggestion }
 
 export component AppTray inherits SystemTrayIcon {
@@ -273,6 +279,10 @@ export component MainWindow inherits Window {
     in property <image> anonymous-icon: @image-url("assets/images/anonymous.png");
     in-out property <bool> loading: false;
     in-out property <string> error-message: "";
+
+    // Plugin system
+    in-out property <[PluginAction]> plugin-actions: [];
+    callback plugin-run-action(string);
 
     // Stats (Footer stats)
     in-out property <string> server-status: "Offline";
