@@ -1,0 +1,204 @@
+{
+    "app-id": "com.stremio.StremioNative.Devel",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "50",
+    "sdk": "org.gnome.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ],
+    "add-extensions": {
+        "org.freedesktop.Platform.codecs-extra": {
+            "version": "25.08-extra",
+            "directory": "lib/codecs-extra",
+            "add-ld-path": "."
+        },
+        "org.freedesktop.Platform.VAAPI.Intel": {
+            "version": "25.08",
+            "directory": "lib/intel-vaapi-driver",
+            "add-ld-path": ".",
+            "download-if": "have-intel-gpu",
+            "enable-if": "have-intel-gpu"
+        }
+    },
+    "command": "stremio-native",
+    "finish-args": [
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--socket=pulseaudio",
+        "--share=ipc",
+        "--share=network",
+        "--device=dri",
+        "--persist=.stremio-native",
+        "--filesystem=xdg-download",
+        "--filesystem=xdg-run/pipewire-0:ro",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--own-name=com.stremio.StremioNative.Devel",
+        "--own-name=org.mpris.MediaPlayer2.StremioNative",
+        "--env=LC_NUMERIC=C",
+        "--env=LD_LIBRARY_PATH=/app/lib:/app/lib64",
+        "--env=RUST_LOG=info"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin",
+        "append-pkg-config-path": "/app/lib/pkgconfig:/app/lib64/pkgconfig",
+        "env": {
+            "BOOST_ROOT": "/app"
+        }
+    },
+    "modules": [
+        {
+            "name": "libXpresent",
+            "buildsystem": "autotools",
+            "cleanup": [
+                "/include",
+                "/lib/pkgconfig"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/xorg/lib/libxpresent.git",
+                    "tag": "libXpresent-1.0.2"
+                }
+            ]
+        },
+        {
+            "name": "libplacebo",
+            "buildsystem": "meson",
+            "config-opts": [
+                "-Dvulkan=enabled",
+                "-Ddemos=false"
+            ],
+            "cleanup": [
+                "/include",
+                "/lib/pkgconfig"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/haasn/libplacebo.git",
+                    "tag": "v7.360.1"
+                }
+            ]
+        },
+        {
+            "name": "libass",
+            "buildsystem": "meson",
+            "cleanup": [
+                "/include",
+                "/lib/pkgconfig"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/libass/libass/archive/0.17.4.tar.gz",
+                    "sha256": "c287d180d93dc9c9021872574b618ac49027e84cc90e1289318b1ee68bb42251"
+                }
+            ]
+        },
+        {
+            "name": "libmpv",
+            "buildsystem": "meson",
+            "config-opts": [
+                "-Dbuild-date=false",
+                "-Dcplayer=false",
+                "-Dlibmpv=true",
+                "-Dmanpage-build=disabled",
+                "-Dwayland=enabled",
+                "-Dx11=enabled",
+                "-Dvulkan=enabled",
+                "-Dgl=enabled",
+                "-Degl=enabled",
+                "-Degl-wayland=enabled",
+                "-Degl-x11=enabled",
+                "-Dvaapi=enabled",
+                "-Dvaapi-wayland=enabled",
+                "-Dvaapi-x11=enabled",
+                "-Dcuda-hwaccel=enabled",
+                "-Dcuda-interop=enabled",
+                "-Dvdpau=enabled",
+                "-Dvdpau-gl-x11=enabled"
+            ],
+            "cleanup": [
+                "/include",
+                "/lib/pkgconfig"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/mpv-player/mpv/archive/v0.41.0.tar.gz",
+                    "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+                }
+            ]
+        },
+        {
+            "name": "boost",
+            "buildsystem": "simple",
+            "build-commands": [
+                "./bootstrap.sh",
+                "./b2 install --prefix=/app --layout=system variant=release link=shared threading=multi"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost_1_84_0.tar.gz",
+                    "sha256": "a5800f405508f5df8114558ca9855d2640a2de8f0445f051fa1c7c3383045724"
+                }
+            ]
+        },
+        {
+            "name": "libtorrent-rasterbar",
+            "buildsystem": "cmake-ninja",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_PREFIX_PATH=/app",
+                "-DBOOST_ROOT=/app",
+                "-Dbuild_tests=OFF",
+                "-Dbuild_examples=OFF",
+                "-Dbuild_tools=OFF",
+                "-Dpython-bindings=OFF",
+                "-Ddeprecated-functions=ON"
+            ],
+            "cleanup": [
+                "/include",
+                "/lib/pkgconfig"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/arvidn/libtorrent/releases/download/v2.0.11/libtorrent-rasterbar-2.0.11.tar.gz",
+                    "sha256": "f0db58580f4f29ade6cc40fa4ba80e2c9a70c90265cd77332d3cdec37ecf1e6d"
+                }
+            ]
+        },
+        {
+            "name": "stremio-native",
+            "buildsystem": "simple",
+            "build-options": {
+                "env": {
+                    "CARGO_HOME": "/run/build/stremio-native/cargo",
+                    "RUSTFLAGS": "-L /app/lib -L /app/lib64 -C link-arg=-Wl,-rpath-link=/app/lib -C link-arg=-Wl,-rpath-link=/app/lib64"
+                }
+            },
+            "build-commands": [
+                "cargo --offline fetch --manifest-path Cargo.toml --verbose",
+                "cargo --offline build --release --package stremio-native --verbose"
+            ],
+            "post-install": [
+                "install -Dm755 target/release/stremio-native /app/bin/stremio-native",
+                "install -Dm644 flatpak/com.stremio.StremioNative.Devel.desktop /app/share/applications/com.stremio.StremioNative.Devel.desktop",
+                "install -Dm644 app/ui/assets/images/stremio-logo.svg /app/share/icons/hicolor/scalable/apps/com.stremio.StremioNative.Devel.svg",
+                "install -Dm644 flatpak/com.stremio.StremioNative.Devel.metainfo.xml /app/share/metainfo/com.stremio.StremioNative.Devel.metainfo.xml",
+                "mkdir -p /app/lib/codecs-extra",
+                "mkdir -p /app/lib/intel-vaapi-driver"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../"
+                },
+                "cargo-sources.json"
+            ]
+        }
+    ]
+}

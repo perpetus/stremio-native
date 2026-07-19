@@ -2,6 +2,26 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
+## 1.0.1 - 2026-07-19
+
+### Downloads
+- **Windows**: [Installer](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/StremioSetup-v1.0.1-x64.exe) | [Portable](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-pc-windows-msvc.zip)
+- **Linux**: [Binary](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-unknown-linux-gnu)
+- **Debian / Ubuntu**: [DEB Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native_1.0.1_amd64.deb)
+- **Arch Linux**: [Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1-x86_64.pkg.tar.zst)
+- **Fedora**: [RPM Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1.x86_64.rpm)
+
+### Packaging and Distribution
+- Added **Flatpak** infrastructure including desktop entry, appstream metainfo, and a sandboxed Boost compilation module.
+- Added **Debian (`.deb`)** package generation.
+- Added **Arch Linux (`.pkg.tar.zst`)** package generation using `makepkg` (optimized to reuse the precompiled Linux binary).
+- Added **Fedora (`.rpm`)** package generation using `rpmbuild`.
+
+### Lazy Loading and UI Polish
+- Integrated a lazy-loaded plugin system.
+- Optimized catalog updates in `board.rs` and `search.rs` to use in-place updates, preventing scroll-snapping in ListView during lazy loading.
+- Bumped application version to `1.0.1`.
+
 ## 1.0.0 - 2026-07-18
 
 ### Desktop lifecycle and startup

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.stremio.StremioNative.Devel</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>GPL-3.0</project_license>
+  <name>Stremio Native (Devel)</name>
+  <summary>Ultra-Fast & Lightweight Native Stremio Desktop Client</summary>
+  <description>
+    <p>
+      Stremio Native is an ultra-fast, lightweight, and modern desktop client for Stremio.
+      Built with Rust and Slint UI, it features a custom, embedded open-source stream server
+      and hardware-accelerated playback via libmpv.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.stremio.StremioNative.Devel.desktop</launchable>
+  <url type="homepage">https://github.com/perpetus/stremio-native</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main Interface</caption>
+      <image>https://raw.githubusercontent.com/perpetus/stremio-native/main/docs/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+</component>

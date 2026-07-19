@@ -1,3 +1,6 @@
 [submodule "vendor/stremio-translations"]
 	path = vendor/stremio-translations
 	url = https://github.com/Stremio/stremio-translations.git
+[submodule "flatpak/flatpak-builder-tools"]
+	path = flatpak/flatpak-builder-tools
+	url = https://github.com/flatpak/flatpak-builder-tools.git

@@ -1,14 +1,25 @@
-# 🎬 Stremio Rust - Ultra-Fast & Lightweight Native Stremio Desktop Client
+# 🎬 Stremio - Ultra-Fast & Lightweight Native Stremio Desktop Client
 
 <!-- SEO Meta Tags & Keywords -->
-<!-- Keywords: Stremio alternative client, Stremio Rust desktop, fast Stremio player, lightweight Stremio app, Stremio web ui offline, Slint media player Rust, BitTorrent streaming player, local database media center, open source stream server -->
-<meta name="description" content="Stremio Rust is an ultra-fast, lightweight, and modern desktop client for Stremio. Built with Rust and Slint UI, it features a custom, open-source stream server instead of the proprietary server.js." />
+<!-- Keywords: Stremio alternative client, Stremio desktop, fast Stremio player, lightweight Stremio app, Stremio web ui offline, Slint media player Rust, BitTorrent streaming player, local database media center, open source stream server -->
+<meta name="description" content="Stremio is an ultra-fast, lightweight, and modern desktop client for Stremio. Built with Rust and Slint UI, it features a custom, open-source stream server instead of the proprietary server.js." />
 
-Welcome to **Stremio Rust** — the ultimate high-performance, battery-friendly, and lightweight desktop media center player designed to run the official Stremio experience native on your computer.
+Welcome to **Stremio** — the ultimate high-performance, battery-friendly, and lightweight desktop media center player designed to run the official Stremio experience native on your computer.
 
-If you are looking for a fast Stremio desktop client that starts instantly, runs smoothly, and uses minimal system memory, Stremio Rust is the perfect alternative.
+If you are looking for a fast Stremio desktop client that starts instantly, runs smoothly, and uses minimal system memory, Stremio is the perfect alternative.
 
 See the [detailed changelog](CHANGELOG.md) for the current build's implementation notes and known limitations.
+
+## 📥 Downloads
+
+| Platform | Package Format | Download Link |
+| :--- | :--- | :--- |
+| **Windows** | Installer (MSI) | [StremioSetup-x64.exe](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/StremioSetup-v1.0.1-x64.exe) |
+| **Windows** | Portable (ZIP) | [stremio-native-windows-x64.zip](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-pc-windows-msvc.zip) |
+| **Linux** | Portable Binary | [stremio-native-linux-gnu](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-unknown-linux-gnu) |
+| **Linux (Debian / Ubuntu)** | DEB Package | [stremio-native_amd64.deb](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native_1.0.1_amd64.deb) |
+| **Linux (Arch)** | Pacman Package | [stremio-native-x86_64.pkg.tar.zst](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1-x86_64.pkg.tar.zst) |
+| **Linux (Fedora / RHEL)** | RPM Package | [stremio-native-x86_64.rpm](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1.x86_64.rpm) |
 
 ---
 
@@ -24,7 +35,7 @@ See the [detailed changelog](CHANGELOG.md) for the current build's implementatio
   - **Dynamic Stream List Sheet**: Switches smoothly to the stream provider sheet, complete with a `← Back to Episodes` navigation link.
 
 ### ⚡ Rust-Powered Performance & Hardware Acceleration
-* **Custom Open-Source Stream Server**: Unlike the official Stremio client which relies on a separate Node.js-based `server.js` backend, Stremio Rust embeds a custom, open-source **stream server** in-process. This eliminates the separate Node.js runtime and reduces process-management overhead.
+* **Custom Open-Source Stream Server**: Unlike the official Stremio client which relies on a separate Node.js-based `server.js` backend, Stremio embeds a custom, open-source **stream server** in-process. This eliminates the separate Node.js runtime and reduces process-management overhead.
 * **Low CPU & Battery Usage**: Leveraging hardware-accelerated video decoding, this client utilizes your computer's GPU for video playback, keeping your CPU cool and extending your laptop's battery life.
 
 #### Measured Idle Footprint (Windows x64)
@@ -78,3 +89,9 @@ On Windows, install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs]
    ```
 
 *All settings, log consoles, and image databases are stored in the local `./storage/` folder inside the project directory.*
+
+---
+
+## ⚠️ Disclaimer
+
+Stremio Native is an independent, community-developed project. It is an unofficial client and is not affiliated with, authorized, maintained, sponsored, or endorsed by SmartCode Ltd (the creators of the official Stremio application).

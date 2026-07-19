@@ -28,6 +28,9 @@ ASSET_PATTERNS = (
         "stremio-native-v*-x86_64-unknown-linux-gnu",
         "Linux x64 portable",
     ),
+    ("*.deb", "Debian / Ubuntu Package"),
+    ("*.pkg.tar.zst", "Arch Linux Package"),
+    ("*.rpm", "Fedora / RedHat RPM Package"),
     ("SHA256SUMS.txt", "SHA-256 checksums"),
 )
 

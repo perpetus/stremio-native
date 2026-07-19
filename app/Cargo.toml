@@ -55,3 +55,14 @@ winres = "0.1.12"
 default = ["stremio-core/env-future-send", "core-env/default", "server-connector/default"]
 in-process = ["core-env/in-process", "server-connector/in-process"]
 plugins = ["dep:mlua"]
+
+[package.metadata.deb]
+maintainer = "stremio-native maintainers <stremio-native@example.com>"
+copyright = "2026 stremio-native maintainers"
+license = "GPL-3.0"
+extended-description = "High-performance native Stremio client built with Rust and Slint"
+section = "video"
+priority = "optional"
+assets = [
+    ["target/release/stremio-native", "usr/bin/stremio-native", "755"],
+]
