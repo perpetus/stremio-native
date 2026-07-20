@@ -2,6 +2,7 @@
 name = "stremio-native"
 version = "1.0.1"
 edition = "2024"
+license = "GPL-3.0-only"
 
 [dependencies]
 stremio-core.workspace = true
@@ -37,7 +38,7 @@ open = "5.4.0"
 percent-encoding.workspace = true
 self_update.workspace = true
 sys-locale.workspace = true
-uuid = { version = "1.23.5", features = ["v4"] }
+uuid = { version = "1.24.0", features = ["v4"] }
 discord-rich-presence = { workspace = true }
 mlua = { workspace = true, optional = true }
 
@@ -59,7 +60,6 @@ plugins = ["dep:mlua"]
 [package.metadata.deb]
 maintainer = "stremio-native maintainers <stremio-native@example.com>"
 copyright = "2026 stremio-native maintainers"
-license = "GPL-3.0"
 extended-description = "High-performance native Stremio client built with Rust and Slint"
 section = "video"
 priority = "optional"

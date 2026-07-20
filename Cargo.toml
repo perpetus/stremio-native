@@ -8,12 +8,12 @@ members = [
 ]
 
 [workspace.dependencies]
-anyhow = "1.0.103"
-async-trait = "0.1.89"
+anyhow = "1.0.104"
+async-trait = "0.1.91"
 axum = "0.8.9"
 blake3 = "1"
 chrono = "0.4.45"
-futures = "0.3.32"
+futures = "0.3.33"
 glow = "0.18.0"
 http = "1.4.2"
 iconflow = "1.0.0"
@@ -21,8 +21,8 @@ image = { version = "0.25.10", default-features = false }
 moka = "0.12.15"
 percent-encoding = "2.3.2"
 reqwest = { version = "0.13.4", default-features = false }
-serde = "1.0.228"
-serde_json = "1.0.150"
+serde = "1.0.229"
+serde_json = "1.0.151"
 self_update = { version = "0.44.0", default-features = false, features = ["reqwest", "rustls", "archive-zip", "compression-zip-deflate"] }
 slint = "1.17.1"
 slint-build = "1.17.1"
@@ -30,8 +30,8 @@ stremio-core = { git = "https://github.com/perpetus/stremio-core.git", rev = "45
 stream-server = { git = "https://github.com/perpetus/stream-server.git", rev = "73a23325a49e76f7dee0afe08bf3e1a9b3ef3eec", package = "server" }
 settings-gui = { git = "https://github.com/perpetus/stream-server.git", rev = "73a23325a49e76f7dee0afe08bf3e1a9b3ef3eec" }
 sys-locale = "0.3.2"
-thiserror = "2.0.18"
-tokio = "1.52.3"
+thiserror = "2.0.19"
+tokio = "1.53.0"
 tokio-util = "0.7.18"
 tower = "0.5.3"
 tracing = { version = "0.1.44", features = ["release_max_level_off"] }
