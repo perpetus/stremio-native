@@ -44,8 +44,9 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL);
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN);
-      - name: Cache vcpkg installed packages
-        uses: actions/cache@v6
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: vcpkg_installed
           key: Windows-vcpkg-x86-64-v3-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
@@ -63,6 +64,12 @@ jobs:
           VCPKG_DEFAULT_TRIPLET: x64-windows-v3-static-release
           VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/triplets
           VCPKG_OVERLAY_PORTS: ${{ github.workspace }}/vcpkg-overlays
+      - name: Save vcpkg cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: vcpkg_installed
+          key: Windows-vcpkg-x86-64-v3-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --locked --release --package stremio-native
@@ -103,10 +110,22 @@ jobs:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Restore apt cache
+        id: apt-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: /var/cache/apt/archives
+          key: linux-apt-deps-v1
       - name: Install native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang cmake ninja-build pkg-config libssl-dev libtorrent-rasterbar-dev libboost-dev libclang-dev libgtk-3-dev libayatana-appindicator3-dev libmpv-dev libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
+      - name: Save apt cache
+        if: steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /var/cache/apt/archives
+          key: linux-apt-deps-v1
       - name: Build release
         run: cargo build --locked --release --package stremio-native
       - name: Install cargo-deb
@@ -189,17 +208,29 @@ jobs:
         with:
           name: stremio-native-linux-x64
           path: target/release
+      - name: Restore dnf cache
+        id: dnf-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: /var/cache/dnf
+          key: fedora-dnf-rpm-build
       - name: Install packaging dependencies
         run: |
           dnf install -y rpm-build
+      - name: Save dnf cache
+        if: steps.dnf-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /var/cache/dnf
+          key: fedora-dnf-rpm-build
       - name: Create RPM Spec
         run: |
           pkgver=$(grep -m1 'version = ' app/Cargo.toml | cut -d '"' -f2)
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           cp target/release/stremio-native rpmbuild/SOURCES/
-          cat > rpmbuild/SPECS/stremio-native.spec << EOF
+          cat > rpmbuild/SPECS/stremio-native.spec << 'SPEC'
           Name:           stremio-native
-          Version:        ${pkgver}
+          Version:        __VERSION__
           Release:        1%{?dist}
           Summary:        High-performance native Stremio client built with Rust and Slint
           License:        GPLv3
@@ -219,12 +250,13 @@ jobs:
           %{_bindir}/stremio-native
 
           %changelog
-          * Sun Jul 19 2026 stremio-native maintainers <stremio-native@example.com> - ${pkgver}-1
+          * Sun Jul 19 2026 stremio-native maintainers <stremio-native@example.com> - __VERSION__-1
           - Initial release
-          EOF
+          SPEC
+          sed -i "s/__VERSION__/$pkgver/g" rpmbuild/SPECS/stremio-native.spec
       - name: Build RPM Package
         run: |
-          rpmbuild -bb rpmbuild/SPECS/stremio-native.spec --define "_topdir \$(pwd)/rpmbuild"
+          rpmbuild -bb rpmbuild/SPECS/stremio-native.spec --define "_topdir $(pwd)/rpmbuild"
       - name: Upload RPM Package
         uses: actions/upload-artifact@v7
         with:
