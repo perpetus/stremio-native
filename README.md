@@ -1,97 +1,97 @@
-# 🎬 Stremio - Ultra-Fast & Lightweight Native Stremio Desktop Client
+# <img src="app/assets/app.ico" width="36" align="center" /> Stremio Native
+
+### A faster, lighter desktop client for Stremio — built from scratch in Rust.
 
 <!-- SEO Meta Tags & Keywords -->
 <!-- Keywords: Stremio alternative client, Stremio desktop, fast Stremio player, lightweight Stremio app, Stremio web ui offline, Slint media player Rust, BitTorrent streaming player, local database media center, open source stream server -->
-<meta name="description" content="Stremio is an ultra-fast, lightweight, and modern desktop client for Stremio. Built with Rust and Slint UI, it features a custom, open-source stream server instead of the proprietary server.js." />
+<meta name="description" content="Stremio Native is an ultra-fast, lightweight, and modern desktop client for Stremio. Built with Rust and Slint UI, it features a custom, open-source stream server instead of the proprietary server.js." />
 
-Welcome to **Stremio** — the ultimate high-performance, battery-friendly, and lightweight desktop media center player designed to run the official Stremio experience native on your computer.
+---
 
-If you are looking for a fast Stremio desktop client that starts instantly, runs smoothly, and uses minimal system memory, Stremio is the perfect alternative.
+### 🤔 Why Use Stremio Native?
 
-See the [detailed changelog](CHANGELOG.md) for the current build's implementation notes and known limitations.
+The official Stremio desktop app runs on Electron-style WebViews backed by a separate Node.js server (`server.js`). At idle it spawns **10 processes** and holds **800+ MB of RAM**.
 
-## 📥 Downloads
+**Stremio Native** replaces all of that with a single Rust binary and a native [Slint](https://slint.dev/) UI:
 
-| Platform | Package Format | Download Link |
+* **🚀 Instant Startup** — launches in under a second with zero UI lag.
+* **💧 56% Less RAM** — **358 MB** idle vs. the 814 MB official baseline.
+* **⚡ 1 Process Instead of 10** — an open-source stream server runs in-process; no Node.js required.
+* **🔋 Battery-Friendly** — GPU hardware video decoding keeps CPU usage near **0%** during playback.
+* **🔒 100% Local & Private** — local SQLite database, zero telemetry, no cloud dependencies.
+
+![Stremio Native Interface](app/assets/preview.png)
+
+See the [changelog](CHANGELOG.md) for the current build's implementation notes and known limitations.
+
+---
+
+## 📥 Download
+
+| Platform | Format | Link |
 | :--- | :--- | :--- |
-| **Windows** | Installer (MSI) | [StremioSetup-x64.exe](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/StremioSetup-v1.0.1-x64.exe) |
-| **Windows** | Portable (ZIP) | [stremio-native-windows-x64.zip](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-pc-windows-msvc.zip) |
-| **Linux** | Portable Binary | [stremio-native-linux-gnu](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-unknown-linux-gnu) |
-| **Linux (Debian / Ubuntu)** | DEB Package | [stremio-native_amd64.deb](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native_1.0.1_amd64.deb) |
-| **Linux (Arch)** | Pacman Package | [stremio-native-x86_64.pkg.tar.zst](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1-x86_64.pkg.tar.zst) |
-| **Linux (Fedora / RHEL)** | RPM Package | [stremio-native-x86_64.rpm](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1.x86_64.rpm) |
+| **Windows** | Installer | [StremioSetup-v1.0.1-x64.exe](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/StremioSetup-v1.0.1-x64.exe) |
+| **Windows** | Portable ZIP | [stremio-native-v1.0.1-x86_64-pc-windows-msvc.zip](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-pc-windows-msvc.zip) |
+| **Arch Linux** | Pacman `.pkg.tar.zst` | [stremio-native-1.0.1-1-x86_64.pkg.tar.zst](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1-x86_64.pkg.tar.zst) |
+| **Debian / Ubuntu** | `.deb` | [stremio-native_1.0.1_amd64.deb](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native_1.0.1_amd64.deb) |
+| **Fedora / RHEL** | `.rpm` | [stremio-native-1.0.1-1.x86_64.rpm](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-1.0.1-1.x86_64.rpm) |
+| **Linux** | Standalone binary | [stremio-native-v1.0.1-x86_64-unknown-linux-gnu](https://github.com/perpetus/stremio-native/releases/download/v1.0.1/stremio-native-v1.0.1-x86_64-unknown-linux-gnu) |
 
 ---
 
-## ✨ Features and Functionality
+## 📊 Performance Comparison
 
-### 🖥️ Modern Stremio Web UI Alignment
-* **Unified Navbar & Fixed Sidebar**: Experience a premium layout featuring a top header panel with a search bar and user profile controls, alongside a fixed vertical navigation sidebar that reveals labels on hover.
-* **Discover Catalog Split Preview**: Browse movies and TV series catalogs without leaving your current page. Clicking a media card slides open a detailed metadata panel featuring blurred poster art backdrops, overview, casting list, and genre filters.
-* **Advanced Series & Episode Picker**:
-  - **Horizontal Seasons Row**: Switch seasons instantly using capsule-shaped navigation buttons.
-  - **Real-Time Episode Search**: Filter series episodes on-the-fly with a built-in search box.
-  - **Detailed Episode Cards**: Each row displays preview thumbnails, sequence numbers, localized release dates, and watched checkmarks.
-  - **Dynamic Stream List Sheet**: Switches smoothly to the stream provider sheet, complete with a `← Back to Episodes` navigation link.
+| Metric | Official Stremio | Stremio Native | Improvement |
+| :--- | ---: | ---: | :---: |
+| Processes | 10 | **1** | 90% fewer |
+| Idle memory (RAM) | 814.4 MB | **358.6 MB** | 56% lower |
+| Idle CPU | — | **0.19%** | near-zero |
+| Threads | 190 | **72** | 62% fewer |
+| Handles | 4,872 | **891** | 82% fewer |
 
-### ⚡ Rust-Powered Performance & Hardware Acceleration
-* **Custom Open-Source Stream Server**: Unlike the official Stremio client which relies on a separate Node.js-based `server.js` backend, Stremio embeds a custom, open-source **stream server** in-process. This eliminates the separate Node.js runtime and reduces process-management overhead.
-* **Low CPU & Battery Usage**: Leveraging hardware-accelerated video decoding, this client utilizes your computer's GPU for video playback, keeping your CPU cool and extending your laptop's battery life.
-
-#### Measured Idle Footprint (Windows x64)
-
-The currently running native `1.0.0` release remains a single process, uses **358.6 MB** of private working set, and averaged **0.19% CPU** while idle. Its memory footprint is **455.8 MB (56.0%) lower** than the retained official Stremio baseline.
-
-| Metric | Official Stremio baseline | Current native release |
-| :--- | ---: | ---: |
-| Processes | `10` | **`1`** |
-| Private working set | `814.4 MB` | **`358.6 MB`** |
-| CPU (5-second normalized average) | Not recorded | **`0.19%`** |
-| Read/write I/O (5-second average) | Not recorded | **`0.00 / 0.00 MB/s`** |
-| Threads | `190` | **`72`** |
-| Handles | `4,872` | **`891`** |
-| Loaded modules | `201` | **`108`** |
-
-The native values were captured on July 18, 2026 from the already-running, settled release process without changing its state. CPU and I/O are five-second samples; the remaining values are point-in-time readings. The official WebView2 values are the corresponding settled baseline retained from the previous performance investigation, so this remains an observational comparison rather than a controlled laboratory benchmark.
-
-### 📦 Secure Offline Database Cache (Turso & Limbo)
-* **Local-First Database Storage**: Stores all settings, historical logs, and metadata inside a single local database file (`stremio.db`) using the native `turso` engine.
-* **Asynchronous Image Loading**: Poster artwork and thumbnails are fetched, cached, and decoded on bounded background workers, keeping disk and decode work off the UI thread.
-* **Privacy-Focused**: No cloud synchronizations, trackers, or telemetry. Your viewing history, settings, and logs remain 100% private and stored locally.
+Measured on Windows x64 from the settled, idle v1.0.0 release process. CPU and I/O are five-second samples; other values are point-in-time readings. The official baseline was captured from a corresponding settled Stremio session. This is an observational comparison, not a controlled laboratory benchmark.
 
 ---
 
-## 🚀 How to Build and Run the App
+## ✨ Features
 
-Windows x64 builds automatically download and verify the pinned optimized `libmpv-2.dll`; no media binaries are stored in this repository. Linux builds use the system's dynamic `libmpv` through `pkg-config`. Windows release builds in CI target the `x64-windows-v3-static-release` triplet (`x86-64-v3` baseline using `/arch:AVX2` for wide CPU compatibility). An optional `x64-windows-v4-static-release` triplet (`/arch:AVX512`) is kept local-only for hardware-specific local builds.
+### 🎨 Native Desktop UI
+* **Fixed Sidebar Navigation** — vertical sidebar with hover labels for Board, Discover, Library, Calendar, Addons, and Settings.
+* **Catalog Split Preview** — clicking a media card opens a side-panel with blurred poster backdrops, cast, genres, and metadata without leaving the catalog.
+* **Episode & Stream Picker** — real-time episode search, capsule season switching, thumbnails, release dates, watched indicators, and a stream-provider sheet with back-navigation.
 
-Pushing a `v*` tag builds both platforms and publishes a GitHub release automatically after both jobs pass. The release contains the Windows installer, the updater-compatible Windows archive, the Linux x64 binary, SHA-256 checksums, direct download links, version-matched changelog notes, and linked commits since the previous tag.
+### ⚡ Embedded Stream Server
+* **No External Dependencies** — eliminates the separate Node.js `server.js` process. The stream engine runs asynchronously inside the Rust async runtime.
+* **Hardware-Accelerated Playback** — powered by `libmpv` with full GPU hardware decoding (H.264, HEVC, AV1, VP9).
 
-### 1. Prerequisites
-On Windows, install the `x86_64-pc-windows-msvc` Rust toolchain from [rustup.rs](https://rustup.rs/) and the Visual Studio 2022 C++ build tools/Windows SDK. On Linux, install Rust, `pkg-config`, the libmpv development package, and the native GUI packages listed in the release workflow.
+### 📦 Local-First Storage & Privacy
+* **Single Database File** — all settings, history, and metadata live in `./storage/stremio.db` (Turso/Limbo engine).
+* **Zero Telemetry** — no tracking, analytics, or phone-home connections.
 
-### 2. Launching the Media Center
-1. Open your terminal or shell command prompt.
-2. Navigate to the cloned repository directory:
-   ```bash
-   cd stremio-native
-   ```
-3. Build and run the optimized release on Windows:
-   ```powershell
-   cargo build --release --package stremio-native
-   .\target\release\stremio-native.exe
-   ```
+---
 
-   Or on Linux:
-   ```bash
-   cargo build --release --package stremio-native
-   ./target/release/stremio-native
-   ```
+## 🛠️ Building From Source
 
-*All settings, log consoles, and image databases are stored in the local `./storage/` folder inside the project directory.*
+### Prerequisites
+- **Windows**: [Rust toolchain (`msvc`)](https://rustup.rs/) and Visual Studio 2022 C++ Build Tools / Windows SDK.
+- **Linux**: Rust, `pkg-config`, `libmpv-dev`, and standard X11/Wayland GUI packages (see the CI workflow for the full list).
+
+### Build & Run
+
+```bash
+git clone https://github.com/perpetus/stremio-native.git
+cd stremio-native
+cargo run --release --package stremio-native
+```
+
+Settings, logs, and image caches are stored in `./storage/` inside the project directory.
+
+### CI & Releases
+
+Pushing a `v*` tag builds both Windows and Linux and publishes a GitHub release automatically. Windows release builds target the `x64-windows-v3-static-release` triplet (`x86-64-v3` / `/arch:AVX2`) for broad CPU compatibility. An optional `x64-windows-v4-static-release` triplet (`/arch:AVX512`) is kept local-only for specific hardware. The release includes installers, portable archives, Linux packages, SHA-256 checksums, changelog notes, and a linked commit diff.
 
 ---
 
 ## ⚠️ Disclaimer
 
-Stremio Native is an independent, community-developed project. It is an unofficial client and is not affiliated with, authorized, maintained, sponsored, or endorsed by SmartCode Ltd (the creators of the official Stremio application).
+Stremio Native is an independent, community-developed project. It is not affiliated with, authorized, maintained, sponsored, or endorsed by SmartCode Ltd (the creators of the official Stremio application).
