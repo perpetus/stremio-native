@@ -35,6 +35,9 @@
 /app/ui/assets/fonts/Bootstrap Regular.ttf
 /app/ui/assets/fonts/Lucide Regular.ttf
 
+# Local CPU v4 triplet override
+/triplets/x64-windows-v4-static-release.cmake
+
 # OS metadata
 .DS_Store
 Thumbs.db

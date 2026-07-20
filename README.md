@@ -63,7 +63,7 @@ The native values were captured on July 18, 2026 from the already-running, settl
 
 ## 🚀 How to Build and Run the App
 
-Windows x64 builds automatically download and verify the pinned optimized `libmpv-2.dll`; no media binaries are stored in this repository. Linux builds use the system's dynamic `libmpv` through `pkg-config`. Windows and Linux x64 Rust code targets the reproducible `x86-64-v3` baseline. The local Windows vcpkg graph uses the distinct `x64-windows-v4-static-release` triplet and `/arch:AVX512`; that Windows build requires an x86-64-v4/AVX-512 processor, while Linux requires an AVX2-class processor.
+Windows x64 builds automatically download and verify the pinned optimized `libmpv-2.dll`; no media binaries are stored in this repository. Linux builds use the system's dynamic `libmpv` through `pkg-config`. Windows release builds in CI target the `x64-windows-v3-static-release` triplet (`x86-64-v3` baseline using `/arch:AVX2` for wide CPU compatibility). An optional `x64-windows-v4-static-release` triplet (`/arch:AVX512`) is kept local-only for hardware-specific local builds.
 
 Pushing a `v*` tag builds both platforms and publishes a GitHub release automatically after both jobs pass. The release contains the Windows installer, the updater-compatible Windows archive, the Linux x64 binary, SHA-256 checksums, direct download links, version-matched changelog notes, and linked commits since the previous tag.
 

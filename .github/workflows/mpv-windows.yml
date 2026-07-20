@@ -48,9 +48,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: vcpkg_installed
-          key: Windows-vcpkg-x86-64-v4-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
+          key: Windows-vcpkg-x86-64-v3-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: |
-            Windows-vcpkg-x86-64-v4-static-release-v1-
+            Windows-vcpkg-x86-64-v3-static-release-v1-
       - name: Install optimized static libtorrent
         uses: lukka/run-vcpkg@v11
         with:
@@ -60,7 +60,7 @@ jobs:
           runVcpkgInstall: true
         env:
           VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
-          VCPKG_DEFAULT_TRIPLET: x64-windows-v4-static-release
+          VCPKG_DEFAULT_TRIPLET: x64-windows-v3-static-release
           VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/triplets
           VCPKG_OVERLAY_PORTS: ${{ github.workspace }}/vcpkg-overlays
       - uses: Swatinem/rust-cache@v2
@@ -69,8 +69,8 @@ jobs:
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
           VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
-          VCPKGRS_TRIPLET: x64-windows-v4-static-release
-          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows-v4-static-release/lib/pkgconfig
+          VCPKGRS_TRIPLET: x64-windows-v3-static-release
+          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows-v3-static-release/lib/pkgconfig
       - name: Verify runtime bundle
         shell: pwsh
         run: |
