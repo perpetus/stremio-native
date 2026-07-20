@@ -199,7 +199,7 @@ jobs:
           cp target/release/stremio-native rpmbuild/SOURCES/
           cat > rpmbuild/SPECS/stremio-native.spec << EOF
           Name:           stremio-native
-          Version:        \${pkgver}
+          Version:        ${pkgver}
           Release:        1%{?dist}
           Summary:        High-performance native Stremio client built with Rust and Slint
           License:        GPLv3
@@ -219,7 +219,7 @@ jobs:
           %{_bindir}/stremio-native
 
           %changelog
-          * Sun Jul 19 2026 stremio-native maintainers <stremio-native@example.com> - \${pkgver}-1
+          * Sun Jul 19 2026 stremio-native maintainers <stremio-native@example.com> - ${pkgver}-1
           - Initial release
           EOF
       - name: Build RPM Package
