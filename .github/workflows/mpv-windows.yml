@@ -175,6 +175,7 @@ jobs:
           url="https://github.com/perpetus/stremio-native"
           license=('GPL-3.0')
           depends=('openssl' 'libtorrent-rasterbar' 'boost-libs' 'mpv' 'gtk3' 'libayatana-appindicator')
+          options=('!strip' '!debug')
           source=("stremio-native")
           sha256sums=('SKIP')
 
@@ -299,7 +300,7 @@ jobs:
           copy_latest "StremioSetup-v*-x64.exe"
           copy_latest "stremio-native-v*-x86_64-pc-windows-msvc.zip"
           copy_latest "*.deb"
-          copy_latest "*.pkg.tar.zst"
+          copy_latest "stremio-native-[0-9]*.pkg.tar.zst"
           copy_latest "*.rpm"
 
           linux_binary="$(find artifacts/stremio-native-linux-x64 -type f -name stremio-native | head -n 1)"
