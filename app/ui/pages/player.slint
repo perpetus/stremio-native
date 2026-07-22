@@ -32,6 +32,7 @@ component TrackItem inherits ButtonSurface {
     in property <string> label;
     in property <string> secondary-label: "";
     in property <bool> active;
+    in property <bool> available: true;
     in property <length> row-height: secondary-label == "" ? 56px : 64px;
     height: row-height;
     border-radius: 10px;
@@ -39,6 +40,8 @@ component TrackItem inherits ButtonSurface {
         ? (active ? #7b5bf54d : #ffffff12)
         : (active ? #7b5bf538 : transparent);
     accessible-name: root.label;
+    enabled: root.available;
+    opacity: root.available ? 1.0 : 0.45;
 
     animate background { duration: 150ms; }
 
@@ -225,6 +228,20 @@ export component PlayerPage inherits Rectangle {
     // Speed options
     in-out property <float> playback-speed: 1.0;
     in-out property <int> video-scale-mode: 0;
+    in-out property <int> active-shader-preset: 0;
+    in property <[bool]> shader-preset-available: [true, false, false, false, false, false, false, false];
+    in property <string> shader-status: "Checking GPU support…";
+    in property <[string]> shader-preset-names: [
+        "Off", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)", "FSR"
+    ];
+    in property <image> thumbnail-preview;
+    in property <bool> thumbnail-visible: false;
+    in property <float> thumbnail-hover-x: 0.0;
+    in property <bool> thumbnail-loading: false;
+    in property <bool> thumbnail-has-frame: false;
+    in property <float> thumbnail-aspect-ratio: 1.7778;
+    in property <string> thumbnail-time-label: "00:00";
 
     in-out property <bool> show-skip-button: false;
     in-out property <string> skip-button-label: @tr("PLAYER_SKIP_INTRO" => "Skip Intro");
@@ -250,6 +267,8 @@ export component PlayerPage inherits Rectangle {
     callback toggle-pause();
     callback seek(float);
     callback seek-relative(float);
+    callback seek-hover(float);
+    callback seek-leave();
     callback change-volume(float);
     callback toggle-mute();
     callback change-subtitle(int);
@@ -259,6 +278,7 @@ export component PlayerPage inherits Rectangle {
     callback change-subtitle-offset(float);
     callback change-speed(float);
     callback change-video-scale(int);
+    callback change-shader-preset(int);
     callback copy-stream-link();
     callback download-video();
     callback play-episode(int, string);
@@ -275,6 +295,7 @@ export component PlayerPage inherits Rectangle {
     in-out property <bool> show-audio-menu: false;
     in-out property <bool> show-speed-menu: false;
     in-out property <bool> show-stats-menu: false;
+    in-out property <bool> show-upscaler-menu: false;
     in-out property <bool> show-options-menu: false;
     in-out property <bool> show-playlist-drawer: false;
     in-out property <bool> season-menu-open: false;
@@ -290,10 +311,23 @@ export component PlayerPage inherits Rectangle {
     property <string> selected-subtitle-language: active-subtitle-idx >= 0 && active-subtitle-idx < subtitle-track-languages.length
         ? subtitle-track-languages[active-subtitle-idx]
         : "";
+    private property <float> safe-thumbnail-aspect: max(0.35, min(4.0, thumbnail-aspect-ratio));
+    private property <length> thumbnail-card-width: safe-thumbnail-aspect >= 1.6
+        ? 160px
+        : 100px * safe-thumbnail-aspect;
+    private property <length> thumbnail-card-height: safe-thumbnail-aspect >= 1.6
+        ? 160px / safe-thumbnail-aspect
+        : 100px;
 
     changed show-playlist-drawer => {
         if (!root.show-playlist-drawer) {
             root.season-menu-open = false;
+        }
+    }
+
+    changed controls-visible => {
+        if (!root.controls-visible) {
+            root.seek-leave();
         }
     }
 
@@ -505,18 +539,43 @@ export component PlayerPage inherits Rectangle {
             clicked => { close(); }
         }
 
-        Text {
+        HorizontalLayout {
             x: 88px;
             y: 0px;
             width: max(0px, parent.width - 176px);
             height: 88px;
-            text: item-title;
-            color: #ffffffe6;
-            font-size: 19px;
-            font-weight: 500;
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            overflow: elide;
+            spacing: 12px;
+            alignment: start;
+
+            Text {
+                text: item-title;
+                color: #ffffffe6;
+                font-size: 19px;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            if (active-shader-preset > 0) : Rectangle {
+                height: 22px;
+                background: #7b5bf5e6;
+                border-radius: 4px;
+                y: (parent.height - self.height) / 2;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: active-shader-preset == 7 ? "FSR" : "4K HDR";
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+            }
         }
 
         PlayerIconButton {
@@ -764,6 +823,65 @@ export component PlayerPage inherits Rectangle {
             thumb-border-width: 4px;
             thumb-border-color: #a891ff;
             completed(value) => { root.seek(value); }
+            hover-position-changed(val) => { root.seek-hover(val); }
+            hover-left => { root.seek-leave(); }
+        }
+
+        if (thumbnail-visible) : Rectangle {
+            x: max(12px, min(parent.width - self.width - 12px,
+                120px + (parent.width - 240px) * thumbnail-hover-x - self.width / 2));
+            y: 48px - self.height - 12px;
+            width: root.thumbnail-card-width;
+            height: root.thumbnail-card-height;
+            border-radius: Theme.compact-radius;
+            border-width: 1px;
+            border-color: Theme.divider;
+            background: Theme.card-background;
+            clip: true;
+            animate opacity { duration: Theme.motion-fast; }
+
+            if (thumbnail-has-frame) : Image {
+                source: thumbnail-preview;
+                width: parent.width;
+                height: parent.height;
+                image-fit: contain;
+            }
+
+            if (thumbnail-loading && !thumbnail-has-frame) : Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: Theme.skeleton-base;
+
+                Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: "…";
+                    color: Theme.text-secondary;
+                    font-size: 20px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: parent.height - self.height - 6px;
+                width: 64px;
+                height: 22px;
+                border-radius: self.height / 2;
+                background: Theme.scrim.with-alpha(0.85);
+
+                time-text := Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.thumbnail-time-label;
+                    color: Theme.text-primary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
         }
 
         Text {
@@ -836,7 +954,7 @@ export component PlayerPage inherits Rectangle {
 
         // Menus and display controls are independently anchored to the right.
         HorizontalLayout {
-            width: is-series ? 472px : 404px;
+            width: is-series ? 540px : 472px;
             x: parent.width - self.width - 32px;
             y: 88px;
             height: 64px;
@@ -852,6 +970,7 @@ export component PlayerPage inherits Rectangle {
                     show-speed-menu = false;
                     show-subtitles-menu = false;
                     show-audio-menu = false;
+                    show-upscaler-menu = false;
                     show-playlist-drawer = false;
                     show-options-menu = false;
                 }
@@ -866,6 +985,7 @@ export component PlayerPage inherits Rectangle {
                     show-stats-menu = false;
                     show-subtitles-menu = false;
                     show-audio-menu = false;
+                    show-upscaler-menu = false;
                     show-playlist-drawer = false;
                     show-options-menu = false;
                 }
@@ -881,6 +1001,7 @@ export component PlayerPage inherits Rectangle {
                     show-stats-menu = false;
                     show-speed-menu = false;
                     show-audio-menu = false;
+                    show-upscaler-menu = false;
                     show-playlist-drawer = false;
                     show-options-menu = false;
                 }
@@ -896,6 +1017,22 @@ export component PlayerPage inherits Rectangle {
                     show-stats-menu = false;
                     show-speed-menu = false;
                     show-subtitles-menu = false;
+                    show-upscaler-menu = false;
+                    show-playlist-drawer = false;
+                    show-options-menu = false;
+                }
+            }
+
+            PlayerIconButton {
+                icon-source: @image-url("../assets/images/icons/settings-upscaler.svg");
+                tooltip: active-shader-preset == 0 ? @tr("Upscaler") : shader-preset-names[active-shader-preset];
+                active: show-upscaler-menu || active-shader-preset > 0;
+                clicked => {
+                    show-upscaler-menu = !show-upscaler-menu;
+                    show-stats-menu = false;
+                    show-speed-menu = false;
+                    show-subtitles-menu = false;
+                    show-audio-menu = false;
                     show-playlist-drawer = false;
                     show-options-menu = false;
                 }
@@ -911,6 +1048,7 @@ export component PlayerPage inherits Rectangle {
                     show-speed-menu = false;
                     show-subtitles-menu = false;
                     show-audio-menu = false;
+                    show-upscaler-menu = false;
                     show-options-menu = false;
                 }
             }
@@ -922,6 +1060,7 @@ export component PlayerPage inherits Rectangle {
                     video-scale-mode = Math.mod(video-scale-mode + 1, 3);
                     change-video-scale(video-scale-mode);
                     show-options-menu = false;
+                    show-upscaler-menu = false;
                 }
             }
 
@@ -935,6 +1074,7 @@ export component PlayerPage inherits Rectangle {
                     show-speed-menu = false;
                     show-subtitles-menu = false;
                     show-audio-menu = false;
+                    show-upscaler-menu = false;
                     show-playlist-drawer = false;
                 }
             }
@@ -1266,6 +1406,62 @@ export component PlayerPage inherits Rectangle {
                     TrackItem { label: "2.0x"; active: playback-speed == 2.0; clicked => { playback-speed = 2.0; change-speed(2.0); show-speed-menu = false; } }
                     TrackItem { label: "3.0x"; active: playback-speed == 3.0; clicked => { playback-speed = 3.0; change-speed(3.0); show-speed-menu = false; } }
                     TrackItem { label: "4.0x"; active: playback-speed == 4.0; clicked => { playback-speed = 4.0; change-speed(4.0); show-speed-menu = false; } }
+                }
+            }
+        }
+    }
+
+    if (controls-visible && show-upscaler-menu) : upscaler-menu := PopupMenuSurface {
+        x: parent.width - upscaler-menu.width - 32px;
+        y: parent.height - upscaler-menu.height - 112px;
+        width: 260px;
+        height: min(500px, parent.height - 200px);
+        background: #15121ff5;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: #ffffff1f;
+        z: 180;
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 4px;
+
+            Text {
+                height: 52px;
+                text: @tr("Upscaler" => "Upscaler");
+                color: #ffffff;
+                font-size: 20px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            Text {
+                width: parent.width;
+                text: shader-status;
+                color: #ffffff99;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+                viewport-width: self.width;
+                horizontal-scrollbar-policy: always-off;
+                mouse-drag-pan-enabled: true;
+
+                VerticalLayout {
+                    width: parent.width;
+                    spacing: 4px;
+
+                    for name[idx] in shader-preset-names : TrackItem {
+                        label: name;
+                        active: active-shader-preset == idx;
+                        available: idx == 0 || (idx < shader-preset-available.length && shader-preset-available[idx]);
+                        clicked => {
+                            change-shader-preset(idx);
+                            show-upscaler-menu = false;
+                        }
+                    }
                 }
             }
         }

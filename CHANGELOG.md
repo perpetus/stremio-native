@@ -2,6 +2,38 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
+## 1.0.2 - 2026-07-22
+
+### Downloads
+- **Windows**: [Installer](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/StremioSetup-v1.0.2-x64.exe) | [Portable](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/stremio-native-v1.0.2-x86_64-pc-windows-msvc.zip)
+- **Linux**: [Binary](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/stremio-native-v1.0.2-x86_64-unknown-linux-gnu)
+- **Debian / Ubuntu**: [DEB Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/stremio-native_1.0.2_amd64.deb)
+- **Arch Linux**: [Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/stremio-native-1.0.2-1-x86_64.pkg.tar.zst)
+- **Fedora**: [RPM Package](https://github.com/perpetus/stremio-native/releases/download/v1.0.2/stremio-native-1.0.2-1.x86_64.rpm)
+
+### Skia rendering and video upscalers
+- Replaced the forced FemtoVG/GLES path with Slint's Skia OpenGL renderer and explicit native OpenGL context selection.
+- Added typed OpenGL diagnostics and capability gating so Anime4K and FSR are enabled only on desktop OpenGL 3.3 or newer while ordinary playback remains available on older or embedded contexts.
+- Made MPV shader configuration atomic, preserved Skia's OpenGL state across MPV callbacks, and exposed acknowledged shader availability and status throughout the player and onboarding UI.
+- Added all six Anime4K modes plus AMD FSR with persistent preferences, download/readiness coordination, rejection handling, and safe context recreation.
+
+### Native timeline thumbnail previews
+- Replaced the process-per-hover thumbnail draft with a persistent secondary libmpv worker that requires no standalone `mpv.exe`, IPC socket, temporary image, or PNG decoder.
+- Added prewarming, coalesced keyframe seeks, delayed exact refinement, stale-request protection, rotation handling, tightly packed RGBA readback, and a bounded 16 MiB exact-frame cache.
+- Added aspect-preserving seekbar presentation, loading and timestamp states, immediate settings control, legacy preference migration, and graceful fallback for live, non-seekable, and audio-only sources.
+- Added ThumbFast attribution and the referenced MPL 2.0 source notice.
+
+### Onboarding and interface fixes
+- Added the native onboarding flow and playback setup page, including upscaler capability status, hardware acceleration, seek duration, subtitle preferences, release highlights, and onboarding audio.
+- Corrected renderer-dependent layout and hit testing across onboarding, media carousels, overlays, sliders, board cards, player controls, and settings.
+- Reduced redundant image projections and strengthened stale UI update rejection during asynchronous navigation and playback changes.
+
+### Windows build and packaging
+- Kept release binaries at the x86-64-v3 baseline while linking native vcpkg libraries statically against the dynamic MSVC CRT expected by rust-skia.
+- Added app-local VC143 runtime staging, dependency verification with `dumpbin`, and a SHA-256 runtime manifest so installer users do not need a separate redistributable installation.
+- Increased MSVC PDB page size for the large stream-server debug DLL, preventing nondeterministic `LNK1318: LIMIT (12)` failures without discarding debug symbols.
+- Updated GitHub Actions triplets, caches, artifact staging, and installer inputs for the static-library/dynamic-CRT configuration.
+
 ## 1.0.1 - 2026-07-19
 
 ### Downloads

@@ -71,61 +71,47 @@ export component BoardPage inherits Rectangle {
         horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
 
         for section in root.sections : Rectangle {
+            width: parent.width;
+            height: 3 * root.unit + root.card-height;
+            background: transparent;
+
+            init => {
+                if (section.catalog-index >= 0) {
+                    root.catalog-visible(section.catalog-index);
+                }
+            }
+
+            MediaCatalogRow {
                 width: parent.width;
-                height: 3 * root.unit + root.card-height;
-                background: transparent;
-                property <int> visible-catalog-index: section.catalog-index;
-
-                init => {
-                    if (self.visible-catalog-index >= 0) {
-                        root.catalog-visible(self.visible-catalog-index);
+                height: parent.height;
+                unit: root.unit;
+                title: section.is-continue-watching
+                    ? @tr("BOARD_CONTINUE_WATCHING" => "Continue watching")
+                    : section.title;
+                loading: section.loading;
+                message: section.error-message;
+                show-see-all: true;
+                card-width: root.card-width;
+                card-height: root.card-height;
+                items: section.items;
+                show-close-button: section.is-continue-watching;
+                see-all-requested => {
+                    if (section.is-continue-watching) {
+                        root.see-all-continue-watching();
+                    } else {
+                        root.see-all-clicked(section.catalog-index);
                     }
                 }
-                changed visible-catalog-index => {
-                    if (self.visible-catalog-index >= 0) {
-                        root.catalog-visible(self.visible-catalog-index);
+                item-selected(id, media-type, video-id) => {
+                    root.item-selected(id, media-type, video-id);
+                }
+                remove-clicked(id) => {
+                    if (section.is-continue-watching) {
+                        root.remove-continue-watching(id);
                     }
                 }
-
-                if (section.loading) : MetaRowPlaceholder {
-                    width: parent.width;
-                    height: parent.height;
-                    unit: root.unit;
-                    title: section.title;
-                    show-see-all: true;
-                    item-width: max(9 * root.unit, root.card-width - 2 * root.unit);
-                }
-
-                if (!section.loading) : MediaCatalogRow {
-                    width: parent.width;
-                    height: parent.height;
-                    unit: root.unit;
-                    title: section.is-continue-watching
-                        ? @tr("BOARD_CONTINUE_WATCHING" => "Continue watching")
-                        : section.title;
-                    message: section.error-message;
-                    show-see-all: true;
-                    card-width: root.card-width;
-                    card-height: root.card-height;
-                    items: section.items;
-                    show-close-button: section.is-continue-watching;
-                    see-all-requested => {
-                        if (section.is-continue-watching) {
-                            root.see-all-continue-watching();
-                        } else {
-                            root.see-all-clicked(section.catalog-index);
-                        }
-                    }
-                    item-selected(id, media-type, video-id) => {
-                        root.item-selected(id, media-type, video-id);
-                    }
-                    remove-clicked(id) => {
-                        if (section.is-continue-watching) {
-                            root.remove-continue-watching(id);
-                        }
-                    }
-                    poster-requested(url) => { root.poster-requested(url); }
-                }
+                poster-requested(url) => { root.poster-requested(url); }
+            }
         }
     }
 }

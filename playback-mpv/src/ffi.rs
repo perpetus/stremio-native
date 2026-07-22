@@ -14,6 +14,7 @@ pub const FORMAT_DOUBLE: c_int = 5;
 pub const FORMAT_NODE: c_int = 6;
 pub const FORMAT_NODE_ARRAY: c_int = 7;
 pub const FORMAT_NODE_MAP: c_int = 8;
+pub const FORMAT_BYTE_ARRAY: c_int = 9;
 
 pub const EVENT_NONE: c_int = 0;
 pub const EVENT_SHUTDOWN: c_int = 1;
@@ -21,6 +22,7 @@ pub const EVENT_COMMAND_REPLY: c_int = 5;
 pub const EVENT_START_FILE: c_int = 6;
 pub const EVENT_END_FILE: c_int = 7;
 pub const EVENT_FILE_LOADED: c_int = 8;
+pub const EVENT_CLIENT_MESSAGE: c_int = 16;
 pub const EVENT_PLAYBACK_RESTART: c_int = 21;
 pub const EVENT_PROPERTY_CHANGE: c_int = 22;
 pub const EVENT_QUEUE_OVERFLOW: c_int = 24;
@@ -99,6 +101,10 @@ pub enum MpvError {
     NullRenderContext,
     #[error("value contains an interior null byte: {0}")]
     InvalidString(#[from] std::ffi::NulError),
+    #[error("string-list property contains too many values: {len}")]
+    StringListTooLong { len: usize },
+    #[error("invalid data returned by libmpv: {0}")]
+    InvalidNode(String),
     #[error("libmpv operation failed ({code}): {message}")]
     Operation { code: c_int, message: String },
     #[error("MPV command queue is full")]
@@ -107,6 +113,10 @@ pub enum MpvError {
     CommandQueueClosed,
     #[error("MPV actor thread panicked")]
     ActorPanicked,
+    #[error("MPV thumbnail worker has closed")]
+    ThumbnailWorkerClosed,
+    #[error("MPV thumbnail worker thread panicked")]
+    ThumbnailWorkerPanicked,
     #[error("OpenGL rendering is unsupported on this platform")]
     UnsupportedOpenGl,
     #[error("OpenGL operation failed: {0}")]
@@ -141,6 +151,12 @@ pub struct MpvEventProperty {
 }
 
 #[repr(C)]
+pub struct MpvEventClientMessage {
+    pub num_args: c_int,
+    pub args: *const *const c_char,
+}
+
+#[repr(C)]
 pub struct MpvEventEndFile {
     pub reason: c_int,
     pub error: c_int,
@@ -156,7 +172,7 @@ pub union MpvNodeValue {
     pub int64: i64,
     pub double_: f64,
     pub list: *mut MpvNodeList,
-    pub byte_array: *mut c_void,
+    pub byte_array: *mut MpvByteArray,
 }
 
 #[repr(C)]
@@ -170,6 +186,12 @@ pub struct MpvNodeList {
     pub num: c_int,
     pub values: *mut MpvNode,
     pub keys: *mut *mut c_char,
+}
+
+#[repr(C)]
+pub struct MpvByteArray {
+    pub data: *mut c_void,
+    pub size: usize,
 }
 
 #[repr(C)]
@@ -205,7 +227,13 @@ type SetPropertyFn =
     unsafe extern "C" fn(*mut MpvHandle, *const c_char, c_int, *mut c_void) -> c_int;
 type SetPropertyStringFn =
     unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int;
+type GetPropertyFn =
+    unsafe extern "C" fn(*mut MpvHandle, *const c_char, c_int, *mut c_void) -> c_int;
+type FreeFn = unsafe extern "C" fn(*mut c_void);
 type CommandFn = unsafe extern "C" fn(*mut MpvHandle, *const *const c_char) -> c_int;
+type CommandRetFn =
+    unsafe extern "C" fn(*mut MpvHandle, *const *const c_char, *mut MpvNode) -> c_int;
+type FreeNodeContentsFn = unsafe extern "C" fn(*mut MpvNode);
 type CommandAsyncFn = unsafe extern "C" fn(*mut MpvHandle, u64, *const *const c_char) -> c_int;
 type AbortAsyncCommandFn = unsafe extern "C" fn(*mut MpvHandle, u64);
 type ObservePropertyFn = unsafe extern "C" fn(*mut MpvHandle, u64, *const c_char, c_int) -> c_int;
@@ -246,7 +274,20 @@ unsafe extern "C" {
         name: *const c_char,
         value: *const c_char,
     ) -> c_int;
+    fn mpv_get_property(
+        handle: *mut MpvHandle,
+        name: *const c_char,
+        format: c_int,
+        data: *mut c_void,
+    ) -> c_int;
+    fn mpv_free(data: *mut c_void);
     fn mpv_command(handle: *mut MpvHandle, args: *const *const c_char) -> c_int;
+    fn mpv_command_ret(
+        handle: *mut MpvHandle,
+        args: *const *const c_char,
+        result: *mut MpvNode,
+    ) -> c_int;
+    fn mpv_free_node_contents(node: *mut MpvNode);
     fn mpv_command_async(
         handle: *mut MpvHandle,
         reply_userdata: u64,
@@ -292,7 +333,11 @@ pub struct MpvApi {
     set_option_string: SetOptionStringFn,
     set_property: SetPropertyFn,
     set_property_string: SetPropertyStringFn,
+    get_property: GetPropertyFn,
+    free: FreeFn,
     command: CommandFn,
+    command_ret: CommandRetFn,
+    free_node_contents: FreeNodeContentsFn,
     command_async: CommandAsyncFn,
     abort_async_command: AbortAsyncCommandFn,
     observe_property: ObservePropertyFn,
@@ -316,7 +361,11 @@ impl MpvApi {
             set_option_string: mpv_set_option_string,
             set_property: mpv_set_property,
             set_property_string: mpv_set_property_string,
+            get_property: mpv_get_property,
+            free: mpv_free,
             command: mpv_command,
+            command_ret: mpv_command_ret,
+            free_node_contents: mpv_free_node_contents,
             command_async: mpv_command_async,
             abort_async_command: mpv_abort_async_command,
             observe_property: mpv_observe_property,
@@ -365,6 +414,25 @@ pub struct MpvClient {
     handle: NonNull<MpvHandle>,
 }
 
+pub(crate) struct MpvOwnedNode {
+    api: Arc<MpvApi>,
+    node: MpvNode,
+}
+
+impl MpvOwnedNode {
+    pub(crate) fn as_node(&self) -> &MpvNode {
+        &self.node
+    }
+}
+
+impl Drop for MpvOwnedNode {
+    fn drop(&mut self) {
+        // SAFETY: `node` was populated by a successful `mpv_command_ret` call
+        // and has not been mutated or freed since then.
+        unsafe { (self.api.free_node_contents)(&mut self.node) };
+    }
+}
+
 // SAFETY: MPV's client API is thread-safe. This wrapper serializes normal
 // player operations on the actor thread; the render API uses its own context.
 unsafe impl Send for MpvClient {}
@@ -409,6 +477,28 @@ impl MpvClient {
         // for the duration of the synchronous command.
         self.api
             .result(unsafe { (self.api.command)(self.handle(), pointers.as_ptr()) })
+    }
+
+    pub(crate) fn command_result(&self, args: &[&str]) -> Result<MpvOwnedNode, MpvError> {
+        let strings = args
+            .iter()
+            .map(|arg| CString::new(*arg))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut pointers = strings.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
+        pointers.push(std::ptr::null());
+        let mut node = MpvNode {
+            value: MpvNodeValue { int64: 0 },
+            format: FORMAT_NONE,
+        };
+        // SAFETY: The arguments remain alive and null-terminated during the
+        // synchronous call. MPV initializes `node` on success and transfers
+        // ownership of its nested allocations to the caller.
+        let code = unsafe { (self.api.command_ret)(self.handle(), pointers.as_ptr(), &mut node) };
+        self.api.result(code)?;
+        Ok(MpvOwnedNode {
+            api: self.api.clone(),
+            node,
+        })
     }
 
     pub fn command_async(&self, reply_userdata: u64, args: &[&str]) -> Result<(), MpvError> {
@@ -468,6 +558,118 @@ impl MpvClient {
         })
     }
 
+    pub(crate) fn get_string(&self, name: &str) -> Result<String, MpvError> {
+        let name = CString::new(name)?;
+        let mut value: *mut c_char = std::ptr::null_mut();
+        // SAFETY: MPV writes one allocated C-string pointer into `value` on
+        // success. The property name remains valid for the synchronous call.
+        let code = unsafe {
+            (self.api.get_property)(
+                self.handle(),
+                name.as_ptr(),
+                FORMAT_STRING,
+                (&mut value as *mut *mut c_char).cast(),
+            )
+        };
+        self.api.result(code)?;
+        let value = NonNull::new(value).ok_or_else(|| {
+            MpvError::InvalidNode("string property returned a null pointer".to_owned())
+        })?;
+        // SAFETY: A successful MPV_FORMAT_STRING read returns a valid,
+        // null-terminated allocation owned by MPV.
+        let result = unsafe { CStr::from_ptr(value.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
+        // SAFETY: `value` is the allocation returned by `mpv_get_property` and
+        // is freed exactly once after its contents have been copied.
+        unsafe { (self.api.free)(value.as_ptr().cast()) };
+        Ok(result)
+    }
+
+    pub(crate) fn get_flag(&self, name: &str) -> Result<bool, MpvError> {
+        let name = CString::new(name)?;
+        let mut value: c_int = 0;
+        // SAFETY: MPV synchronously writes one `int` to the valid scalar
+        // pointer, using the ABI defined by `MPV_FORMAT_FLAG`.
+        let code = unsafe {
+            (self.api.get_property)(
+                self.handle(),
+                name.as_ptr(),
+                FORMAT_FLAG,
+                (&mut value as *mut c_int).cast(),
+            )
+        };
+        self.api.result(code)?;
+        Ok(value != 0)
+    }
+
+    pub(crate) fn get_i64(&self, name: &str) -> Result<i64, MpvError> {
+        let name = CString::new(name)?;
+        let mut value = 0_i64;
+        // SAFETY: MPV synchronously writes one `int64_t` to the valid scalar
+        // pointer, using the ABI defined by `MPV_FORMAT_INT64`.
+        let code = unsafe {
+            (self.api.get_property)(
+                self.handle(),
+                name.as_ptr(),
+                FORMAT_INT64,
+                (&mut value as *mut i64).cast(),
+            )
+        };
+        self.api.result(code)?;
+        Ok(value)
+    }
+
+    pub(crate) fn get_double(&self, name: &str) -> Result<f64, MpvError> {
+        let name = CString::new(name)?;
+        let mut value = 0.0_f64;
+        // SAFETY: MPV synchronously writes one `double` to the valid scalar
+        // pointer, using the ABI defined by `MPV_FORMAT_DOUBLE`.
+        let code = unsafe {
+            (self.api.get_property)(
+                self.handle(),
+                name.as_ptr(),
+                FORMAT_DOUBLE,
+                (&mut value as *mut f64).cast(),
+            )
+        };
+        self.api.result(code)?;
+        Ok(value)
+    }
+
+    pub fn set_string_list(&self, name: &str, values: &[String]) -> Result<(), MpvError> {
+        let name = CString::new(name)?;
+        let (strings, mut nodes) = string_list_nodes(values)?;
+        let mut list = MpvNodeList {
+            num: c_int::try_from(nodes.len())
+                .map_err(|_| MpvError::StringListTooLong { len: nodes.len() })?,
+            values: if nodes.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                nodes.as_mut_ptr()
+            },
+            keys: std::ptr::null_mut(),
+        };
+        let mut value = MpvNode {
+            value: MpvNodeValue {
+                list: &mut list as *mut MpvNodeList,
+            },
+            format: FORMAT_NODE_ARRAY,
+        };
+        // SAFETY: MPV synchronously copies the complete caller-owned node tree.
+        // `strings`, `nodes`, and `list` remain alive and immovable for the call.
+        let result = self.api.result(unsafe {
+            (self.api.set_property)(
+                self.handle(),
+                name.as_ptr(),
+                FORMAT_NODE,
+                (&mut value as *mut MpvNode).cast(),
+            )
+        });
+        drop(strings);
+        result
+    }
+
     pub fn observe(&self, id: u64, name: &str, format: c_int) -> Result<(), MpvError> {
         let name = CString::new(name)?;
         // SAFETY: MPV copies the property name and posts values to this handle.
@@ -488,6 +690,23 @@ impl MpvClient {
     }
 }
 
+fn string_list_nodes(values: &[String]) -> Result<(Vec<CString>, Vec<MpvNode>), MpvError> {
+    let strings = values
+        .iter()
+        .map(|value| CString::new(value.as_str()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let nodes = strings
+        .iter()
+        .map(|value| MpvNode {
+            value: MpvNodeValue {
+                string: value.as_ptr().cast_mut(),
+            },
+            format: FORMAT_STRING,
+        })
+        .collect();
+    Ok((strings, nodes))
+}
+
 impl Drop for MpvClient {
     fn drop(&mut self) {
         // SAFETY: This is the final Arc owner, so no render or actor call can be
@@ -498,7 +717,12 @@ impl Drop for MpvClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiVersion, HEADER_CLIENT_API_VERSION, MpvApi, MpvClient, MpvError};
+    use std::ffi::CStr;
+
+    use super::{
+        ApiVersion, FORMAT_STRING, HEADER_CLIENT_API_VERSION, MpvApi, MpvClient, MpvError,
+        string_list_nodes,
+    };
 
     #[test]
     fn dynamically_linked_engine_should_initialize() -> Result<(), MpvError> {
@@ -530,5 +754,49 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn string_list_nodes_support_empty_values() -> Result<(), MpvError> {
+        let (strings, nodes) = string_list_nodes(&[])?;
+
+        assert!(strings.is_empty());
+        assert!(nodes.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn string_list_nodes_preserve_single_path() -> Result<(), MpvError> {
+        let path = String::from("~~/shaders/FSR.glsl");
+        let (_strings, nodes) = string_list_nodes(std::slice::from_ref(&path))?;
+
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].format, FORMAT_STRING);
+        // SAFETY: The node points into `_strings`, which remains alive here.
+        let actual = unsafe { CStr::from_ptr(nodes[0].value.string) }.to_string_lossy();
+        assert_eq!(actual, path);
+        Ok(())
+    }
+
+    #[test]
+    fn string_list_nodes_keep_multiple_paths_separate() -> Result<(), MpvError> {
+        let paths = vec![
+            String::from("C:\\Shaders\\first.glsl"),
+            String::from("/opt/shaders/second.glsl"),
+        ];
+        let (_strings, nodes) = string_list_nodes(&paths)?;
+        let actual = nodes
+            .iter()
+            .map(|node| {
+                // SAFETY: Every node points into `_strings`, which remains alive.
+                unsafe { CStr::from_ptr(node.value.string) }
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, paths);
+        assert!(actual.iter().all(|path| !path.contains(';')));
+        Ok(())
     }
 }

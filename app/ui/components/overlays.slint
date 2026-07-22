@@ -2,6 +2,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { ButtonSurface } from "button.slint";
 import { DialogAction } from "types.slint";
+import { OnboardingModal } from "onboarding.slint";
+export { OnboardingModal }
 
 // Visual half of the official Popup. The caller owns anchor measurement and
 // supplies the menu body through the child slot.
@@ -85,8 +87,9 @@ export component ModalDialog inherits Rectangle {
 
         if (root.title != "") : Text {
             x: 2 * root.unit;
+            y: 0.5 * root.unit;
             width: parent.width - 6 * root.unit;
-            height: 4.5 * root.unit;
+            height: 4 * root.unit;
             text: root.title;
             color: Theme.primary-foreground;
             font-size: 1.2 * root.unit;
@@ -138,12 +141,18 @@ export component ModalDialog inherits Rectangle {
                     spacing: 0.5 * root.unit;
                     alignment: center;
 
-                    if (action.has-icon) : Image {
+                    if (action.has-icon) : Rectangle {
                         width: 1.2 * root.unit;
                         height: 1.2 * root.unit;
-                        source: action.icon;
-                        colorize: Theme.primary-foreground;
-                        image-fit: contain;
+                        y: (parent.height - self.height) / 2;
+
+                        Image {
+                            width: 1.2 * root.unit;
+                            height: 1.2 * root.unit;
+                            source: action.icon;
+                            colorize: Theme.primary-foreground;
+                            image-fit: contain;
+                        }
                     }
                     Text {
                         text: action.label;

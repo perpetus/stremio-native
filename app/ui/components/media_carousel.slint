@@ -8,14 +8,13 @@ import { SkeletonBlock } from "feedback.slint";
 // cards remain lightweight delegates with stable geometry.
 export component MediaCatalogRow inherits MetaRow {
     in property <[MediaCardItem]> items: [];
+    in property <bool> loading: false;
     in property <length> card-width: 12 * root.unit;
     in property <length> card-height:
         (root.card-width - 2 * root.unit) * Theme.poster-shape-ratio + 6 * root.unit;
     in property <bool> show-close-button: false;
     in property <bool> show-play-button: false;
     in property <bool> show-menu-button: false;
-    // Match the web client's lazy image behavior. The current card plus one
-    // card on either side stays warm so horizontal scrolling remains seamless.
     in property <bool> enable-lazy-loading: true;
     callback item-selected(string, string, string);
     callback remove-clicked(string);
@@ -23,10 +22,23 @@ export component MediaCatalogRow inherits MetaRow {
     callback menu-clicked(string);
     callback poster-requested(string);
 
-    content-width: max(root.width, root.items.length * root.card-width);
+    content-width: max(root.width, (root.loading ? 8 : root.items.length) * root.card-width);
     content-height: root.card-height;
 
+    if (root.loading) : HorizontalLayout {
+        x: 0px;
+        y: 0px;
+        spacing: 0.5 * root.unit;
+
+        for _idx in 8 : SkeletonBlock {
+            width: max(9 * root.unit, root.card-width - root.unit);
+            height: root.card-height;
+            border-radius: Theme.border-radius;
+        }
+    }
+
     for card-item[index] in root.items : MediaCard {
+        visible: !root.loading;
         x: index * root.card-width;
         y: 0px;
         width: root.card-width;
@@ -37,9 +49,9 @@ export component MediaCatalogRow inherits MetaRow {
         show-play-button: root.show-play-button;
         show-menu-button: root.show-menu-button;
         enable-lazy-loading: root.enable-lazy-loading;
-        is-visible: !root.enable-lazy-loading
+        is-visible: !root.loading && (!root.enable-lazy-loading
             || (self.x + root.content-scroll-offset + self.width >= -root.card-width
-                && self.x + root.content-scroll-offset <= root.width + root.card-width);
+                && self.x + root.content-scroll-offset <= root.width + root.card-width));
         clicked => {
             root.item-selected(card-item.id, card-item.media-type, card-item.video-id);
         }

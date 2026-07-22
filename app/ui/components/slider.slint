@@ -29,6 +29,8 @@ export component Slider inherits Rectangle {
     // Compatibility names for the web component's callback vocabulary.
     callback slid(float);
     callback completed(float);
+    callback hover-position-changed(float);
+    callback hover-left();
 
     private property <float> value-position: root.normalize(root.value);
     private property <float> buffered-position: root.normalize(root.buffered);
@@ -196,9 +198,19 @@ export component Slider inherits Rectangle {
             }
         }
         moved => {
+            if (self.has-hover) {
+                root.hover-position-changed(root.value-at(self.mouse-x));
+            }
             if (self.pressed) {
                 root.update-from-pointer();
             }
+        }
+    }
+
+    private property <bool> is-hovering: slider-area.has-hover;
+    changed is-hovering => {
+        if (!self.is-hovering) {
+            root.hover-left();
         }
     }
 

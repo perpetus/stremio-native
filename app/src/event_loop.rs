@@ -654,8 +654,8 @@ pub fn start_event_loop(
 }
 
 fn handle_core_event(event: Event, ui_weak: &slint::Weak<MainWindow>) {
-    tracing::info!(?event, "core event");
     if let Event::Error { error, .. } = &event {
+        tracing::warn!("core error event received");
         let ui_weak = ui_weak.clone();
         let message = format!("{error:?}");
         let _ = slint::invoke_from_event_loop(move || {
@@ -665,5 +665,10 @@ fn handle_core_event(event: Event, ui_weak: &slint::Weak<MainWindow>) {
                 ui.set_details_loading(false);
             }
         });
+    } else {
+        // Core event payloads can contain credentials, profile identifiers,
+        // and very large library ID lists. The state projections below provide
+        // actionable diagnostics without serializing those payloads to disk.
+        tracing::debug!("core event received");
     }
 }

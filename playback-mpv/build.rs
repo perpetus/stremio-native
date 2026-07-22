@@ -216,15 +216,15 @@ fn ensure_cached_sdk(
     artifact: &RuntimeArtifact,
     cache_dir: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let cached_import = join_safe(&cache_dir, &artifact.import_library.file, "import library")?;
-    let cached_runtime = join_safe(&cache_dir, &artifact.runtime_library.file, "runtime DLL")?;
+    let cached_import = join_safe(cache_dir, &artifact.import_library.file, "import library")?;
+    let cached_runtime = join_safe(cache_dir, &artifact.runtime_library.file, "runtime DLL")?;
     if hash_matches(&cached_import, &artifact.import_library.sha256)?
         && hash_matches(&cached_runtime, &artifact.runtime_library.sha256)?
     {
         return Ok(cache_dir.to_path_buf());
     }
 
-    fs::create_dir_all(&cache_dir)?;
+    fs::create_dir_all(cache_dir)?;
     let archive = cache_dir.join(&lock.distribution.asset);
     if !hash_matches(&archive, &lock.distribution.sha256)? {
         download_verified(&lock.distribution.url, &archive, &lock.distribution.sha256)?;
@@ -322,9 +322,8 @@ fn download_verified(url: &str, destination: &Path, expected: &str) -> Result<()
     if destination.exists() {
         fs::remove_file(destination)?;
     }
-    fs::rename(&temporary, destination).map_err(|error| {
+    fs::rename(&temporary, destination).inspect_err(|_| {
         let _ = fs::remove_file(&temporary);
-        error
     })
 }
 
@@ -391,9 +390,8 @@ fn copy_if_changed(source: &Path, destination: &Path) -> Result<(), io::Error> {
     if destination.exists() {
         fs::remove_file(destination)?;
     }
-    fs::rename(&temporary, destination).map_err(|error| {
+    fs::rename(&temporary, destination).inspect_err(|_| {
         let _ = fs::remove_file(&temporary);
-        error
     })
 }
 

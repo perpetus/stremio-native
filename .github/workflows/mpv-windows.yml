@@ -49,9 +49,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: vcpkg_installed
-          key: Windows-vcpkg-x86-64-v3-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
+          key: Windows-vcpkg-x86-64-v3-static-md-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: |
-            Windows-vcpkg-x86-64-v3-static-release-v1-
+            Windows-vcpkg-x86-64-v3-static-md-release-v1-
       - name: Install optimized static libtorrent
         uses: lukka/run-vcpkg@v11
         with:
@@ -61,7 +61,7 @@ jobs:
           runVcpkgInstall: true
         env:
           VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
-          VCPKG_DEFAULT_TRIPLET: x64-windows-v3-static-release
+          VCPKG_DEFAULT_TRIPLET: x64-windows-v3-static-md-release
           VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/triplets
           VCPKG_OVERLAY_PORTS: ${{ github.workspace }}/vcpkg-overlays
       - name: Save vcpkg cache
@@ -69,15 +69,18 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: vcpkg_installed
-          key: Windows-vcpkg-x86-64-v3-static-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
+          key: Windows-vcpkg-x86-64-v3-static-md-release-v1-${{ hashFiles('vcpkg.json', 'triplets/**', 'vcpkg-overlays/**') }}
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --locked --release --package stremio-native
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
           VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
-          VCPKGRS_TRIPLET: x64-windows-v3-static-release
-          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows-v3-static-release/lib/pkgconfig
+          VCPKGRS_TRIPLET: x64-windows-v3-static-md-release
+          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows-v3-static-md-release/lib/pkgconfig
+      - name: Stage app-local MSVC runtime
+        shell: pwsh
+        run: ./scripts/stage_windows_msvc_runtime.ps1 -BuildRoot ./target/release
       - name: Verify runtime bundle
         shell: pwsh
         run: |
@@ -96,6 +99,7 @@ jobs:
           path: |
             target/release/stremio-native.exe
             target/release/libmpv-2.dll
+            target/release/msvc-runtime
             target/release/licenses/mpv
             artifacts/StremioSetup-v*-x64.exe
             artifacts/stremio-native-v*-x86_64-pc-windows-msvc.zip

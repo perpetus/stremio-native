@@ -28,6 +28,10 @@ if not defined SKIP_BUILD (
   echo Reusing the completed Cargo release build.
 )
 
+echo Staging the app-local MSVC runtime...
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_windows_msvc_runtime.ps1 -BuildRoot "%CD%\target\release"
+if errorlevel 1 exit /b %errorlevel%
+
 echo Creating the installer...
 "%ISCC_EXE%" "/DAppVersion=%APP_VERSION%" "/DBuildRoot=%CD%\target\release" "/DArtifactsDir=%CD%\artifacts" setup\StremioNative.iss
 if errorlevel 1 exit /b %errorlevel%

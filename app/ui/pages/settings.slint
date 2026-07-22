@@ -1,4 +1,4 @@
-import { ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "../theme.slint";
 import { MenuButton, PillButton } from "../components/button.slint";
 import { SelectField } from "../components/select.slint";
@@ -111,6 +111,8 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> subtitles-language: "English";
     in-out property <string> torrent-profile: "Default";
     in-out property <bool> hardware-acceleration: true;
+    in-out property <bool> thumbnail-previews: true;
+    in property <string> thumbnail-preview-status: "Starting thumbnail decoder…";
     in-out property <bool> binge-watching: true;
     in-out property <bool> discord-rpc-enabled: false;
     in-out property <string> tidb-api-key: "";
@@ -156,6 +158,7 @@ export component SettingsPage inherits Rectangle {
     callback change-subtitles-language(string);
     callback change-torrent-profile(string);
     callback change-hardware-acceleration(bool);
+    callback change-thumbnail-previews(bool);
     callback clear-search-history;
     callback shutdown-server;
     callback change-seeding-enabled(bool);
@@ -190,10 +193,10 @@ export component SettingsPage inherits Rectangle {
     background: transparent;
 
     function update-active-category(offset: length) {
-        root.active-category = (offset < 30 * root.unit) ? 0 :
-            ((offset < 65 * root.unit) ? 1 :
-            ((offset < 155 * root.unit) ? 2 :
-            ((offset < 205 * root.unit) ? 3 : 4)));
+        root.active-category = (offset < interface-sec.y - 10px) ? 0 :
+            ((offset < player-sec.y - 10px) ? 1 :
+            ((offset < streaming-sec.y - 10px) ? 2 :
+            ((offset < shortcuts-sec.y - 10px) ? 3 : 4)));
     }
 
     HorizontalLayout {
@@ -208,10 +211,10 @@ export component SettingsPage inherits Rectangle {
             spacing: 0.5 * root.unit;
 
             MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_GENERAL" => "General"); selected: root.active-category == 0; clicked => { scroll.viewport-y = 0px; root.active-category = 0; } }
-            MenuButton { unit: root.unit; label: @tr("INTERFACE" => "Interface"); selected: root.active-category == 1; clicked => { scroll.viewport-y = -35 * root.unit; root.active-category = 1; } }
-            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_PLAYER" => "Player"); selected: root.active-category == 2; clicked => { scroll.viewport-y = -70 * root.unit; root.active-category = 2; } }
-            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_STREAMING" => "Streaming"); selected: root.active-category == 3; clicked => { scroll.viewport-y = -165 * root.unit; root.active-category = 3; } }
-            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts"); selected: root.active-category == 4; clicked => { scroll.viewport-y = -215 * root.unit; root.active-category = 4; } }
+            MenuButton { unit: root.unit; label: @tr("INTERFACE" => "Interface"); selected: root.active-category == 1; clicked => { scroll.viewport-y = -interface-sec.y; root.active-category = 1; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_PLAYER" => "Player"); selected: root.active-category == 2; clicked => { scroll.viewport-y = -player-sec.y; root.active-category = 2; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_STREAMING" => "Streaming"); selected: root.active-category == 3; clicked => { scroll.viewport-y = -streaming-sec.y; root.active-category = 3; } }
+            MenuButton { unit: root.unit; label: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts"); selected: root.active-category == 4; clicked => { scroll.viewport-y = -shortcuts-sec.y; root.active-category = 4; } }
             Rectangle { vertical-stretch: 1; }
             VerticalLayout {
                 spacing: 0.5 * root.unit;
@@ -512,6 +515,20 @@ export component SettingsPage inherits Rectangle {
                             unit: root.unit;
                             checked: root.hardware-acceleration;
                             toggled => { root.change-hardware-acceleration(self.checked); }
+                        }
+                    }
+                    SettingsOption {
+                        unit: root.unit;
+                        label: @tr("Timeline thumbnail previews");
+                        description: @tr("Keeps a lightweight paused decoder ready while a video is open.")
+                            + " " + root.thumbnail-preview-status;
+                        ToggleSwitch {
+                            unit: root.unit;
+                            checked: root.thumbnail-previews;
+                            toggled => {
+                                root.thumbnail-previews = self.checked;
+                                root.change-thumbnail-previews(self.checked);
+                            }
                         }
                     }
                     SettingsOption {

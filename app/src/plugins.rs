@@ -163,7 +163,8 @@ fn init_lua_api(lua: &mlua::Lua, ui_weak: slint::Weak<MainWindow>) -> mlua::Resu
         lua.create_function(move |lua, table: mlua::Table| {
             let id: String = table.get("id")?;
             let label: String = table.get("label")?;
-            let icon: String = table.get::<mlua::Value>("icon")
+            let icon: String = table
+                .get::<mlua::Value>("icon")
                 .and_then(|v| match v {
                     mlua::Value::String(s) => Ok(s.to_string_lossy()),
                     _ => Ok(String::new()),
@@ -244,7 +245,11 @@ fn load_plugins(lua: &mlua::Lua, plugin_dir: &Path) {
             tracing::info!(?path, "loading plugin");
             match std::fs::read_to_string(&path) {
                 Ok(source) => {
-                    let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+                    let name = path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
                     if let Err(error) = lua.load(&source).set_name(name).exec() {
                         tracing::error!(%error, ?path, "plugin failed to load");
                     }

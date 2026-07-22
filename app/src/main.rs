@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Context as _;
 use stremio_core::{
     constants::{
         DISMISSED_EVENTS_STORAGE_KEY, LIBRARY_RECENT_STORAGE_KEY, LIBRARY_STORAGE_KEY,
@@ -41,11 +42,13 @@ pub mod image_cache;
 mod models;
 mod mpv_integration;
 mod performance;
+mod playback;
 #[cfg(feature = "plugins")]
 mod plugins;
-mod playback;
+mod shaders;
 mod shortcuts;
 mod single_instance;
+mod thumbnail_preview;
 mod tray;
 mod window_style;
 
@@ -103,11 +106,18 @@ async fn run_app(
         start_hidden,
     } = primary_instance;
 
-    // MPV's render API needs a native OpenGL context even when video decoding
-    // itself is configured for software fallback.
-    unsafe {
-        std::env::set_var("SLINT_BACKEND", "winit-femtovg");
-    }
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("skia-opengl".into())
+        .require_opengl()
+        .select()
+        .context("could not select Slint's Skia OpenGL renderer")?;
+    tracing::info!(
+        backend = "winit",
+        renderer = "skia-opengl",
+        opengl_version_policy = "highest-available-desktop",
+        "Slint backend selected"
+    );
     let initial_config = config::AppConfig::default();
 
     // Icon fonts are registered/embedded at compile time via app.slint imports.
@@ -127,6 +137,7 @@ async fn run_app(
     ui.set_settings_build_version(env!("STREMIO_BUILD_VERSION").into());
     ui.set_settings_shell_version(env!("CARGO_PKG_VERSION").into());
     ui.set_settings_hardware_acceleration(initial_config.hardware_acceleration);
+    ui.set_settings_thumbnail_previews(initial_config.thumbnail_previews_enabled);
     ui.set_settings_tidb_show_intro(initial_config.tidb_show_intro);
     ui.set_settings_tidb_show_recap(initial_config.tidb_show_recap);
     ui.set_settings_tidb_show_credits(initial_config.tidb_show_credits);
@@ -335,6 +346,7 @@ async fn finish_startup(
     let config = config::load_config();
     apply_theme(&ui, &config);
     ui.set_settings_hardware_acceleration(config.hardware_acceleration);
+    ui.set_settings_thumbnail_previews(config.thumbnail_previews_enabled);
     ui.set_settings_tidb_api_key(config.tidb_api_key.clone().into());
     ui.set_settings_tidb_show_intro(config.tidb_show_intro);
     ui.set_settings_tidb_show_recap(config.tidb_show_recap);
@@ -516,11 +528,7 @@ async fn finish_startup(
     // Plugin system (lazy: only starts if plugins directory has .lua files)
     #[cfg(feature = "plugins")]
     let _plugin_manager = {
-        let plugin_dir = std::env::var_os("LOCALAPPDATA")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir)
-            .join("StremioRust")
-            .join("plugins");
+        let plugin_dir = crate::mpv_integration::resolve_app_data_dir().join("plugins");
         let pm = plugins::PluginManager::new(ui_weak.clone(), plugin_dir);
         if let Some(ref pm) = pm {
             let tx = pm.sender();

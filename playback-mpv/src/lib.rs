@@ -10,6 +10,7 @@
 mod actor;
 mod ffi;
 mod render;
+mod thumbnail;
 
 pub use actor::{
     AudioTrack, EndReason, PlaybackCommand, PlaybackController, PlaybackEvent, PlaybackRuntime,
@@ -17,5 +18,10 @@ pub use actor::{
 };
 pub use ffi::{ApiVersion, HEADER_CLIENT_API_VERSION, MpvError};
 pub use render::{
-    OpenGlDiagnostics, OpenGlProcAddress, RenderContext, RenderOutcome, RenderSource, VideoTexture,
+    OpenGlContextProfile, OpenGlDiagnostics, OpenGlProcAddress, OpenGlProfile, RenderContext,
+    RenderOutcome, RenderSource, VideoShaderSupport, VideoShaderUnsupportedReason, VideoTexture,
+};
+pub use thumbnail::{
+    ThumbnailConfig, ThumbnailController, ThumbnailEvent, ThumbnailFrame, ThumbnailQuality,
+    ThumbnailRequest, ThumbnailRuntime, ThumbnailSource, ThumbnailUnavailableReason,
 };

@@ -20,6 +20,11 @@ pub struct AppConfig {
     pub tidb_show_recap: bool,
     pub tidb_show_credits: bool,
     pub tidb_show_preview: bool,
+    pub shaders_enabled: bool,
+    pub active_shader_preset: u8,
+    #[serde(alias = "thumbfast_enabled")]
+    pub thumbnail_previews_enabled: bool,
+    pub onboarding_completed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +94,7 @@ impl Default for ThemeConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            config_version: 1,
+            config_version: 2,
             server_url: "http://127.0.0.1:11470".to_string(),
             active_tab: 0,
             auto_launch_player: true,
@@ -101,35 +106,42 @@ impl Default for AppConfig {
             tidb_show_recap: true,
             tidb_show_credits: true,
             tidb_show_preview: true,
+            shaders_enabled: true,
+            active_shader_preset: 0,
+            thumbnail_previews_enabled: true,
+            onboarding_completed: false,
         }
     }
 }
 
 impl AppConfig {
     fn migrate(&mut self) -> bool {
-        if self.config_version >= 1 {
-            return false;
-        }
+        let original_version = self.config_version;
 
-        // Version zero was generated with a palette that predates the
-        // official stremio-web tokens. Only replace it when all legacy values
-        // still match, preserving any genuinely customized theme.
-        let legacy_theme = self.theme.background.eq_ignore_ascii_case("#08070d")
-            && self
-                .theme
-                .sidebar_background
-                .eq_ignore_ascii_case("#13111f")
-            && self.theme.accent.eq_ignore_ascii_case("#7b5bf5")
-            && self.theme.card_background.eq_ignore_ascii_case("#1a1829")
-            && self.theme.card_border.eq_ignore_ascii_case("#2c2842")
-            && self.theme.text_primary.eq_ignore_ascii_case("#ffffff")
-            && self.theme.text_secondary.eq_ignore_ascii_case("#8d8a9f");
+        if self.config_version < 1 {
+            // Version zero was generated with a palette that predates the
+            // official stremio-web tokens. Only replace it when all legacy
+            // values still match, preserving genuinely customized themes.
+            let legacy_theme = self.theme.background.eq_ignore_ascii_case("#08070d")
+                && self
+                    .theme
+                    .sidebar_background
+                    .eq_ignore_ascii_case("#13111f")
+                && self.theme.accent.eq_ignore_ascii_case("#7b5bf5")
+                && self.theme.card_background.eq_ignore_ascii_case("#1a1829")
+                && self.theme.card_border.eq_ignore_ascii_case("#2c2842")
+                && self.theme.text_primary.eq_ignore_ascii_case("#ffffff")
+                && self.theme.text_secondary.eq_ignore_ascii_case("#8d8a9f");
 
-        if legacy_theme {
-            self.theme = ThemeConfig::default();
+            if legacy_theme {
+                self.theme = ThemeConfig::default();
+            }
+            self.config_version = 1;
         }
-        self.config_version = 1;
-        true
+        if self.config_version < 2 {
+            self.config_version = 2;
+        }
+        self.config_version != original_version
     }
 }
 
@@ -192,6 +204,20 @@ pub async fn init_config() {
                 }
             }
         }
+    }
+
+    let migrated = config.migrate();
+    if migrated
+        && loaded_from_db
+        && let Ok(conn) = crate::db::get_conn()
+        && let Ok(serialized) = serde_json::to_string(&config)
+    {
+        let _ = conn
+            .execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                [serialized],
+            )
+            .await;
     }
 
     let _ = APP_CONFIG.set(RwLock::new(config));
@@ -277,7 +303,7 @@ mod tests {
         let mut config = legacy_config();
 
         assert!(config.migrate());
-        assert_eq!(config.config_version, 1);
+        assert_eq!(config.config_version, 2);
         assert_eq!(config.theme.background, "#0c0b11");
         assert_eq!(config.theme.secondary_background, "#1a173e");
         assert_eq!(config.theme.success, "#22b365");
@@ -289,7 +315,7 @@ mod tests {
         config.theme.accent = "#ff3366".to_string();
 
         assert!(config.migrate());
-        assert_eq!(config.config_version, 1);
+        assert_eq!(config.config_version, 2);
         assert_eq!(config.theme.background, "#08070d");
         assert_eq!(config.theme.accent, "#ff3366");
     }
@@ -311,5 +337,19 @@ mod tests {
         assert_eq!(config.theme.accent, "#abcdef");
         assert_eq!(config.theme.drawer_background, "#00000066");
         assert_eq!(config.theme.text_muted, "#ffffff66");
+    }
+
+    #[test]
+    fn old_thumbfast_setting_deserializes_under_the_new_name() {
+        let config: AppConfig = serde_json::from_str(r#"{"thumbfast_enabled":false}"#)
+            .expect("legacy thumbnail setting should deserialize");
+        assert!(!config.thumbnail_previews_enabled);
+    }
+
+    #[test]
+    fn thumbnail_setting_serializes_only_the_new_name() {
+        let serialized = serde_json::to_string(&AppConfig::default()).expect("serialize config");
+        assert!(serialized.contains("thumbnail_previews_enabled"));
+        assert!(!serialized.contains("thumbfast_enabled"));
     }
 }

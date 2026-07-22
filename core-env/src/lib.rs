@@ -76,6 +76,18 @@ fn get_http_client() -> &'static reqwest::Client {
     })
 }
 
+fn sanitized_url_for_log(raw: &str) -> String {
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return "<invalid-url>".to_owned();
+    };
+    let origin = parsed.origin().ascii_serialization();
+    if parsed.path() == "/" {
+        format!("{origin}/")
+    } else {
+        format!("{origin}/<redacted>")
+    }
+}
+
 pub struct DesktopEnv;
 
 impl DesktopEnv {
@@ -149,7 +161,8 @@ impl DesktopEnv {
         };
 
         let url_str = parts.uri.to_string();
-        tracing::debug!(method = ?parts.method, url = %url_str, "Sending Core API request");
+        let log_url = sanitized_url_for_log(&url_str);
+        tracing::debug!(method = ?parts.method, url = %log_url, "Sending Core API request");
 
         let mut req_builder = client.request(method, &url_str);
 
@@ -162,22 +175,23 @@ impl DesktopEnv {
         }
 
         let start = std::time::Instant::now();
-        let resp = req_builder.send().await.map_err(|e| {
-            tracing::error!(url = %url_str, error = ?e, "Core API request failed");
-            EnvError::Fetch(e.to_string())
+        let resp = req_builder.send().await.map_err(|error| {
+            let error = error.without_url();
+            tracing::error!(url = %log_url, error = %error, "Core API request failed");
+            EnvError::Fetch(error.to_string())
         })?;
 
         let elapsed = start.elapsed().as_millis();
         if elapsed > 300 {
             tracing::warn!(
-                url = %url_str,
+                url = %log_url,
                 status = %resp.status(),
                 elapsed_ms = elapsed,
                 "Core API request took longer than threshold"
             );
         } else {
             tracing::debug!(
-                url = %url_str,
+                url = %log_url,
                 status = %resp.status(),
                 elapsed_ms = elapsed,
                 "Core API request completed"
@@ -187,7 +201,7 @@ impl DesktopEnv {
         let val: OUT = resp
             .json()
             .await
-            .map_err(|e| EnvError::Fetch(e.to_string()))?;
+            .map_err(|error| EnvError::Fetch(error.without_url().to_string()))?;
 
         Ok(val)
     }
@@ -364,7 +378,7 @@ impl Env for DesktopEnv {
 
 #[cfg(test)]
 mod tests {
-    use super::{SequentialFuture, run_sequential};
+    use super::{SequentialFuture, run_sequential, sanitized_url_for_log};
     use std::sync::{Arc, Mutex};
 
     #[tokio::test]
@@ -394,5 +408,23 @@ mod tests {
 
         worker.await.unwrap();
         assert_eq!(*order.lock().unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn logged_urls_hide_credentials_paths_and_queries() {
+        let logged = sanitized_url_for_log(
+            "https://user:secret@example.com/addon/token/manifest.json?auth=private",
+        );
+
+        assert_eq!(logged, "https://example.com/<redacted>");
+        assert!(!logged.contains("secret") && !logged.contains("private"));
+    }
+
+    #[test]
+    fn invalid_logged_urls_do_not_echo_input() {
+        assert_eq!(
+            sanitized_url_for_log("definitely not a URL"),
+            "<invalid-url>"
+        );
     }
 }

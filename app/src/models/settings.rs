@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::mpv_integration::NativePlaybackBridge;
 use crate::{AppModel, AppModelField, MainWindow};
 use core_env::DesktopEnv;
 use server_connector::AppServerConnector;
@@ -441,8 +442,14 @@ fn format_cache_size(bytes: f64) -> String {
     }
 }
 
-pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, config: &AppConfig) {
+pub fn setup(
+    ui: &MainWindow,
+    runtime: &Arc<Runtime<DesktopEnv, AppModel>>,
+    config: &AppConfig,
+    native_playback: Option<&NativePlaybackBridge>,
+) {
     ui.set_settings_interface_language_options(interface_language_options());
+    ui.set_settings_thumbnail_previews(config.thumbnail_previews_enabled);
 
     let server_url = runtime
         .model()
@@ -731,6 +738,19 @@ pub fn setup(ui: &MainWindow, runtime: &Arc<Runtime<DesktopEnv, AppModel>>, conf
                 "Hardware acceleration toggled to: {}. Restart required.",
                 enabled
             );
+        }
+    });
+
+    ui.on_settings_change_thumbnail_previews({
+        let native_playback = native_playback.cloned();
+        move |enabled| {
+            let mut config = crate::config::load_config();
+            config.thumbnail_previews_enabled = enabled;
+            crate::config::save_config(&config);
+            if let Some(playback) = native_playback.as_ref() {
+                playback.set_thumbnail_previews_enabled(enabled);
+            }
+            tracing::info!(enabled, "timeline thumbnail preview preference changed");
         }
     });
 

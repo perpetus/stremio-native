@@ -279,12 +279,23 @@ async fn process_fetch(job: FetchJob) {
                     retry_at: Instant::now() + Duration::from_secs(backoff_seconds),
                 },
             );
-            tracing::warn!(url = %job.url, %error, attempts, "image request failed");
+            tracing::warn!(
+                url = %sanitized_url_for_log(&job.url),
+                %error,
+                attempts,
+                "image request failed"
+            );
         }
     }
 }
 
-#[tracing::instrument(skip_all, fields(url = %url))]
+fn sanitized_url_for_log(raw: &str) -> String {
+    url::Url::parse(raw)
+        .map(|parsed| format!("{}/<redacted>", parsed.origin().ascii_serialization()))
+        .unwrap_or_else(|_| "<invalid-url>".to_owned())
+}
+
+#[tracing::instrument(skip_all)]
 async fn load_from_disk(url: &str) -> Option<ImageEntry> {
     let _permit = disk_semaphore().clone().acquire_owned().await.ok()?;
     let path = cache_path(url);
@@ -304,7 +315,7 @@ async fn load_from_disk(url: &str) -> Option<ImageEntry> {
     decode(bytes).await.ok().map(|(decoded, _bytes)| decoded)
 }
 
-#[tracing::instrument(skip_all, fields(url = %url))]
+#[tracing::instrument(skip_all)]
 async fn download_and_cache(url: &str) -> Result<ImageEntry, String> {
     let _permit = network_semaphore()
         .clone()
@@ -335,7 +346,7 @@ async fn download_with_retry(url: &str) -> Result<Vec<u8>, String> {
         let response = match client().get(url).send().await {
             Ok(response) => response,
             Err(error) => {
-                last_error = error.to_string();
+                last_error = error.without_url().to_string();
                 continue;
             }
         };
@@ -377,7 +388,7 @@ async fn download_with_retry(url: &str) -> Result<Vec<u8>, String> {
                     break;
                 }
                 Err(error) => {
-                    failed = Some(error.to_string());
+                    failed = Some(error.without_url().to_string());
                     break;
                 }
             }
@@ -524,7 +535,7 @@ fn notify_ui_refresh(url: String) {
     }
 
     tokio::spawn(async {
-        tokio::time::sleep(Duration::from_millis(16)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         dispatch_ui_refresh();
     });
 }
@@ -576,7 +587,10 @@ fn finish_ui_refresh() {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_RESPONSE_BYTES, MEMORY_CAPACITY_BYTES, REQUIRED_IMAGE_IDLE_TTL, cache_path};
+    use super::{
+        MAX_RESPONSE_BYTES, MEMORY_CAPACITY_BYTES, REQUIRED_IMAGE_IDLE_TTL, cache_path,
+        sanitized_url_for_log,
+    };
 
     #[test]
     fn cache_path_is_stable_and_sharded() {
@@ -595,5 +609,15 @@ mod tests {
     fn decoded_cache_has_a_small_base_and_temporary_growth_window() {
         assert_eq!(MEMORY_CAPACITY_BYTES, 32 * 1024 * 1024);
         assert!(!REQUIRED_IMAGE_IDLE_TTL.is_zero());
+    }
+
+    #[test]
+    fn logged_image_urls_hide_paths_and_queries() {
+        let logged = sanitized_url_for_log(
+            "https://user:secret@example.com/poster/account-id.jpg?token=private",
+        );
+
+        assert_eq!(logged, "https://example.com/<redacted>");
+        assert!(!logged.contains("secret") && !logged.contains("private"));
     }
 }

@@ -390,13 +390,14 @@ fn release_page_url(version: &str) -> String {
     )
 }
 
-fn release_notes(release: &Release) -> String {
+fn release_notes_text(release: &Release) -> String {
     let notes = release
         .body
         .as_deref()
         .map(str::trim)
         .filter(|notes| !notes.is_empty())
-        .unwrap_or("");
+        .unwrap_or("This update includes fixes and improvements.");
+
     let mut chars = notes.chars();
     let shortened = chars.by_ref().take(6_000).collect::<String>();
     if chars.next().is_some() {
@@ -404,6 +405,13 @@ fn release_notes(release: &Release) -> String {
     } else {
         shortened
     }
+}
+
+fn release_notes(release: &Release) -> slint::StyledText {
+    let notes = release_notes_text(release);
+
+    slint::StyledText::from_markdown(&notes)
+        .unwrap_or_else(|_| slint::StyledText::from_plain_text(&notes))
 }
 
 fn project_settings(
@@ -438,7 +446,7 @@ fn project_available_update(views: UpdateViews, update: AvailableUpdate) {
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = views.ui.upgrade() {
             ui.set_update_dialog_version(version.into());
-            ui.set_update_dialog_notes(notes.into());
+            ui.set_update_dialog_notes(notes);
             ui.set_update_dialog_can_install(can_install);
             ui.set_update_dialog_status_state(DialogStatus::None as i32);
             ui.set_update_installing(false);
@@ -504,6 +512,6 @@ mod tests {
             body: Some("x".repeat(7_000)),
             ..Release::default()
         };
-        assert!(release_notes(&release).chars().count() < 6_010);
+        assert!(release_notes_text(&release).chars().count() < 6_010);
     }
 }

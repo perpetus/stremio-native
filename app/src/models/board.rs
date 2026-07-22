@@ -9,6 +9,8 @@ use crate::{BoardSection, MediaCardItem};
 use core_env::DesktopEnv;
 use slint::{ComponentHandle, Model};
 use std::sync::{Arc, Mutex, OnceLock};
+
+static SECTION_FINGERPRINTS: OnceLock<Mutex<Vec<SyncFingerprint>>> = OnceLock::new();
 use stremio_core::{
     models::{
         catalogs_with_extra::CatalogsWithExtra, continue_watching_preview::ContinueWatchingPreview,
@@ -222,13 +224,51 @@ pub fn sync(
     // Update rows in-place when the section count is stable so the ListView
     // keeps its current viewport-y. A full model replacement resets scroll
     // position, which causes a visible snap-back during lazy catalog loading.
+    // Per-section fingerprints skip set_row_data for unchanged rows, avoiding
+    // Slint re-instantiating all cards in rows whose data didn't change.
     let existing = ui.get_board_sections();
+    let mut cached_fps = SECTION_FINGERPRINTS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if existing.row_count() == board_sections.len() {
         for (index, section) in board_sections.into_iter().enumerate() {
-            existing.set_row_data(index, section);
+            let fp = section_data_fingerprint(&section);
+            if cached_fps.get(index) != Some(&fp) {
+                existing.set_row_data(index, section);
+                if index < cached_fps.len() {
+                    cached_fps[index] = fp;
+                } else {
+                    cached_fps.push(fp);
+                }
+            }
         }
     } else {
+        *cached_fps = board_sections
+            .iter()
+            .map(section_data_fingerprint)
+            .collect();
         let sections_model = slint::VecModel::from(board_sections);
         ui.set_board_sections(slint::ModelRc::new(sections_model));
     }
+}
+
+fn section_data_fingerprint(section: &BoardSection) -> SyncFingerprint {
+    let mut fp = Fingerprint::new();
+    fp.str(section.title.as_str());
+    fp.bool(section.loading);
+    fp.str(section.error_message.as_str());
+    fp.bool(section.is_continue_watching);
+    let items = &section.items;
+    fp.usize(items.row_count());
+    for i in 0..items.row_count() {
+        if let Some(item) = items.row_data(i) {
+            fp.str(item.id.as_str());
+            fp.str(item.media_type.as_str());
+            fp.str(item.title.as_str());
+            fp.str(item.poster_url.as_str());
+            fp.bool(item.show_progress);
+        }
+    }
+    fp.finish()
 }

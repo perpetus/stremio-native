@@ -1,3 +1,4 @@
+import { ScrollView } from "std-widgets.slint";
 import { Theme, IconData } from "theme.slint";
 import { Sidebar } from "components/sidebar.slint";
 import { MediaCardItem } from "components/media_card.slint";
@@ -9,6 +10,7 @@ import { NumberInput } from "components/number_input.slint";
 import { StremioTextInput, NativeTextField, SearchBar, SearchField } from "components/text_input.slint";
 import { Slider } from "components/slider.slint";
 import { PopupMenuSurface, ModalDialog, BottomSheet, ContextMenuSurface } from "components/overlays.slint";
+import { OnboardingModal } from "components/onboarding.slint";
 import { ActionsGroup } from "components/action_group.slint";
 import { HorizontalScroll } from "components/horizontal_scroll.slint";
 import { FallbackImage } from "components/fallback_image.slint";
@@ -201,7 +203,9 @@ export component MainWindow inherits Window {
         { label: @tr("SETTINGS_NAV_STREAMING" => "Streaming"), value: "streaming" },
         { label: @tr("SETTINGS_NAV_SHORTCUTS" => "Shortcuts"), value: "shortcuts" },
         { label: @tr("Diagnostics"), value: "diagnostics" },
-        { label: @tr("Exporting"), value: "exporting" }
+        { label: @tr("Exporting"), value: "exporting" },
+        { label: @tr("Onboarding Modal"), value: "onboarding-modal" },
+        { label: @tr("Update Dialog"), value: "update-dialog" }
     ];
     private property <[DebugStateOption]> debug-calendar-states: [
         { label: @tr("Month loaded"), value: "loaded" },
@@ -422,6 +426,16 @@ export component MainWindow inherits Window {
     in-out property <bool> player-has-next-episode: false;
     in-out property <float> player-playback-speed: 1.0;
     in-out property <int> player-video-scale-mode: 0;
+    in-out property <int> player-active-shader-preset: 0;
+    in property <[bool]> player-shader-preset-available: [true, false, false, false, false, false, false, false];
+    in property <string> player-shader-status: "Checking GPU support…";
+    in property <image> player-thumbnail-preview;
+    in property <bool> player-thumbnail-visible: false;
+    in property <float> player-thumbnail-hover-x: 0.0;
+    in property <bool> player-thumbnail-loading: false;
+    in property <bool> player-thumbnail-has-frame: false;
+    in property <float> player-thumbnail-aspect-ratio: 1.7778;
+    in property <string> player-thumbnail-time-label: "00:00";
     in-out property <string> player-error: "";
     in-out property <string> player-video-format: "";
     in-out property <string> player-audio-format: "";
@@ -441,6 +455,7 @@ export component MainWindow inherits Window {
     in-out property <bool> player-show-audio-menu: false;
     in-out property <bool> player-show-speed-menu: false;
     in-out property <bool> player-show-stats-menu: false;
+    in-out property <bool> player-show-upscaler-menu: false;
     in-out property <bool> player-show-options-menu: false;
     in-out property <bool> player-show-playlist-drawer: false;
     in-out property <bool> player-show-context-menu: false;
@@ -449,6 +464,7 @@ export component MainWindow inherits Window {
         || player-show-audio-menu
         || player-show-speed-menu
         || player-show-stats-menu
+        || player-show-upscaler-menu
         || player-show-options-menu
         || player-show-playlist-drawer
         || player-show-context-menu;
@@ -477,6 +493,8 @@ export component MainWindow inherits Window {
     in-out property <string> settings-subtitles-language: "English";
     in-out property <string> settings-torrent-profile: "Default";
     in-out property <bool> settings-hardware-acceleration: true;
+    in-out property <bool> settings-thumbnail-previews: true;
+    in-out property <string> settings-thumbnail-preview-status: "Starting thumbnail decoder…";
     in-out property <bool> settings-binge-watching: true;
     in-out property <bool> settings-discord-rpc-enabled: false;
     in-out property <string> settings-tidb-api-key: "";
@@ -507,8 +525,10 @@ export component MainWindow inherits Window {
     in-out property <int> settings-update-action-kind: 0;
     in-out property <bool> settings-update-action-enabled: true;
     in-out property <bool> update-dialog-open: false;
+    in-out property <bool> onboarding-dialog-open: false;
+    in-out property <styled-text> onboarding-changelog-text;
     in-out property <string> update-dialog-version: "";
-    in-out property <string> update-dialog-notes: "";
+    in-out property <styled-text> update-dialog-notes;
     in-out property <bool> update-dialog-can-install: false;
     in-out property <int> update-dialog-status-state: 0;
     in-out property <bool> update-installing: false;
@@ -641,6 +661,7 @@ export component MainWindow inherits Window {
     callback settings-change-subtitles-language(string);
     callback settings-change-torrent-profile(string);
     callback settings-change-hardware-acceleration(bool);
+    callback settings-change-thumbnail-previews(bool);
     callback settings-clear-search-history();
     callback shutdown-server();
     callback tab-changed(int);
@@ -649,6 +670,7 @@ export component MainWindow inherits Window {
     callback calendar-previous();
     callback calendar-next();
     callback calendar-item-selected(string, string, string);
+    callback onboarding-completed();
 
     // Player Callbacks
     callback player-toggle-pause();
@@ -664,6 +686,9 @@ export component MainWindow inherits Window {
     callback player-change-subtitle-offset(float);
     callback player-change-speed(float);
     callback player-change-video-scale(int);
+    callback player-change-shader-preset(int);
+    callback player-seek-hover(float);
+    callback player-seek-leave();
     callback player-copy-stream-link();
     callback player-download-video();
     callback player-play-episode(int, string);
@@ -680,6 +705,7 @@ export component MainWindow inherits Window {
         root.player-show-audio-menu = false;
         root.player-show-speed-menu = false;
         root.player-show-stats-menu = false;
+        root.player-show-upscaler-menu = false;
         root.player-show-options-menu = false;
         root.player-show-playlist-drawer = false;
         root.player-show-context-menu = false;
@@ -1299,6 +1325,9 @@ export component MainWindow inherits Window {
                     logout-icon: logout-icon;
 
                     change-tab(tab) => {
+                        if (tab == 4) {
+                            root.settings-active-category = 0;
+                        }
                         root.tab-changed(tab);
                     }
                     logout => { logout(); }
@@ -1505,6 +1534,8 @@ export component MainWindow inherits Window {
                         subtitles-language: settings-subtitles-language;
                         torrent-profile: settings-torrent-profile;
                         hardware-acceleration: settings-hardware-acceleration;
+                        thumbnail-previews: settings-thumbnail-previews;
+                        thumbnail-preview-status: settings-thumbnail-preview-status;
                         binge-watching: settings-binge-watching;
                         discord-rpc-enabled: settings-discord-rpc-enabled;
                         tidb-api-key: settings-tidb-api-key;
@@ -1554,6 +1585,7 @@ export component MainWindow inherits Window {
                         change-subtitles-language(lang) => { settings-change-subtitles-language(lang); }
                         change-torrent-profile(prof) => { settings-change-torrent-profile(prof); }
                         change-hardware-acceleration(val) => { settings-change-hardware-acceleration(val); }
+                        change-thumbnail-previews(val) => { settings-change-thumbnail-previews(val); }
                         clear-search-history => { settings-clear-search-history(); }
                         shutdown-server => { shutdown-server(); }
 
@@ -1861,9 +1893,20 @@ export component MainWindow inherits Window {
             show-audio-menu <=> root.player-show-audio-menu;
             show-speed-menu <=> root.player-show-speed-menu;
             show-stats-menu <=> root.player-show-stats-menu;
+            show-upscaler-menu <=> root.player-show-upscaler-menu;
             show-options-menu <=> root.player-show-options-menu;
             show-context-menu <=> root.player-show-context-menu;
             show-playlist-drawer <=> root.player-show-playlist-drawer;
+            active-shader-preset <=> root.player-active-shader-preset;
+            shader-preset-available: root.player-shader-preset-available;
+            shader-status: root.player-shader-status;
+            thumbnail-preview: root.player-thumbnail-preview;
+            thumbnail-visible: root.player-thumbnail-visible;
+            thumbnail-hover-x: root.player-thumbnail-hover-x;
+            thumbnail-loading: root.player-thumbnail-loading;
+            thumbnail-has-frame: root.player-thumbnail-has-frame;
+            thumbnail-aspect-ratio: root.player-thumbnail-aspect-ratio;
+            thumbnail-time-label: root.player-thumbnail-time-label;
             
             icon-play: icon-play;
             icon-pause: icon-pause;
@@ -1883,6 +1926,8 @@ export component MainWindow inherits Window {
             toggle-pause => { player-toggle-pause(); }
             seek(val) => { player-seek(val); }
             seek-relative(seconds) => { player-seek-relative(seconds); }
+            seek-hover(val) => { player-seek-hover(val); }
+            seek-leave => { player-seek-leave(); }
             change-volume(val) => { player-change-volume(val); }
             toggle-mute => { player-toggle-mute(); }
             change-subtitle(idx) => { player-change-subtitle(idx); }
@@ -1892,6 +1937,7 @@ export component MainWindow inherits Window {
             change-subtitle-offset(value) => { player-change-subtitle-offset(value); }
             change-speed(val) => { player-change-speed(val); }
             change-video-scale(mode) => { player-change-video-scale(mode); }
+            change-shader-preset(idx) => { player-change-shader-preset(idx); }
             skip-segment => { player-skip-segment(); }
             copy-stream-link => { player-copy-stream-link(); }
             download-video => { player-download-video(); }
@@ -1967,16 +2013,18 @@ export component MainWindow inherits Window {
                     background: Theme.overlay;
                 }
 
-                Text {
+                ScrollView {
                     vertical-stretch: 1;
-                    text: root.update-dialog-notes == ""
-                        ? @tr("This update includes fixes and improvements.")
-                        : root.update-dialog-notes;
-                    color: Theme.text-primary;
-                    opacity: 0.72;
-                    font-size: 0.9 * root.ui-unit;
-                    wrap: word-wrap;
-                    overflow: elide;
+                    viewport-width: self.width;
+                    horizontal-scrollbar-policy: always-off;
+                    mouse-drag-pan-enabled: true;
+
+                    StyledText {
+                        width: parent.width;
+                        text: root.update-dialog-notes;
+                        default-color: Theme.text-primary;
+                        default-font-size: 0.9 * root.ui-unit;
+                    }
                 }
 
                 if (root.update-dialog-status-state != 0) : Text {
@@ -1990,6 +2038,72 @@ export component MainWindow inherits Window {
                     font-weight: 600;
                     wrap: word-wrap;
                 }
+            }
+        }
+
+        onboarding-dialog := OnboardingModal {
+            width: 100%;
+            height: 100%;
+            unit: root.ui-unit;
+            open: root.onboarding-dialog-open;
+            changelog-text: root.onboarding-changelog-text;
+            available-languages: root.settings-interface-language-options;
+            selected-upscaler-preset: root.player-active-shader-preset;
+            upscaler-preset-available: root.player-shader-preset-available;
+            upscaler-status: root.player-shader-status;
+            hardware-acceleration-enabled: root.settings-hardware-acceleration;
+            auto-subtitles-enabled: root.settings-subtitles-auto-select;
+            discord-rpc-enabled: root.settings-discord-rpc-enabled;
+            background-playback-enabled: root.settings-play-in-background;
+            seeding-enabled: root.settings-streaming-seeding;
+            pause-on-minimize-enabled: root.settings-pause-on-minimize;
+            completed => {
+                root.onboarding-dialog-open = false;
+                root.onboarding-completed();
+            }
+            skip => {
+                root.onboarding-dialog-open = false;
+                root.onboarding-completed();
+            }
+            language-changed(idx) => {
+                if (idx >= 0 && idx < root.settings-interface-language-options.length) {
+                    root.settings-interface-language = root.settings-interface-language-options[idx];
+                    root.settings-change-interface-language(root.settings-interface-language-options[idx]);
+                }
+            }
+            upscaler-changed(idx) => {
+                root.player-change-shader-preset(idx);
+            }
+            seek-duration-changed(dur) => {
+                root.settings-seek-duration = round(dur) + "";
+                root.settings-change-seek-duration(round(dur) + "");
+            }
+            toggle-hwdec(enabled) => {
+                root.settings-hardware-acceleration = enabled;
+                root.settings-change-hardware-acceleration(enabled);
+            }
+            toggle-auto-subtitles(enabled) => {
+                root.settings-subtitles-auto-select = enabled;
+                root.settings-change-subtitles-auto-select(enabled);
+            }
+            toggle-discord-rpc(enabled) => {
+                root.settings-discord-rpc-enabled = enabled;
+                root.settings-change-discord-rpc-enabled(enabled);
+            }
+            toggle-background-playback(enabled) => {
+                root.settings-play-in-background = enabled;
+                root.settings-change-play-in-background(enabled);
+            }
+            toggle-seeding(enabled) => {
+                root.settings-streaming-seeding = enabled;
+                root.settings-change-seeding-enabled(enabled);
+            }
+            toggle-pause-on-minimize(enabled) => {
+                root.settings-pause-on-minimize = enabled;
+                root.settings-change-pause-on-minimize(enabled);
+            }
+            open-github-requested => {
+                root.open-external-url("https://github.com/stremio/stremio-shell");
             }
         }
 
@@ -2017,6 +2131,12 @@ export component MainWindow inherits Window {
             }
             state-selected(state) => {
                 root.profile-menu-open = root.debug-preview-page == 0 && state == "profile-menu";
+                root.onboarding-dialog-open = state == "onboarding-modal";
+                root.update-dialog-open = state == "update-dialog";
+                if (state == "update-dialog") {
+                    root.update-dialog-version = "5.0.0";
+                    root.update-dialog-notes = @markdown("* **GPU 4K Upscaler Shaders**: Integrated Anime4K (HQ) & AMD FSR spatial upscaler presets.\n* **ThumbFast Seek Bar Preview**: Hover over seek bar for real-time video thumbnail frames.\n* **High-Performance Rust Engine**: libmpv 60fps rendering, hardware acceleration (D3D11VA).\n* **Discord Rich Presence & Seeding**: Live status broadcast on Discord.");
+                }
                 root.debug-preview-state = state;
                 if (root.debug-preview-page == 8) {
                     root.player-controls-visible = state != "controls-hidden";

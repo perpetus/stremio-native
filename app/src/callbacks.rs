@@ -38,7 +38,8 @@ pub fn setup_ui_callbacks(
     models::search::setup(ui, runtime, &navigation);
     models::addons::setup(ui, runtime, &navigation);
     models::details::setup(ui, runtime, &navigation);
-    models::settings::setup(ui, runtime, config);
+    models::settings::setup(ui, runtime, config, native_playback_bridge.as_ref());
+    models::onboarding::setup(ui, config);
 
     // Play stream action
     ui.on_play_stream({

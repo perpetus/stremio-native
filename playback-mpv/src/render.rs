@@ -22,6 +22,50 @@ use crate::ffi::{
 /// OpenGL function resolver supplied by Slint while its context is current.
 pub type OpenGlProcAddress<'a> = &'a dyn Fn(&CStr) -> *const c_void;
 
+/// The OpenGL API profile backing Slint's renderer context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpenGlProfile {
+    Desktop,
+    Embedded,
+}
+
+/// The desktop OpenGL context profile selected by the driver.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpenGlContextProfile {
+    Core,
+    Compatibility,
+    Unknown,
+}
+
+/// Whether MPV hook shaders can run on the current OpenGL context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VideoShaderSupport {
+    Supported,
+    Unsupported(VideoShaderUnsupportedReason),
+}
+
+/// Why MPV hook shaders are unavailable while plain video remains supported.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VideoShaderUnsupportedReason {
+    EmbeddedProfile,
+    VersionTooOld { major: u32, minor: u32 },
+}
+
+impl std::fmt::Display for VideoShaderUnsupportedReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmbeddedProfile => write!(
+                formatter,
+                "custom video shaders require desktop OpenGL 3.3 or newer; OpenGL ES was detected"
+            ),
+            Self::VersionTooOld { major, minor } => write!(
+                formatter,
+                "custom video shaders require desktop OpenGL 3.3 or newer; detected OpenGL {major}.{minor}"
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct TextureUnitState {
     unit: u32,
@@ -56,6 +100,7 @@ struct OpenGlState {
     viewport: [c_int; 4],
     scissor_box: [c_int; 4],
     clear_color: [f32; 4],
+    stencil_clear_value: i32,
     blend_color: [f32; 4],
     color_mask: [bool; 4],
     blend_equation_rgb: u32,
@@ -83,10 +128,13 @@ struct OpenGlState {
     rasterizer_discard: bool,
     sample_alpha_to_coverage: bool,
     sample_coverage: bool,
+    sample_coverage_value: f32,
+    sample_coverage_invert: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct OpenGlCapabilities {
+    core_profile: bool,
     sampler_objects: bool,
     separate_framebuffers: bool,
     pixel_buffer_objects: bool,
@@ -98,14 +146,20 @@ struct OpenGlCapabilities {
     framebuffer_srgb: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OpenGlContextCapabilities {
+    state: OpenGlCapabilities,
+    fragment_texture_units: u32,
+}
+
 impl OpenGlCapabilities {
     fn from_version(major: u32, minor: u32, is_embedded: bool) -> Self {
         let at_least = |required_major, required_minor| {
             major > required_major || (major == required_major && minor >= required_minor)
         };
         Self {
+            core_profile: false,
             // Sampler objects are core in OpenGL ES 3.0 and desktop OpenGL 3.3.
-            // Slint uses GLES on Windows even for GraphicsAPI::NativeOpenGL.
             sampler_objects: if is_embedded {
                 major >= 3
             } else {
@@ -136,6 +190,7 @@ impl OpenGlCapabilities {
         let version = gl.version();
         let mut capabilities =
             Self::from_version(version.major, version.minor, version.is_embedded);
+        capabilities.core_profile = open_gl_context_profile(gl) == OpenGlContextProfile::Core;
         if !capabilities.vertex_array_objects {
             let extensions = gl.supported_extensions();
             capabilities.vertex_array_objects = extensions.contains("GL_OES_vertex_array_object")
@@ -146,25 +201,68 @@ impl OpenGlCapabilities {
     }
 }
 
-fn prepare_for_mpv(gl: &glow::Context) {
-    let capabilities = OpenGlCapabilities::for_context(gl);
+fn open_gl_context_profile(gl: &glow::Context) -> OpenGlContextProfile {
+    let version = gl.version();
+    if version.is_embedded || (version.major, version.minor) < (3, 2) {
+        return OpenGlContextProfile::Unknown;
+    }
+    // SAFETY: GL_CONTEXT_PROFILE_MASK is valid for desktop OpenGL 3.2 and
+    // newer, which is checked above, and Slint keeps the context current.
+    let profile_mask = unsafe { gl.get_parameter_i32(glow::CONTEXT_PROFILE_MASK) as u32 };
+    if profile_mask & glow::CONTEXT_CORE_PROFILE_BIT != 0 {
+        OpenGlContextProfile::Core
+    } else if profile_mask & glow::CONTEXT_COMPATIBILITY_PROFILE_BIT != 0 {
+        OpenGlContextProfile::Compatibility
+    } else {
+        OpenGlContextProfile::Unknown
+    }
+}
+
+impl OpenGlContextCapabilities {
+    fn for_context(gl: &glow::Context) -> Self {
+        // SAFETY: Construction happens while Slint keeps this context current.
+        let fragment_texture_units =
+            unsafe { gl.get_parameter_i32(glow::MAX_TEXTURE_IMAGE_UNITS).max(1) as u32 };
+        Self {
+            state: OpenGlCapabilities::for_context(gl),
+            fragment_texture_units,
+        }
+    }
+
+    fn texture_units(self, active_texture: u32) -> Vec<u32> {
+        let mut units = (0..self.fragment_texture_units)
+            .map(|index| glow::TEXTURE0 + index)
+            .collect::<Vec<_>>();
+        if !units.contains(&active_texture) {
+            units.push(active_texture);
+        }
+        units
+    }
+}
+
+fn prepare_for_mpv(gl: &glow::Context, context_capabilities: OpenGlContextCapabilities) {
     // SAFETY: Slint's rendering notifier guarantees that this context is
     // current. The surrounding OpenGlStateGuard restores every changed value.
     unsafe {
-        for unit in [glow::TEXTURE0, glow::TEXTURE1] {
+        let active_texture = gl.get_parameter_i32(glow::ACTIVE_TEXTURE) as u32;
+        for unit in context_capabilities.texture_units(active_texture) {
             gl.active_texture(unit);
             gl.bind_texture(glow::TEXTURE_2D, None);
-            if capabilities.sampler_objects {
+            if context_capabilities.state.sampler_objects {
                 gl.bind_sampler(unit - glow::TEXTURE0, None);
             }
         }
         gl.active_texture(glow::TEXTURE0);
         gl.use_program(None);
-        if capabilities.vertex_array_objects {
+        if context_capabilities.state.vertex_array_objects {
             gl.bind_vertex_array(None);
         }
         gl.bind_buffer(glow::ARRAY_BUFFER, None);
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+        // In a desktop core profile, ELEMENT_ARRAY_BUFFER is VAO state and
+        // changing it while VAO 0 is bound is GL_INVALID_OPERATION.
+        if !context_capabilities.state.core_profile {
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+        }
         gl.disable(glow::BLEND);
         gl.disable(glow::CULL_FACE);
         gl.disable(glow::DEPTH_TEST);
@@ -176,7 +274,7 @@ fn prepare_for_mpv(gl: &glow::Context) {
 }
 
 impl OpenGlState {
-    fn capture(gl: &glow::Context) -> Self {
+    fn capture(gl: &glow::Context, context_capabilities: OpenGlContextCapabilities) -> Self {
         let mut viewport = [0; 4];
         let mut scissor_box = [0; 4];
         let mut clear_color = [0.0; 4];
@@ -184,20 +282,15 @@ impl OpenGlState {
         // SAFETY: Slint guarantees that its OpenGL context is current for the
         // rendering notifier callback.
         unsafe {
-            let capabilities = OpenGlCapabilities::for_context(gl);
+            let capabilities = context_capabilities.state;
             gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
             gl.get_parameter_i32_slice(glow::SCISSOR_BOX, &mut scissor_box);
             gl.get_parameter_f32_slice(glow::COLOR_CLEAR_VALUE, &mut clear_color);
             gl.get_parameter_f32_slice(glow::BLEND_COLOR, &mut blend_color);
             let active_texture = gl.get_parameter_i32(glow::ACTIVE_TEXTURE) as u32;
-            let mut texture_units = Vec::with_capacity(3);
-            for unit in [glow::TEXTURE0, glow::TEXTURE1, active_texture] {
-                if texture_units
-                    .iter()
-                    .any(|state: &TextureUnitState| state.unit == unit)
-                {
-                    continue;
-                }
+            let mut texture_units =
+                Vec::with_capacity(context_capabilities.fragment_texture_units as usize + 1);
+            for unit in context_capabilities.texture_units(active_texture) {
                 gl.active_texture(unit);
                 texture_units.push(TextureUnitState {
                     unit,
@@ -246,6 +339,7 @@ impl OpenGlState {
                 viewport,
                 scissor_box,
                 clear_color,
+                stencil_clear_value: gl.get_parameter_i32(glow::STENCIL_CLEAR_VALUE),
                 blend_color,
                 color_mask: gl.get_parameter_bool_array(glow::COLOR_WRITEMASK),
                 blend_equation_rgb: gl.get_parameter_i32(glow::BLEND_EQUATION_RGB) as u32,
@@ -275,6 +369,8 @@ impl OpenGlState {
                     && gl.is_enabled(glow::RASTERIZER_DISCARD),
                 sample_alpha_to_coverage: gl.is_enabled(glow::SAMPLE_ALPHA_TO_COVERAGE),
                 sample_coverage: gl.is_enabled(glow::SAMPLE_COVERAGE),
+                sample_coverage_value: gl.get_parameter_f32(glow::SAMPLE_COVERAGE_VALUE),
+                sample_coverage_invert: gl.get_parameter_bool(glow::SAMPLE_COVERAGE_INVERT),
             }
         }
     }
@@ -307,7 +403,9 @@ impl OpenGlState {
                 gl.bind_vertex_array(self.vertex_array);
             }
             gl.bind_buffer(glow::ARRAY_BUFFER, self.array_buffer);
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
+            if !self.capabilities.core_profile || self.vertex_array.is_some() {
+                gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
+            }
             if self.capabilities.pixel_buffer_objects {
                 gl.bind_buffer(glow::PIXEL_PACK_BUFFER, self.pixel_pack_buffer);
                 gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, self.pixel_unpack_buffer);
@@ -341,6 +439,8 @@ impl OpenGlState {
                 self.clear_color[2],
                 self.clear_color[3],
             );
+            gl.clear_stencil(self.stencil_clear_value);
+            gl.sample_coverage(self.sample_coverage_value, self.sample_coverage_invert);
             gl.color_mask(
                 self.color_mask[0],
                 self.color_mask[1],
@@ -384,10 +484,10 @@ struct OpenGlStateGuard<'a> {
 }
 
 impl<'a> OpenGlStateGuard<'a> {
-    fn new(gl: &'a glow::Context) -> Self {
+    fn new(gl: &'a glow::Context, capabilities: OpenGlContextCapabilities) -> Self {
         Self {
             gl,
-            state: Some(OpenGlState::capture(gl)),
+            state: Some(OpenGlState::capture(gl, capabilities)),
         }
     }
 }
@@ -528,12 +628,13 @@ impl VideoTexture {
 
 fn create_render_target(
     gl: &glow::Context,
+    context_capabilities: OpenGlContextCapabilities,
     width: i32,
     height: i32,
 ) -> Result<OpenGlRenderTarget, MpvError> {
-    let _state_guard = OpenGlStateGuard::new(gl);
+    let _state_guard = OpenGlStateGuard::new(gl, context_capabilities);
     (|| {
-        let capabilities = OpenGlCapabilities::for_context(gl);
+        let capabilities = context_capabilities.state;
         // SAFETY: All resources are created in Slint's current OpenGL context.
         let texture = unsafe { gl.create_texture() }.map_err(MpvError::OpenGl)?;
         unsafe {
@@ -620,10 +721,11 @@ fn create_render_target(
             texture,
             width,
             height,
-            mpv_internal_format: capabilities
-                .sized_rgba8
-                .then_some(glow::RGBA8 as c_int)
-                .unwrap_or(0),
+            mpv_internal_format: if capabilities.sized_rgba8 {
+                glow::RGBA8 as c_int
+            } else {
+                0
+            },
         })
     })()
 }
@@ -639,11 +741,12 @@ fn delete_render_target(gl: &glow::Context, target: OpenGlRenderTarget) {
 
 fn create_render_targets(
     gl: &glow::Context,
+    context_capabilities: OpenGlContextCapabilities,
     width: i32,
     height: i32,
 ) -> Result<OpenGlRenderTargets, MpvError> {
-    let first = create_render_target(gl, width, height)?;
-    let second = match create_render_target(gl, width, height) {
+    let first = create_render_target(gl, context_capabilities, width, height)?;
+    let second = match create_render_target(gl, context_capabilities, width, height) {
         Ok(target) => target,
         Err(error) => {
             delete_render_target(gl, first);
@@ -698,8 +801,10 @@ impl<'a> ResolverBridge<'a> {
         // and its resolver remains valid for synchronous symbol loading.
         let gl =
             Rc::new(unsafe { glow::Context::from_loader_function_cstr(|name| resolver(name)) });
-        let gl_state = OpenGlStateGuard::new(&gl);
-        prepare_for_mpv(&gl);
+        let capabilities = OpenGlContextCapabilities::for_context(&gl);
+        let diagnostics = OpenGlDiagnostics::for_context(&gl);
+        let gl_state = OpenGlStateGuard::new(&gl, capabilities);
+        prepare_for_mpv(&gl, capabilities);
         let mut bridge = Self { resolver };
         let mut init_params = MpvOpenGlInitParams {
             get_proc_address: Some(resolve_open_gl),
@@ -753,10 +858,13 @@ impl<'a> ResolverBridge<'a> {
             context,
             client: client.clone(),
             gl,
+            capabilities,
+            diagnostics,
             render_targets: None,
             force_render: false,
             frame_pending: false,
             last_gl_error: None,
+            pending_gl_error: None,
             _redraw: redraw,
             _not_send: PhantomData,
         })
@@ -801,6 +909,50 @@ pub struct OpenGlDiagnostics {
     pub vendor: String,
     pub renderer: String,
     pub version: String,
+    pub major: u32,
+    pub minor: u32,
+    pub profile: OpenGlProfile,
+    pub context_profile: OpenGlContextProfile,
+    pub shading_language_version: String,
+}
+
+impl OpenGlDiagnostics {
+    fn for_context(gl: &glow::Context) -> Self {
+        let version = gl.version();
+        // SAFETY: Diagnostics are captured during render-context construction,
+        // while Slint keeps the OpenGL context current.
+        unsafe {
+            Self {
+                vendor: gl.get_parameter_string(glow::VENDOR),
+                renderer: gl.get_parameter_string(glow::RENDERER),
+                version: gl.get_parameter_string(glow::VERSION),
+                major: version.major,
+                minor: version.minor,
+                profile: if version.is_embedded {
+                    OpenGlProfile::Embedded
+                } else {
+                    OpenGlProfile::Desktop
+                },
+                context_profile: open_gl_context_profile(gl),
+                shading_language_version: gl.get_parameter_string(glow::SHADING_LANGUAGE_VERSION),
+            }
+        }
+    }
+
+    pub fn video_shader_support(&self) -> VideoShaderSupport {
+        match self.profile {
+            OpenGlProfile::Embedded => {
+                VideoShaderSupport::Unsupported(VideoShaderUnsupportedReason::EmbeddedProfile)
+            }
+            OpenGlProfile::Desktop if (self.major, self.minor) < (3, 3) => {
+                VideoShaderSupport::Unsupported(VideoShaderUnsupportedReason::VersionTooOld {
+                    major: self.major,
+                    minor: self.minor,
+                })
+            }
+            OpenGlProfile::Desktop => VideoShaderSupport::Supported,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -817,25 +969,20 @@ pub struct RenderContext {
     context: NonNull<MpvRenderContext>,
     client: Arc<MpvClient>,
     gl: Rc<glow::Context>,
+    capabilities: OpenGlContextCapabilities,
+    diagnostics: OpenGlDiagnostics,
     render_targets: Option<OpenGlRenderTargets>,
     force_render: bool,
     frame_pending: bool,
     last_gl_error: Option<u32>,
+    pending_gl_error: Option<u32>,
     _redraw: Box<RedrawCallback>,
     _not_send: PhantomData<Rc<()>>,
 }
 
 impl RenderContext {
     pub fn open_gl_diagnostics(&self) -> OpenGlDiagnostics {
-        // SAFETY: This method is called from Slint's rendering notifier while
-        // the same OpenGL context used to create this renderer is current.
-        unsafe {
-            OpenGlDiagnostics {
-                vendor: self.gl.get_parameter_string(glow::VENDOR),
-                renderer: self.gl.get_parameter_string(glow::RENDERER),
-                version: self.gl.get_parameter_string(glow::VERSION),
-            }
-        }
+        self.diagnostics.clone()
     }
 
     /// Allocates the double-buffered private video textures on first use.
@@ -853,7 +1000,7 @@ impl RenderContext {
         {
             return Ok(false);
         }
-        let targets = create_render_targets(&self.gl, width, height)?;
+        let targets = create_render_targets(&self.gl, self.capabilities, width, height)?;
         if let Some(previous) = self.render_targets.replace(targets) {
             for target in previous.slots {
                 delete_render_target(&self.gl, target);
@@ -877,29 +1024,13 @@ impl RenderContext {
         if !self._redraw.pending.swap(false, Ordering::AcqRel) {
             return Ok(false);
         }
-        let update_flags = {
-            let _state_guard = OpenGlStateGuard::new(&self.gl);
-            prepare_for_mpv(&self.gl);
-            // SAFETY: Called on the render-context owner thread while Slint's
-            // OpenGL context is current.
-            unsafe { (self.client.api.render_update)(self.context.as_ptr()) }
-        };
+        let state_guard = OpenGlStateGuard::new(&self.gl, self.capabilities);
+        prepare_for_mpv(&self.gl, self.capabilities);
+        // SAFETY: Called on the render-context owner thread while Slint's
+        // OpenGL context is current.
+        let update_flags = unsafe { (self.client.api.render_update)(self.context.as_ptr()) };
         let has_frame = update_flags & RENDER_UPDATE_FRAME != 0;
-        if !has_frame {
-            return Ok(false);
-        }
-        if render_visible {
-            self.frame_pending = true;
-        } else {
-            self.skip_pending_frame()?;
-        }
-        Ok(true)
-    }
-
-    fn skip_pending_frame(&mut self) -> Result<(), MpvError> {
-        let result = {
-            let _state_guard = OpenGlStateGuard::new(&self.gl);
-            prepare_for_mpv(&self.gl);
+        let result = if has_frame && !render_visible {
             let mut skip: c_int = 1;
             let mut params = [
                 MpvRenderParam {
@@ -916,9 +1047,16 @@ impl RenderContext {
             self.client.api.result(unsafe {
                 (self.client.api.render)(self.context.as_ptr(), params.as_mut_ptr())
             })
+        } else {
+            Ok(())
         };
-        self.frame_pending = false;
-        result
+        drop(state_guard);
+        self.capture_gl_error();
+        result?;
+        if has_frame {
+            self.frame_pending = render_visible;
+        }
+        Ok(has_frame)
     }
 
     /// Renders the next MPV frame into the back RGBA texture.
@@ -927,11 +1065,30 @@ impl RenderContext {
     /// more redraw. Alternating targets prevents Slint from sampling the same
     /// texture that libmpv is updating.
     pub fn render(&mut self) -> Result<RenderOutcome, MpvError> {
-        self.process_updates(true)?;
+        let update_requested = self._redraw.pending.swap(false, Ordering::AcqRel);
+        if !update_requested && !self.frame_pending && !self.force_render {
+            return Ok(RenderOutcome::NoFrame);
+        }
+
+        let state_guard = OpenGlStateGuard::new(&self.gl, self.capabilities);
+        prepare_for_mpv(&self.gl, self.capabilities);
+        if update_requested {
+            // SAFETY: Called on the render-context owner thread while Slint's
+            // OpenGL context is current.
+            let update_flags = unsafe { (self.client.api.render_update)(self.context.as_ptr()) };
+            if update_flags & RENDER_UPDATE_FRAME != 0 {
+                self.frame_pending = true;
+            }
+        }
+
         let Some(targets) = self.render_targets.as_ref() else {
+            drop(state_guard);
+            self.capture_gl_error();
             return Ok(RenderOutcome::NoFrame);
         };
         if !self.frame_pending && !self.force_render {
+            drop(state_guard);
+            self.capture_gl_error();
             return Ok(RenderOutcome::NoFrame);
         }
         let frame_ready = self.frame_pending;
@@ -947,55 +1104,49 @@ impl RenderContext {
         let height = target.height;
         let mpv_internal_format = target.mpv_internal_format;
 
-        let result = {
-            let _state_guard = OpenGlStateGuard::new(&self.gl);
-            prepare_for_mpv(&self.gl);
-            // SAFETY: The target belongs to this current context. Clearing
-            // first guarantees deterministic black letterboxing.
-            unsafe {
-                self.gl
-                    .bind_framebuffer(glow::FRAMEBUFFER, Some(target.framebuffer));
-                self.gl.viewport(0, 0, width, height);
-                self.gl.disable(glow::SCISSOR_TEST);
-                self.gl.color_mask(true, true, true, true);
-                self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                self.gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-            let mut framebuffer = MpvOpenGlFbo {
-                fbo: framebuffer_id,
-                width,
-                height,
-                internal_format: mpv_internal_format,
-            };
-            // Slint's borrowed OpenGL texture path samples this FBO in the same
-            // orientation produced by libmpv. Requesting MPV's optional flip
-            // here applies a second coordinate conversion and turns the frame
-            // upside down (confirmed on the Windows FemtoVG/Skia render path).
-            let mut flip_y: c_int = 0;
-            let mut params = [
-                MpvRenderParam {
-                    param_type: RENDER_PARAM_OPENGL_FBO,
-                    data: (&mut framebuffer as *mut MpvOpenGlFbo).cast(),
-                },
-                MpvRenderParam {
-                    param_type: RENDER_PARAM_FLIP_Y,
-                    data: (&mut flip_y as *mut c_int).cast(),
-                },
-                MpvRenderParam {
-                    param_type: RENDER_PARAM_INVALID,
-                    data: std::ptr::null_mut(),
-                },
-            ];
-            // SAFETY: Called on the render-context owner thread while Slint
-            // keeps the framebuffer and GL context current.
-            self.client.api.result(unsafe {
-                (self.client.api.render)(self.context.as_ptr(), params.as_mut_ptr())
-            })
+        // SAFETY: The target belongs to this current context. Clearing first
+        // guarantees deterministic black letterboxing.
+        unsafe {
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(target.framebuffer));
+            self.gl.viewport(0, 0, width, height);
+            self.gl.disable(glow::SCISSOR_TEST);
+            self.gl.color_mask(true, true, true, true);
+            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        let mut framebuffer = MpvOpenGlFbo {
+            fbo: framebuffer_id,
+            width,
+            height,
+            internal_format: mpv_internal_format,
         };
-        // SAFETY: The current context remains owned by Slint's rendering
-        // callback. Reading the error flag does not mutate render resources.
-        let gl_error = unsafe { self.gl.get_error() };
-        self.last_gl_error = (gl_error != glow::NO_ERROR).then_some(gl_error);
+        // Slint's borrowed OpenGL texture path samples this FBO in the same
+        // orientation produced by libmpv. Requesting MPV's optional flip here
+        // applies a second coordinate conversion and turns the frame upside
+        // down (confirmed on Slint's Skia OpenGL render path).
+        let mut flip_y: c_int = 0;
+        let mut params = [
+            MpvRenderParam {
+                param_type: RENDER_PARAM_OPENGL_FBO,
+                data: (&mut framebuffer as *mut MpvOpenGlFbo).cast(),
+            },
+            MpvRenderParam {
+                param_type: RENDER_PARAM_FLIP_Y,
+                data: (&mut flip_y as *mut c_int).cast(),
+            },
+            MpvRenderParam {
+                param_type: RENDER_PARAM_INVALID,
+                data: std::ptr::null_mut(),
+            },
+        ];
+        // SAFETY: Called on the render-context owner thread while Slint keeps
+        // the framebuffer and GL context current.
+        let result = self.client.api.result(unsafe {
+            (self.client.api.render)(self.context.as_ptr(), params.as_mut_ptr())
+        });
+        drop(state_guard);
+        self.capture_gl_error();
         result.map(|()| {
             if let Some(targets) = self.render_targets.as_mut() {
                 targets.next_render_index = (render_index + 1) % targets.slots.len();
@@ -1009,9 +1160,19 @@ impl RenderContext {
         })
     }
 
+    fn capture_gl_error(&mut self) {
+        // SAFETY: The current context remains owned by Slint's rendering
+        // callback. Reading the error flag does not mutate render resources.
+        let gl_error = unsafe { self.gl.get_error() };
+        if gl_error != glow::NO_ERROR && self.last_gl_error != Some(gl_error) {
+            self.last_gl_error = Some(gl_error);
+            self.pending_gl_error = Some(gl_error);
+        }
+    }
+
     /// Returns and clears the most recent OpenGL error observed after rendering.
     pub fn take_gl_error(&mut self) -> Option<u32> {
-        self.last_gl_error.take()
+        self.pending_gl_error.take()
     }
 }
 
@@ -1037,7 +1198,23 @@ impl Drop for RenderContext {
 
 #[cfg(test)]
 mod tests {
-    use super::OpenGlCapabilities;
+    use super::{
+        OpenGlCapabilities, OpenGlContextProfile, OpenGlDiagnostics, OpenGlProfile,
+        VideoShaderSupport, VideoShaderUnsupportedReason,
+    };
+
+    fn diagnostics(major: u32, minor: u32, profile: OpenGlProfile) -> OpenGlDiagnostics {
+        OpenGlDiagnostics {
+            vendor: "test vendor".to_owned(),
+            renderer: "test renderer".to_owned(),
+            version: format!("{major}.{minor}"),
+            major,
+            minor,
+            profile,
+            context_profile: OpenGlContextProfile::Unknown,
+            shading_language_version: "test GLSL".to_owned(),
+        }
+    }
 
     #[test]
     fn sampler_objects_are_supported_by_opengl_es_3() {
@@ -1072,5 +1249,36 @@ mod tests {
         assert!(!capabilities.texture_swizzle);
         assert!(!capabilities.rasterizer_discard);
         assert!(!capabilities.sized_rgba8);
+    }
+
+    #[test]
+    fn desktop_opengl_3_3_and_newer_support_video_shaders() {
+        assert_eq!(
+            diagnostics(3, 3, OpenGlProfile::Desktop).video_shader_support(),
+            VideoShaderSupport::Supported
+        );
+        assert_eq!(
+            diagnostics(4, 6, OpenGlProfile::Desktop).video_shader_support(),
+            VideoShaderSupport::Supported
+        );
+    }
+
+    #[test]
+    fn desktop_opengl_3_2_and_older_reject_video_shaders() {
+        assert_eq!(
+            diagnostics(3, 2, OpenGlProfile::Desktop).video_shader_support(),
+            VideoShaderSupport::Unsupported(VideoShaderUnsupportedReason::VersionTooOld {
+                major: 3,
+                minor: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn opengl_es_rejects_video_shaders_without_rejecting_rendering() {
+        assert_eq!(
+            diagnostics(3, 2, OpenGlProfile::Embedded).video_shader_support(),
+            VideoShaderSupport::Unsupported(VideoShaderUnsupportedReason::EmbeddedProfile)
+        );
     }
 }

@@ -2,15 +2,23 @@
 # The embedded stream-server library must not link its standalone EXE resource
 # table into the Stremio GUI executable. The GUI supplies its own icon/version.
 STREAM_SERVER_SKIP_WINDOWS_RESOURCES = "1"
+# The pinned stream-server build script otherwise silently falls back to
+# x64-windows-static, whose /MT objects are ABI-incompatible with Skia's /MD
+# binaries. External CI values still take precedence over these local defaults.
+VCPKGRS_TRIPLET = "x64-windows-v3-static-md-release"
+VCPKG_INSTALLED_DIR = { value = "vcpkg_installed", relative = true }
 
 [target.'cfg(all(target_arch = "x86_64", windows, target_env = "msvc"))']
-# Match the pinned MPV x86-64-v3 baseline while keeping Rust and statically
-# linked native crates on the static MSVC runtime.
+# Match the pinned MPV x86-64-v3 baseline. Rust and native libraries use the
+# dynamic MSVC runtime so rust-skia's published Windows binaries can be used.
 rustflags = [
     "-C",
     "target-cpu=x86-64-v3",
+    # stream-server's standalone cdylib produces a very large full-debug PDB.
+    # MSVC's default 4 KiB page can exhaust an individual PDB stream and fail
+    # nondeterministically with LNK1318 LIMIT (12).
     "-C",
-    "target-feature=+crt-static",
+    "link-arg=/PDBPAGESIZE:16384",
 ]
 
 [target.'cfg(all(target_arch = "x86_64", target_os = "linux"))']

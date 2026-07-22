@@ -1,0 +1,850 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ButtonSurface } from "button.slint";
+import { Slider } from "slider.slint";
+import { ToggleSwitch } from "toggle.slint";
+
+export component OnboardingModal inherits Rectangle {
+    in-out property <bool> open: false;
+    in-out property <int> active-step: 0;
+    in property <length> unit: Theme.root-font-size;
+
+    // Interactive settings bound to onboarding
+    in-out property <int> selected-language-idx: 0;
+    in-out property <[string]> available-languages: [
+        "English (United States)",
+        "English (United Kingdom)",
+        "Español (España)",
+        "Español (Latinoamérica)",
+        "中文 (中国)",
+        "日本語",
+        "Français",
+        "Deutsch",
+        "Italiano"
+    ];
+
+    in-out property <int> selected-upscaler-preset: 0; // 0: Off, 1: Anime4K Mode A, 7: FSR
+    in property <[bool]> upscaler-preset-available: [true, false, false, false, false, false, false, false];
+    in property <string> upscaler-status: "Checking GPU support…";
+    in-out property <float> seek-duration-seconds: 10.0;
+    in-out property <bool> hardware-acceleration-enabled: true;
+    in-out property <bool> auto-subtitles-enabled: true;
+    in-out property <bool> discord-rpc-enabled: true;
+    in-out property <bool> background-playback-enabled: true;
+    in-out property <bool> seeding-enabled: false;
+    in-out property <bool> pause-on-minimize-enabled: false;
+    in-out property <styled-text> changelog-text;
+
+    callback completed();
+    callback skip();
+    callback open-github-requested();
+    callback language-changed(int);
+    callback upscaler-changed(int);
+    callback seek-duration-changed(float);
+    callback toggle-hwdec(bool);
+    callback toggle-auto-subtitles(bool);
+    callback toggle-discord-rpc(bool);
+    callback toggle-background-playback(bool);
+    callback toggle-seeding(bool);
+    callback toggle-pause-on-minimize(bool);
+
+    visible: root.open;
+    background: #000000bb;
+    z: 2500;
+
+    TouchArea {
+        enabled: root.open;
+        clicked => { root.skip(); }
+    }
+
+    dialog := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(680px, parent.width * 0.95);
+        height: min(520px, parent.height * 0.9);
+        border-radius: 20px;
+        background: #151320f8;
+        border-width: 1px;
+        border-color: #ffffff18;
+        drop-shadow-blur: Theme.outer-glow-blur;
+        drop-shadow-color: Theme.outer-glow-color;
+        TouchArea { } // Prevent click-through
+
+        // Auth-style Ambient Background Image & Gradient Overlay
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: @image-url("../assets/images/intro-background.png");
+            image-fit: cover;
+            opacity: 0.65;
+        }
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: @linear-gradient(135deg, #18142ce0 0%, #121020f0 50%, #0d0b16f8 100%);
+        }
+
+        // Top Step Indicator Dots & Pills
+        HorizontalLayout {
+            x: (parent.width - self.width) / 2;
+            y: 18px;
+            height: 12px;
+            spacing: 6px;
+            alignment: center;
+
+            for step-idx in 4 : Rectangle {
+                width: root.active-step == step-idx ? 24px : 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: root.active-step == step-idx ? #2b82fb : #ffffff4d;
+
+                animate width { duration: Theme.motion-control; easing: ease-out; }
+                animate background { duration: Theme.motion-control; }
+            }
+        }
+
+        // ================= SLIDE 0: Welcome & Language =================
+        if (root.active-step == 0) : VerticalLayout {
+            x: 24px;
+            y: 40px;
+            width: parent.width - 48px;
+            height: 420px;
+            spacing: 12px;
+            alignment: start;
+
+            // Centered Stremio Native Logo Badge
+            HorizontalLayout {
+                alignment: center;
+                height: 64px;
+
+                Image {
+                    width: 64px;
+                    height: 64px;
+                    source: @image-url("../assets/images/stremio_symbol.png");
+                    image-fit: contain;
+                }
+            }
+
+            Text {
+                text: @tr("Welcome to Stremio Native");
+                color: #ffffff;
+                font-size: 24px;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: @tr("Before we start");
+                color: #ffffff99;
+                font-size: 14px;
+                font-weight: 500;
+                horizontal-alignment: center;
+            }
+
+            // Centered Language Selection Container
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                width: min(340px, parent.width * 0.85);
+                height: 220px;
+                border-radius: 12px;
+                background: #1e1c28;
+                border-width: 1px;
+                border-color: #ffffff14;
+                clip: true;
+
+                ScrollView {
+                    width: parent.width;
+                    height: parent.height;
+                    viewport-width: self.width;
+                    horizontal-scrollbar-policy: always-off;
+                    mouse-drag-pan-enabled: true;
+
+                    VerticalLayout {
+                        width: parent.width;
+                        padding: 6px;
+                        spacing: 2px;
+
+                        for lang[idx] in root.available-languages : ButtonSurface {
+                            width: parent.width - 12px;
+                            height: 36px;
+                            border-radius: 8px;
+                            background: root.selected-language-idx == idx ? #2b82fb : (self.has-hover ? #ffffff14 : transparent);
+                            clicked => {
+                                root.selected-language-idx = idx;
+                                root.language-changed(idx);
+                            }
+
+                            Text {
+                                text: lang;
+                                color: #ffffff;
+                                font-size: 14px;
+                                font-weight: root.selected-language-idx == idx ? 700 : 500;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================= SLIDE 1: Set up Playback & Upscaling =================
+        if (root.active-step == 1) : VerticalLayout {
+            x: 24px;
+            y: 36px;
+            width: parent.width - 48px;
+            height: 420px;
+            spacing: 10px;
+            alignment: start;
+
+            // Centered Header Icon
+            HorizontalLayout {
+                alignment: center;
+                height: 32px;
+
+                Image {
+                    width: 32px;
+                    height: 32px;
+                    source: @image-url("../assets/images/icons/settings-upscaler.svg");
+                    colorize: #ffffffcc;
+                    image-fit: contain;
+                }
+            }
+
+            Text {
+                text: @tr("Set up your playback");
+                color: #ffffff;
+                font-size: 24px;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: @tr("Quality, upscaling, and performance. Everything can be changed later in Settings.");
+                color: #ffffff99;
+                font-size: 13px;
+                font-weight: 500;
+                horizontal-alignment: center;
+            }
+
+            // Upscaler Preset Selection Cards (3 Cards Row)
+            Text {
+                text: @tr("GPU Video Upscaler");
+                color: #ffffffb3;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            HorizontalLayout {
+                height: 90px;
+                spacing: 12px;
+                alignment: space-between;
+
+                // Card 1: Anime4K (HQ)
+                card-anime4k := ButtonSurface {
+                    width: (parent.width - 24px) / 3;
+                    height: 90px;
+                    border-radius: 10px;
+                    background: root.selected-upscaler-preset == 1 ? #1e243b : #181624;
+                    border-width: root.selected-upscaler-preset == 1 ? 2px : 1px;
+                    border-color: root.selected-upscaler-preset == 1 ? #2b82fb : #ffffff14;
+                    enabled: root.upscaler-preset-available.length > 1 && root.upscaler-preset-available[1];
+                    opacity: self.enabled ? 1.0 : 0.45;
+                    clicked => {
+                        root.upscaler-changed(1);
+                    }
+
+                    if (root.selected-upscaler-preset == 1) : Rectangle {
+                        x: parent.width - 22px;
+                        y: 6px;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 8px;
+                        background: #2b82fb;
+
+                        Image {
+                            width: 10px;
+                            height: 10px;
+                            source: @image-url("../assets/images/icons/checkmark.svg");
+                            colorize: #ffffff;
+                        }
+                    }
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 4px;
+                        alignment: center;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            height: 20px;
+
+                            Image {
+                                width: 20px;
+                                height: 20px;
+                                source: @image-url("../assets/images/icons/hdr.svg");
+                                colorize: #ffffff;
+                            }
+                        }
+
+                        Text { text: @tr("Anime4K (HQ)"); color: #ffffff; font-size: 13px; font-weight: 700; horizontal-alignment: center; }
+                        Text { text: @tr("Anime & cartoon upscaling"); color: #ffffff80; font-size: 10px; horizontal-alignment: center; wrap: word-wrap; }
+                    }
+                }
+
+                // Card 2: AMD FSR
+                card-fsr := ButtonSurface {
+                    width: (parent.width - 24px) / 3;
+                    height: 90px;
+                    border-radius: 10px;
+                    background: root.selected-upscaler-preset == 7 ? #1e243b : #181624;
+                    border-width: root.selected-upscaler-preset == 7 ? 2px : 1px;
+                    border-color: root.selected-upscaler-preset == 7 ? #2b82fb : #ffffff14;
+                    enabled: root.upscaler-preset-available.length > 7 && root.upscaler-preset-available[7];
+                    opacity: self.enabled ? 1.0 : 0.45;
+                    clicked => {
+                        root.upscaler-changed(7);
+                    }
+
+                    if (root.selected-upscaler-preset == 7) : Rectangle {
+                        x: parent.width - 22px;
+                        y: 6px;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 8px;
+                        background: #2b82fb;
+
+                        Image {
+                            width: 10px;
+                            height: 10px;
+                            source: @image-url("../assets/images/icons/checkmark.svg");
+                            colorize: #ffffff;
+                        }
+                    }
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 4px;
+                        alignment: center;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            height: 20px;
+
+                            Image {
+                                width: 20px;
+                                height: 20px;
+                                source: @image-url("../assets/images/icons/star.svg");
+                                colorize: #ffffff;
+                            }
+                        }
+
+                        Text { text: @tr("AMD FSR"); color: #ffffff; font-size: 13px; font-weight: 700; horizontal-alignment: center; }
+                        Text { text: @tr("Spatial upscaling for 4K"); color: #ffffff80; font-size: 10px; horizontal-alignment: center; wrap: word-wrap; }
+                    }
+                }
+
+                // Card 3: Native / Off
+                card-off := ButtonSurface {
+                    width: (parent.width - 24px) / 3;
+                    height: 90px;
+                    border-radius: 10px;
+                    background: root.selected-upscaler-preset == 0 ? #1e243b : #181624;
+                    border-width: root.selected-upscaler-preset == 0 ? 2px : 1px;
+                    border-color: root.selected-upscaler-preset == 0 ? #2b82fb : #ffffff14;
+                    clicked => {
+                        root.upscaler-changed(0);
+                    }
+
+                    if (root.selected-upscaler-preset == 0) : Rectangle {
+                        x: parent.width - 22px;
+                        y: 6px;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 8px;
+                        background: #2b82fb;
+
+                        Image {
+                            width: 10px;
+                            height: 10px;
+                            source: @image-url("../assets/images/icons/checkmark.svg");
+                            colorize: #ffffff;
+                        }
+                    }
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 4px;
+                        alignment: center;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            height: 20px;
+
+                            Image {
+                                width: 20px;
+                                height: 20px;
+                                source: @image-url("../assets/images/icons/close.svg");
+                                colorize: #ffffff80;
+                            }
+                        }
+                        Text { text: @tr("Native / Off"); color: #ffffff; font-size: 13px; font-weight: 700; horizontal-alignment: center; }
+                        Text { text: @tr("Direct libmpv rendering"); color: #ffffff80; font-size: 10px; horizontal-alignment: center; wrap: word-wrap; }
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width;
+                text: root.upscaler-status;
+                color: #ffffff99;
+                font-size: 11px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+
+            // Seek Duration Slider Row
+            Rectangle {
+                width: parent.width;
+                height: 44px;
+                border-radius: 10px;
+                background: #181624;
+                border-width: 1px;
+                border-color: #ffffff14;
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    alignment: space-between;
+
+                    Text {
+                        text: @tr("Seek Duration");
+                        color: #ffffffcc;
+                        font-size: 13px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+
+                    Slider {
+                        width: parent.width - 160px;
+                        height: 28px;
+                        minimum: 5.0;
+                        maximum: 30.0;
+                        value: root.seek-duration-seconds;
+                        changed(val) => {
+                            root.seek-duration-seconds = val;
+                            root.seek-duration-changed(val);
+                        }
+                    }
+
+                    Text {
+                        text: Math.round(root.seek-duration-seconds) + "s";
+                        color: #ffffff;
+                        font-size: 13px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Settings Control Cards Row (2 Side-by-side cards)
+            HorizontalLayout {
+                height: 64px;
+                spacing: 12px;
+
+                // HW Acceleration Card
+                Rectangle {
+                    width: (parent.width - 12px) / 2;
+                    height: 64px;
+                    border-radius: 10px;
+                    background: #181624;
+                    border-width: 1px;
+                    border-color: #ffffff14;
+
+                    HorizontalLayout {
+                        padding: 12px;
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+
+                            Text { text: @tr("Hardware Acceleration"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                            Text { text: @tr("GPU decoding (D3D11VA)"); color: #ffffff80; font-size: 11px; }
+                        }
+
+                        ToggleSwitch {
+                            checked <=> root.hardware-acceleration-enabled;
+                            toggled => { root.toggle-hwdec(root.hardware-acceleration-enabled); }
+                        }
+                    }
+                }
+
+                // Auto Subtitles Card
+                Rectangle {
+                    width: (parent.width - 12px) / 2;
+                    height: 64px;
+                    border-radius: 10px;
+                    background: #181624;
+                    border-width: 1px;
+                    border-color: #ffffff14;
+
+                    HorizontalLayout {
+                        padding: 12px;
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+
+                            Text { text: @tr("Auto-select Subtitles"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                            Text { text: @tr("Pick preferred subtitles"); color: #ffffff80; font-size: 11px; }
+                        }
+
+                        ToggleSwitch {
+                            checked <=> root.auto-subtitles-enabled;
+                            toggled => { root.toggle-auto-subtitles(root.auto-subtitles-enabled); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================= SLIDE 2: Stay Connected & Integrations =================
+        if (root.active-step == 2) : VerticalLayout {
+            x: 24px;
+            y: 36px;
+            width: parent.width - 48px;
+            height: 420px;
+            spacing: 14px;
+            alignment: start;
+
+            // Centered Top Icon
+            HorizontalLayout {
+                alignment: center;
+                height: 32px;
+
+                Image {
+                    width: 32px;
+                    height: 32px;
+                    source: @image-url("../assets/images/icons/network.svg");
+                    colorize: #ffffffcc;
+                    image-fit: contain;
+                }
+            }
+
+            Text {
+                text: @tr("Stay connected");
+                color: #ffffff;
+                font-size: 24px;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: @tr("Link Stremio Native with your other apps and services.");
+                color: #ffffff99;
+                font-size: 14px;
+                font-weight: 500;
+                horizontal-alignment: center;
+            }
+
+            // 2x2 Grid of Integration Cards
+            VerticalLayout {
+                spacing: 12px;
+
+                // Row 1
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    Rectangle {
+                        width: (parent.width - 12px) / 2;
+                        height: 68px;
+                        border-radius: 10px;
+                        background: #181624;
+                        border-width: 1px;
+                        border-color: #ffffff14;
+
+                        HorizontalLayout {
+                            padding: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+
+                                Text { text: @tr("Discord Rich Presence"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                                Text { text: @tr("Show what you watch on Discord."); color: #ffffff80; font-size: 11px; }
+                            }
+
+                            ToggleSwitch {
+                                checked <=> root.discord-rpc-enabled;
+                                toggled => { root.toggle-discord-rpc(root.discord-rpc-enabled); }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: (parent.width - 12px) / 2;
+                        height: 68px;
+                        border-radius: 10px;
+                        background: #181624;
+                        border-width: 1px;
+                        border-color: #ffffff14;
+
+                        HorizontalLayout {
+                            padding: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+
+                                Text { text: @tr("Background Playback"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                                Text { text: @tr("Keep audio playing when minimized."); color: #ffffff80; font-size: 11px; }
+                            }
+
+                            ToggleSwitch {
+                                checked <=> root.background-playback-enabled;
+                                toggled => { root.toggle-background-playback(root.background-playback-enabled); }
+                            }
+                        }
+                    }
+                }
+
+                // Row 2
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    Rectangle {
+                        width: (parent.width - 12px) / 2;
+                        height: 68px;
+                        border-radius: 10px;
+                        background: #181624;
+                        border-width: 1px;
+                        border-color: #ffffff14;
+
+                        HorizontalLayout {
+                            padding: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+
+                                Text { text: @tr("Torrent Seeding"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                                Text { text: @tr("Seed active streams in background."); color: #ffffff80; font-size: 11px; }
+                            }
+
+                            ToggleSwitch {
+                                checked <=> root.seeding-enabled;
+                                toggled => { root.toggle-seeding(root.seeding-enabled); }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: (parent.width - 12px) / 2;
+                        height: 68px;
+                        border-radius: 10px;
+                        background: #181624;
+                        border-width: 1px;
+                        border-color: #ffffff14;
+
+                        HorizontalLayout {
+                            padding: 12px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+
+                                Text { text: @tr("Pause on Minimize"); color: #ffffff; font-size: 13px; font-weight: 600; }
+                                Text { text: @tr("Pause video when minimized."); color: #ffffff80; font-size: 11px; }
+                            }
+
+                            ToggleSwitch {
+                                checked <=> root.pause-on-minimize-enabled;
+                                toggled => { root.toggle-pause-on-minimize(root.pause-on-minimize-enabled); }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: @tr("More integrations and options live in Settings → Interface & Player.");
+                color: #ffffff66;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+        }
+
+        // ================= SLIDE 3: What's New & GitHub Changelogs =================
+        if (root.active-step == 3) : VerticalLayout {
+            x: 24px;
+            y: 36px;
+            width: parent.width - 48px;
+            height: 420px;
+            spacing: 12px;
+            alignment: start;
+
+            // Centered Top Icon
+            HorizontalLayout {
+                alignment: center;
+                height: 32px;
+
+                Image {
+                    width: 32px;
+                    height: 32px;
+                    source: @image-url("../assets/images/icons/megaphone.svg");
+                    colorize: #ffffffcc;
+                    image-fit: contain;
+                }
+            }
+
+            Text {
+                text: @tr("What's New in Stremio Native");
+                color: #ffffff;
+                font-size: 24px;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: @tr("Latest release highlights and GitHub changelogs.");
+                color: #ffffff99;
+                font-size: 13px;
+                font-weight: 500;
+                horizontal-alignment: center;
+            }
+
+            // Scrollable Changelogs Container
+            Rectangle {
+                width: parent.width;
+                height: 220px;
+                border-radius: 12px;
+                background: #181624;
+                border-width: 1px;
+                border-color: #ffffff14;
+                clip: true;
+
+                ScrollView {
+                    width: parent.width;
+                    height: parent.height;
+                    viewport-width: self.width;
+                    horizontal-scrollbar-policy: always-off;
+                    mouse-drag-pan-enabled: true;
+
+                    VerticalLayout {
+                        width: parent.width;
+                        padding: 14px;
+                        spacing: 10px;
+
+                        StyledText {
+                            width: parent.width;
+                            text: root.changelog-text;
+                            default-color: #ffffffe6;
+                            default-font-size: 12px;
+                        }
+                    }
+                }
+            }
+
+            // GitHub Repository Button
+            HorizontalLayout {
+                alignment: center;
+
+                ButtonSurface {
+                    width: 210px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: #ffffff14;
+                    border-width: 1px;
+                    border-color: #ffffff26;
+                    clicked => { root.open-github-requested(); }
+
+                    HorizontalLayout {
+                        width: parent.width;
+                        height: parent.height;
+                        spacing: 8px;
+                        alignment: center;
+
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            y: (parent.height - self.height) / 2;
+
+                            Image {
+                                width: 16px;
+                                height: 16px;
+                                source: @image-url("../assets/images/icons/open-in-browser.svg");
+                                colorize: #ffffff;
+                                image-fit: contain;
+                            }
+                        }
+
+                        Text {
+                            text: @tr("Visit GitHub Repository");
+                            color: #ffffff;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Footer Actions Bar (Previous link on left, Get Started / Next pill on right)
+        HorizontalLayout {
+            x: 28px;
+            y: parent.height - 56px;
+            width: parent.width - 56px;
+            height: 40px;
+            alignment: space-between;
+
+            // Previous Button (Text Link)
+            if (root.active-step > 0) : ButtonSurface {
+                width: 80px;
+                height: 36px;
+                clicked => { root.active-step -= 1; }
+
+                Text {
+                    text: @tr("Previous");
+                    color: #ffffffb3;
+                    font-size: 14px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+            }
+            if (root.active-step == 0) : Rectangle { width: 80px; } // Spacer
+
+            // Next / Get Started Primary Pill Button
+            ButtonSurface {
+                width: root.active-step == 3 ? 130px : 100px;
+                height: 38px;
+                border-radius: 19px;
+                background: #2b82fb;
+                clicked => {
+                    if (root.active-step < 3) {
+                        root.active-step += 1;
+                    } else {
+                        root.completed();
+                    }
+                }
+
+                Text {
+                    text: root.active-step == 3 ? @tr("Get Started") : @tr("Next");
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

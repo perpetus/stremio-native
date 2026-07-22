@@ -13,11 +13,11 @@ use crate::{
     RenderSource,
     ffi::{
         END_FILE_EOF, END_FILE_ERROR, END_FILE_QUIT, END_FILE_REDIRECT, END_FILE_STOP,
-        EVENT_COMMAND_REPLY, EVENT_END_FILE, EVENT_FILE_LOADED, EVENT_NONE, EVENT_PLAYBACK_RESTART,
-        EVENT_PROPERTY_CHANGE, EVENT_QUEUE_OVERFLOW, EVENT_SHUTDOWN, EVENT_START_FILE,
-        FORMAT_DOUBLE, FORMAT_FLAG, FORMAT_INT64, FORMAT_NODE, FORMAT_NODE_ARRAY, FORMAT_NODE_MAP,
-        FORMAT_NONE, FORMAT_STRING, MpvApi, MpvClient, MpvError, MpvEvent, MpvEventEndFile,
-        MpvEventProperty, MpvNode, MpvNodeList,
+        EVENT_CLIENT_MESSAGE, EVENT_COMMAND_REPLY, EVENT_END_FILE, EVENT_FILE_LOADED, EVENT_NONE,
+        EVENT_PLAYBACK_RESTART, EVENT_PROPERTY_CHANGE, EVENT_QUEUE_OVERFLOW, EVENT_SHUTDOWN,
+        EVENT_START_FILE, FORMAT_DOUBLE, FORMAT_FLAG, FORMAT_INT64, FORMAT_NODE, FORMAT_NODE_ARRAY,
+        FORMAT_NODE_MAP, FORMAT_NONE, FORMAT_STRING, MpvApi, MpvClient, MpvError, MpvEvent,
+        MpvEventClientMessage, MpvEventEndFile, MpvEventProperty, MpvNode, MpvNodeList,
     },
 };
 
@@ -115,6 +115,14 @@ pub enum PlaybackEvent {
         reason: EndReason,
         error: Option<String>,
     },
+    ClientMessage(Vec<String>),
+    VideoShadersConfigured {
+        request_id: u64,
+    },
+    VideoShadersRejected {
+        request_id: u64,
+        message: String,
+    },
     Warning(String),
     Error(String),
     Shutdown,
@@ -139,6 +147,8 @@ pub enum PlaybackCommand {
     SetSubtitleScale(f64),
     SetSubtitlePosition(f64),
     SetAudioDelay(i64),
+    ConfigureVideoShaders { request_id: u64, paths: Vec<String> },
+    ScriptMessage(Vec<String>),
     Shutdown,
 }
 
@@ -189,9 +199,9 @@ impl PlaybackRuntime {
         let client = MpvClient::create(api)?;
 
         if let Some(config_dir) = config.config_dir {
+            client.set_option("config-dir", &config_dir.to_string_lossy())?;
             client.set_option("config", "yes")?;
             client.set_option("load-scripts", "yes")?;
-            client.set_option("config-dir", &config_dir.to_string_lossy())?;
         }
         client.set_option("terminal", "no")?;
         client.set_option("input-default-bindings", "no")?;
@@ -470,6 +480,29 @@ fn handle_command(
         PlaybackCommand::SetAudioDelay(milliseconds) => {
             client.set_double("audio-delay", milliseconds as f64 / 1_000.0)
         }
+        PlaybackCommand::ConfigureVideoShaders { request_id, paths } => {
+            match client.set_string_list("glsl-shaders", &paths) {
+                Ok(()) => sink(PlaybackEvent::VideoShadersConfigured { request_id }),
+                Err(error) => {
+                    let clear_result = client.set_string_list("glsl-shaders", &[]);
+                    let message = match clear_result {
+                        Ok(()) => error.to_string(),
+                        Err(clear_error) => format!(
+                            "{error}; clearing rejected video shaders also failed: {clear_error}"
+                        ),
+                    };
+                    sink(PlaybackEvent::VideoShadersRejected {
+                        request_id,
+                        message,
+                    });
+                }
+            }
+            Ok(())
+        }
+        PlaybackCommand::ScriptMessage(ref args) => {
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            client.command(&refs)
+        }
         PlaybackCommand::Shutdown => return false,
     };
     if let Err(error) = result {
@@ -521,6 +554,23 @@ fn drain_events(
             EVENT_PROPERTY_CHANGE => {
                 update_property(event, state);
                 sink(PlaybackEvent::State(Box::new(state.clone())));
+            }
+            EVENT_CLIENT_MESSAGE if !event.data.is_null() => {
+                // SAFETY: mpv guarantees the data pointer is a valid
+                // MpvEventClientMessage for CLIENT_MESSAGE events.
+                let msg = unsafe { &*(event.data as *const MpvEventClientMessage) };
+                let mut args = Vec::with_capacity(msg.num_args as usize);
+                for i in 0..msg.num_args as isize {
+                    // SAFETY: args array has num_args valid C string pointers.
+                    let ptr = unsafe { *msg.args.offset(i) };
+                    if !ptr.is_null() {
+                        let s = unsafe { CStr::from_ptr(ptr) }
+                            .to_string_lossy()
+                            .into_owned();
+                        args.push(s);
+                    }
+                }
+                sink(PlaybackEvent::ClientMessage(args));
             }
             EVENT_END_FILE => handle_end_file(client, event, state, sink),
             EVENT_QUEUE_OVERFLOW => sink(PlaybackEvent::Warning(

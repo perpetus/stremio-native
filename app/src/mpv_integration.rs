@@ -11,7 +11,8 @@ use std::{
 use anyhow::{Context, anyhow};
 use playback_mpv::{
     EndReason, PlaybackCommand, PlaybackController, PlaybackEvent, PlaybackRuntime, PlaybackState,
-    PlayerConfig, RenderContext, RenderOutcome, RenderSource,
+    PlayerConfig, RenderContext, RenderOutcome, RenderSource, ThumbnailConfig, ThumbnailRuntime,
+    ThumbnailSource,
 };
 use slint::{
     BorrowedOpenGLTextureBuilder, BorrowedOpenGLTextureOrigin, ComponentHandle, ModelRc,
@@ -45,6 +46,45 @@ use core_env::DesktopEnv;
 const PLAYER_DEVICE: &str = "libmpv";
 
 type SharedPlaybackState = Arc<RwLock<Arc<PlaybackState>>>;
+type SharedShaderCoordinator = Arc<Mutex<crate::shaders::ShaderCoordinator>>;
+
+fn dispatch_shader_update(
+    controller: &PlaybackController,
+    ui: &slint::Weak<MainWindow>,
+    update: crate::shaders::ShaderUpdate,
+) {
+    if let Some(command) = update.command {
+        tracing::info!(
+            request_id = command.request_id,
+            shader_count = command.paths.len(),
+            "configuring MPV video shaders"
+        );
+        log_command(controller.send(PlaybackCommand::ConfigureVideoShaders {
+            request_id: command.request_id,
+            paths: command.paths,
+        }));
+    }
+
+    let projection = update.projection;
+    let ui = ui.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui.upgrade() {
+            ui.set_player_active_shader_preset(projection.active_preset.index() as i32);
+            ui.set_player_shader_preset_available(ModelRc::new(VecModel::from(
+                projection.availability.to_vec(),
+            )));
+            ui.set_player_shader_status(SharedString::from(projection.status));
+        }
+    });
+}
+
+fn lock_shader_coordinator(
+    coordinator: &SharedShaderCoordinator,
+) -> std::sync::MutexGuard<'_, crate::shaders::ShaderCoordinator> {
+    coordinator
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 #[derive(Default)]
 struct PlaybackEventInbox {
@@ -435,10 +475,13 @@ pub struct NativePlaybackBridge {
     discord_rpc: Arc<crate::discord::DiscordRpc>,
     autohide_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     runtime_handle: tokio::runtime::Handle,
+    shaders: SharedShaderCoordinator,
+    thumbnails: crate::thumbnail_preview::ThumbnailPreview,
 }
 
 pub struct NativePlayback {
     runtime: PlaybackRuntime,
+    thumbnail_runtime: Option<ThumbnailRuntime>,
     bridge: NativePlaybackBridge,
     event_task: tokio::task::JoinHandle<()>,
 }
@@ -471,6 +514,43 @@ impl NativePlayback {
                 config_dir.display()
             )
         })?;
+        let _ = crate::shaders::ensure_anime4k_shaders(&config_dir);
+        if let Err(error) = crate::thumbnail_preview::disable_legacy_script(&config_dir) {
+            tracing::warn!(%error, "could not disable the obsolete generated ThumbFast script");
+        }
+        let shaders_dir = config_dir.join("shaders");
+        let app_config = crate::config::load_config();
+        let thumbnails = crate::thumbnail_preview::ThumbnailPreview::new(
+            app_config.thumbnail_previews_enabled,
+            ui.as_weak(),
+        );
+        let thumbnail_events = thumbnails.clone();
+        let thumbnail_runtime =
+            match ThumbnailRuntime::start(ThumbnailConfig::default(), move |event| {
+                thumbnail_events.handle_event(event);
+            }) {
+                Ok(runtime) => {
+                    thumbnails.attach_controller(runtime.controller());
+                    Some(runtime)
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "timeline thumbnail decoder could not be initialized");
+                    thumbnails.worker_failed(error.to_string());
+                    None
+                }
+            };
+        let desired_shader_preset =
+            crate::shaders::preset_from_config(app_config.active_shader_preset);
+        let shader_coordinator = Arc::new(Mutex::new(crate::shaders::ShaderCoordinator::new(
+            desired_shader_preset,
+            &shaders_dir,
+        )));
+        tracing::info!(
+            desired_preset = ?desired_shader_preset,
+            shaders_enabled = app_config.shaders_enabled,
+            "loaded video shader preference"
+        );
+        let download_config_dir = config_dir.clone();
         let event_inbox = Arc::new(PlaybackEventInbox::default());
         let runtime_event_inbox = event_inbox.clone();
         let runtime = PlaybackRuntime::start(
@@ -504,7 +584,47 @@ impl NativePlayback {
             ui.set_player_subtitle_size_percent(f32::from(settings.subtitles_size));
             ui.set_player_subtitle_offset_percent(f32::from(settings.subtitles_offset));
         }
-        install_renderer(ui, runtime.render_source(), state.clone(), session.clone())?;
+        let shader_ui = ui.as_weak();
+        let initial_shader_update = {
+            let mut coordinator = lock_shader_coordinator(&shader_coordinator);
+            coordinator.refresh_files(&shaders_dir)
+        };
+        dispatch_shader_update(&controller, &shader_ui, initial_shader_update);
+
+        if !crate::shaders::all_anime4k_presets_ready(&shaders_dir) {
+            let download_started = {
+                let mut coordinator = lock_shader_coordinator(&shader_coordinator);
+                coordinator.set_download_state(true, None)
+            };
+            dispatch_shader_update(&controller, &shader_ui, download_started);
+
+            let download_controller = controller.clone();
+            let download_coordinator = shader_coordinator.clone();
+            let download_ui = shader_ui.clone();
+            runtime_handle.spawn(async move {
+                let error = crate::shaders::download_shaders_if_needed(&download_config_dir)
+                    .await
+                    .err()
+                    .map(|error| error.to_string());
+                let update = {
+                    let mut coordinator = lock_shader_coordinator(&download_coordinator);
+                    coordinator
+                        .complete_download(&download_config_dir.join("shaders"), error.clone())
+                };
+                if let Some(error) = error {
+                    tracing::warn!(%error, "Anime4K shader download failed");
+                }
+                dispatch_shader_update(&download_controller, &download_ui, update);
+            });
+        }
+        install_renderer(
+            ui,
+            runtime.render_source(),
+            state.clone(),
+            session.clone(),
+            controller.clone(),
+            shader_coordinator.clone(),
+        )?;
 
         let event_state = state.clone();
         let event_session = session.clone();
@@ -515,6 +635,8 @@ impl NativePlayback {
         let event_discord_rpc = discord_rpc.clone();
         let event_autohide_task = autohide_task.clone();
         let event_runtime_handle = runtime_handle.clone();
+        let event_shader_coordinator = shader_coordinator.clone();
+        let event_thumbnails = thumbnails.clone();
         let event_task = runtime_handle.spawn(async move {
             while let Some(event) = event_inbox.recv().await {
                 handle_event(
@@ -528,6 +650,8 @@ impl NativePlayback {
                     &event_discord_rpc,
                     &event_autohide_task,
                     &event_runtime_handle,
+                    &event_shader_coordinator,
+                    &event_thumbnails,
                 );
             }
             tracing::debug!("MPV application event pump stopped");
@@ -543,10 +667,13 @@ impl NativePlayback {
             discord_rpc,
             autohide_task: autohide_task.clone(),
             runtime_handle,
+            shaders: shader_coordinator,
+            thumbnails,
         };
         bridge.install_callbacks(ui, core, navigation);
         Ok(Self {
             runtime,
+            thumbnail_runtime,
             bridge,
             event_task,
         })
@@ -560,8 +687,13 @@ impl NativePlayback {
         self.bridge.cancel_statistics_poll();
         self.bridge.cancel_background_tasks();
         let _ = self.bridge.discord_rpc.disconnect();
+        let thumbnail_result = self
+            .thumbnail_runtime
+            .map(ThumbnailRuntime::shutdown)
+            .transpose();
         let result = self.runtime.shutdown().map_err(Into::into);
         self.event_task.abort();
+        thumbnail_result.context("thumbnail worker did not shut down cleanly")?;
         result
     }
 }
@@ -706,13 +838,13 @@ impl NativePlaybackBridge {
         };
 
         let start_at = resume_time(player);
-        let should_load = {
+        let pending_load = {
             let mut session = lock_session(&self.session);
             if navigation.snapshot().revision != route_revision || !navigation.is_player_visible() {
                 return;
             }
             if session.url.as_deref() == Some(url.as_str()) {
-                false
+                None
             } else {
                 if let Some(task) = session.tidb_task.take() {
                     task.abort();
@@ -732,18 +864,16 @@ impl NativePlaybackBridge {
                 session.last_discord_paused = None;
                 session.tidb_fetched_id = None;
                 session.tidb_segments.clear();
-                send_or_show(
-                    &self.controller,
-                    PlaybackCommand::Load {
-                        url: url.clone(),
-                        start_at,
-                    },
-                    ui,
-                );
-                true
+                Some((session.playback_generation, url.clone(), start_at))
             }
         };
-        if should_load {
+        if let Some((generation, url, start_at)) = pending_load {
+            self.thumbnails.begin_load(generation);
+            send_or_show(
+                &self.controller,
+                PlaybackCommand::Load { url, start_at },
+                ui,
+            );
             let ui_for_update = ui.clone();
             let navigation_for_update = navigation.clone();
             let _ = slint::invoke_from_event_loop(move || {
@@ -971,6 +1101,42 @@ impl NativePlaybackBridge {
             }
         });
 
+        ui.on_player_change_shader_preset({
+            let controller = self.controller.clone();
+            let ui_weak = ui.as_weak();
+            let shader_coordinator = self.shaders.clone();
+            move |preset_idx| {
+                let preset = crate::shaders::preset_from_ui(preset_idx);
+                let update = {
+                    let mut coordinator = lock_shader_coordinator(&shader_coordinator);
+                    coordinator.select(preset)
+                };
+                let Some(update) = update else {
+                    return;
+                };
+                dispatch_shader_update(&controller, &ui_weak, update);
+
+                let mut cfg = crate::config::load_config();
+                cfg.active_shader_preset = preset as u8;
+                cfg.shaders_enabled = preset != crate::shaders::ShaderPreset::Off;
+                crate::config::save_config(&cfg);
+            }
+        });
+
+        ui.on_player_seek_hover({
+            let state = self.state.clone();
+            let thumbnails = self.thumbnails.clone();
+            move |progress| {
+                let duration = read_state(&state).duration;
+                thumbnails.hover(progress, duration);
+            }
+        });
+
+        ui.on_player_seek_leave({
+            let thumbnails = self.thumbnails.clone();
+            move || thumbnails.leave()
+        });
+
         ui.on_player_copy_stream_link({
             let session = self.session.clone();
             move || {
@@ -1068,6 +1234,7 @@ impl NativePlaybackBridge {
             let session = self.session.clone();
             let navigation = navigation.clone();
             let discord_rpc = self.discord_rpc.clone();
+            let thumbnails = self.thumbnails.clone();
             move |index, video_id| {
                 let video_id = video_id.to_string();
                 let selection = core.model().ok().map(|model| {
@@ -1097,7 +1264,14 @@ impl NativePlaybackBridge {
                     return;
                 }
 
-                unload_player(&controller, &core, &statistics_poll, &session, &discord_rpc);
+                unload_player(
+                    &controller,
+                    &core,
+                    &statistics_poll,
+                    &session,
+                    &discord_rpc,
+                    &thumbnails,
+                );
                 if let Some(ui) = weak.upgrade() {
                     if !navigation.is_player_visible() {
                         return;
@@ -1131,6 +1305,7 @@ impl NativePlaybackBridge {
             let navigation = navigation.clone();
             let discord_rpc = self.discord_rpc.clone();
             let autohide_task = self.autohide_task.clone();
+            let thumbnails = self.thumbnails.clone();
             move || {
                 if let Some(ui) = weak.upgrade() {
                     if !navigation.is_player_visible() {
@@ -1150,7 +1325,14 @@ impl NativePlaybackBridge {
                 if let Some(handle) = lock_autohide_task(&autohide_task).take() {
                     handle.abort();
                 }
-                unload_player(&controller, &core, &statistics_poll, &session, &discord_rpc);
+                unload_player(
+                    &controller,
+                    &core,
+                    &statistics_poll,
+                    &session,
+                    &discord_rpc,
+                    &thumbnails,
+                );
             }
         });
 
@@ -1251,6 +1433,20 @@ impl NativePlaybackBridge {
         cancel_statistics_poll(&self.statistics_poll);
     }
 
+    pub fn set_thumbnail_previews_enabled(&self, enabled: bool) {
+        let current_source = if enabled && read_state(&self.state).loaded {
+            let session = lock_session(&self.session);
+            session.url.as_ref().map(|url| ThumbnailSource {
+                generation: session.playback_generation,
+                url: url.clone(),
+                initial_position: session.last_time as f64,
+            })
+        } else {
+            None
+        };
+        self.thumbnails.set_enabled(enabled, current_source);
+    }
+
     fn cancel_background_tasks(&self) {
         if let Some(task) = lock_session(&self.session).tidb_task.take() {
             task.abort();
@@ -1272,6 +1468,8 @@ fn handle_event(
     discord_rpc: &Arc<crate::discord::DiscordRpc>,
     autohide_task: &Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     runtime_handle: &tokio::runtime::Handle,
+    shader_coordinator: &SharedShaderCoordinator,
+    thumbnails: &crate::thumbnail_preview::ThumbnailPreview,
 ) {
     match event {
         PlaybackEvent::State(state) => {
@@ -1307,10 +1505,23 @@ fn handle_event(
             );
         }
         PlaybackEvent::FileLoaded => {
-            let load_elapsed_ms = lock_session(session)
-                .load_requested_at
-                .map(|started_at| started_at.elapsed().as_millis());
+            let (load_elapsed_ms, thumbnail_source) = {
+                let session = lock_session(session);
+                (
+                    session
+                        .load_requested_at
+                        .map(|started_at| started_at.elapsed().as_millis()),
+                    session.url.as_ref().map(|url| ThumbnailSource {
+                        generation: session.playback_generation,
+                        url: url.clone(),
+                        initial_position: session.last_time as f64,
+                    }),
+                )
+            };
             tracing::info!(?load_elapsed_ms, "MPV file loaded");
+            if let Some(source) = thumbnail_source {
+                thumbnails.prewarm(source);
+            }
             restore_stream_state(core, controller, ui);
         }
         PlaybackEvent::Ended { reason, error } => {
@@ -1334,6 +1545,40 @@ fn handle_event(
                 }
             } else if let Some(error) = error {
                 show_player_error(ui, error);
+            }
+        }
+        PlaybackEvent::ClientMessage(args) => {
+            tracing::debug!(argument_count = args.len(), "MPV client message received");
+        }
+        PlaybackEvent::VideoShadersConfigured { request_id } => {
+            let update = {
+                let mut coordinator = lock_shader_coordinator(shader_coordinator);
+                coordinator.configured(request_id)
+            };
+            if let (Some(controller), Some(update)) = (controller.get(), update) {
+                tracing::info!(
+                    request_id,
+                    effective_preset = ?update.projection.active_preset,
+                    "MPV video shaders configured"
+                );
+                dispatch_shader_update(controller, ui, update);
+            } else {
+                tracing::debug!(request_id, "ignored stale video shader acknowledgement");
+            }
+        }
+        PlaybackEvent::VideoShadersRejected {
+            request_id,
+            message,
+        } => {
+            let update = {
+                let mut coordinator = lock_shader_coordinator(shader_coordinator);
+                coordinator.rejected(request_id, message.clone())
+            };
+            if let (Some(controller), Some(update)) = (controller.get(), update) {
+                tracing::warn!(request_id, %message, "MPV rejected video shader configuration");
+                dispatch_shader_update(controller, ui, update);
+            } else {
+                tracing::debug!(request_id, "ignored stale video shader rejection");
             }
         }
         PlaybackEvent::Warning(error) => tracing::warn!(%error, "MPV command failed"),
@@ -2106,15 +2351,19 @@ fn install_renderer(
     source: RenderSource,
     playback_state: SharedPlaybackState,
     session: Arc<Mutex<SessionState>>,
+    controller: PlaybackController,
+    shader_coordinator: SharedShaderCoordinator,
 ) -> anyhow::Result<()> {
-    let backend = std::env::var("SLINT_BACKEND").unwrap_or_else(|_| "NOT SET".to_owned());
-    tracing::info!(backend = %backend, "install_renderer called");
+    tracing::info!(
+        backend = "winit",
+        renderer = "skia-opengl",
+        "installing MPV renderer"
+    );
     let window_weak = ui.as_weak();
     let mut context: Option<RenderContext> = None;
     let mut render_target_ready = false;
     let mut initial_surface_logged = false;
     let mut last_reported_load = None;
-    let mut last_gl_error_logged = None;
     let mut last_player_visible = None;
     let mut context_initialization_attempted = false;
     let mut missing_context_logged = false;
@@ -2124,7 +2373,7 @@ fn install_renderer(
     ui.window()
         .set_rendering_notifier(move |state, graphics_api| {
             let is_rendering_setup = matches!(&state, slint::RenderingState::RenderingSetup);
-            let is_before_rendering = matches!(&state, slint::RenderingState::BeforeRendering);
+            let is_after_rendering = matches!(&state, slint::RenderingState::AfterRendering);
 
             if is_rendering_setup {
                 tracing::info!(?graphics_api, "Slint rendering setup started");
@@ -2134,21 +2383,49 @@ fn install_renderer(
             // Fast startup deliberately installs MPV after the first window is
             // visible. In that case Slint's one-shot RenderingSetup notification
             // has already occurred, but its OpenGL context is equally current in
-            // BeforeRendering. Initialize once at the first available callback.
+            // AfterRendering. Initialize once after Skia has flushed the frame so
+            // MPV cannot disturb state that Skia is still using.
             if context.is_none()
                 && !context_initialization_attempted
-                && (is_rendering_setup || is_before_rendering)
+                && (is_rendering_setup || is_after_rendering)
             {
                 context_initialization_attempted = true;
                 if !is_rendering_setup {
                     tracing::info!(
                         ?graphics_api,
-                        "initializing deferred MPV render context before rendering"
+                        "initializing deferred MPV render context after Slint rendering"
                     );
                 }
                 if let Some(ui) = window_weak.upgrade() {
                     match create_render_context(&source, &window_weak, graphics_api) {
                         Ok(mut render_context) => {
+                            let diagnostics = render_context.open_gl_diagnostics();
+                            let capability = match diagnostics.video_shader_support() {
+                                playback_mpv::VideoShaderSupport::Supported => {
+                                    crate::shaders::ShaderContextCapability::Supported
+                                }
+                                playback_mpv::VideoShaderSupport::Unsupported(reason) => {
+                                    crate::shaders::ShaderContextCapability::Unsupported(reason)
+                                }
+                            };
+                            let shader_update = {
+                                let mut coordinator = lock_shader_coordinator(&shader_coordinator);
+                                coordinator.set_context_capability(capability)
+                            };
+                            tracing::info!(
+                                backend = "winit",
+                                renderer = "skia-opengl",
+                                profile = ?diagnostics.profile,
+                                context_profile = ?diagnostics.context_profile,
+                                gl_major = diagnostics.major,
+                                gl_minor = diagnostics.minor,
+                                shader_support = ?diagnostics.video_shader_support(),
+                                desired_preset = ?lock_shader_coordinator(&shader_coordinator)
+                                    .desired_preset(),
+                                effective_preset = ?shader_update.projection.active_preset,
+                                "validated shared OpenGL shader capability"
+                            );
+                            dispatch_shader_update(&controller, &window_weak, shader_update);
                             match ensure_render_target(&ui, &mut render_context) {
                                 Ok(ready) => render_target_ready = ready,
                                 Err(error) => tracing::error!(
@@ -2178,17 +2455,15 @@ fn install_renderer(
 
             match state {
                 slint::RenderingState::RenderingSetup => {}
-                slint::RenderingState::BeforeRendering => {
+                slint::RenderingState::BeforeRendering => {}
+                slint::RenderingState::AfterRendering => {
                     let Some(ui) = window_weak.upgrade() else {
                         return;
                     };
                     let player_visible = ui.get_show_player();
                     if last_player_visible != Some(player_visible) {
                         last_player_visible = Some(player_visible);
-                        tracing::info!(
-                            player_visible,
-                            "BeforeRendering: player visibility changed"
-                        );
+                        tracing::info!(player_visible, "AfterRendering: player visibility changed");
                     }
                     if context.is_none() && player_visible && !missing_context_logged {
                         missing_context_logged = true;
@@ -2240,10 +2515,7 @@ fn install_renderer(
                     let size = ui.window().size();
                     if let Some(context) = context.as_mut() {
                         let render_result = context.render();
-                        if let Some(code) = context.take_gl_error()
-                            && last_gl_error_logged != Some(code)
-                        {
-                            last_gl_error_logged = Some(code);
+                        if let Some(code) = context.take_gl_error() {
                             tracing::error!(
                                 code = format_args!("{code:#x}"),
                                 "OpenGL error after MPV render"
@@ -2299,7 +2571,7 @@ fn install_renderer(
                                 }
                             }
                             Ok(RenderOutcome::NoFrame) => {
-                                tracing::trace!("BeforeRendering: MPV has no new frame to render");
+                                tracing::trace!("AfterRendering: MPV has no new frame to render");
                             }
                             Err(error) => {
                                 tracing::error!(
@@ -2312,18 +2584,26 @@ fn install_renderer(
                         }
                     }
                 }
-                slint::RenderingState::AfterRendering => {}
                 slint::RenderingState::RenderingTeardown => {
                     tracing::info!("Slint rendering teardown started");
-                    if let Some(ui) = window_weak.upgrade() {
-                        ui.set_player_video_frame(slint::Image::default());
-                        ui.set_player_has_video_frame(false);
+                    let teardown_window = window_weak.clone();
+                    if let Err(error) = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = teardown_window.upgrade() {
+                            ui.set_player_video_frame(slint::Image::default());
+                            ui.set_player_has_video_frame(false);
+                        }
+                    }) {
+                        tracing::debug!(%error, "could not queue MPV surface teardown update");
                     }
                     context = None;
+                    let shader_update = {
+                        let mut coordinator = lock_shader_coordinator(&shader_coordinator);
+                        coordinator.context_torn_down()
+                    };
+                    dispatch_shader_update(&controller, &window_weak, shader_update);
                     render_target_ready = false;
                     initial_surface_logged = false;
                     last_reported_load = None;
-                    last_gl_error_logged = None;
                     last_player_visible = None;
                     context_initialization_attempted = false;
                     missing_context_logged = false;
@@ -2367,6 +2647,12 @@ fn create_render_context(
         vendor = %diagnostics.vendor,
         renderer = %diagnostics.renderer,
         version = %diagnostics.version,
+        gl_major = diagnostics.major,
+        gl_minor = diagnostics.minor,
+        profile = ?diagnostics.profile,
+        context_profile = ?diagnostics.context_profile,
+        glsl_version = %diagnostics.shading_language_version,
+        shader_support = ?diagnostics.video_shader_support(),
         "MPV is sharing Slint's OpenGL context"
     );
     Ok(render_context)
@@ -2464,12 +2750,33 @@ fn dispatch_player(core: &Arc<Runtime<DesktopEnv, AppModel>>, action: ActionPlay
     });
 }
 
+pub(crate) fn resolve_app_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("StremioRust")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+            .unwrap_or_else(std::env::temp_dir)
+            .join("StremioRust")
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+            .unwrap_or_else(std::env::temp_dir)
+            .join("StremioRust")
+    }
+}
+
 fn resolve_config_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("StremioRust")
-        .join("mpv")
+    resolve_app_data_dir().join("mpv")
 }
 
 fn format_time(seconds: f64) -> String {
@@ -2612,6 +2919,7 @@ fn unload_player(
     statistics_poll: &Mutex<Option<StatisticsPoll>>,
     session: &Mutex<SessionState>,
     discord_rpc: &Arc<crate::discord::DiscordRpc>,
+    thumbnails: &crate::thumbnail_preview::ThumbnailPreview,
 ) {
     cancel_statistics_poll(statistics_poll);
     let mut current = lock_session(session);
@@ -2624,6 +2932,7 @@ fn unload_player(
         ..SessionState::default()
     };
     drop(current);
+    thumbnails.unload(next_generation);
     let _ = discord_rpc.clear_activity();
     log_command(controller.send(PlaybackCommand::Stop));
     core.dispatch(RuntimeAction {
@@ -2670,6 +2979,7 @@ fn reset_autohide_timer(
                         && !ui.get_player_show_context_menu()
                     {
                         ui.set_player_controls_visible(false);
+                        ui.invoke_player_seek_leave();
                     }
                 }
             });

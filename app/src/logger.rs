@@ -5,6 +5,11 @@ use tracing_subscriber::prelude::*;
 
 use crate::performance::ProfileConfig;
 
+fn should_record(metadata: &tracing::Metadata<'_>) -> bool {
+    *metadata.level() <= tracing::Level::INFO
+        && !(metadata.is_span() && metadata.name() == "request")
+}
+
 pub struct LoggerGuards {
     pub _file_guard: tracing_appender::non_blocking::WorkerGuard,
     #[cfg(debug_assertions)]
@@ -36,7 +41,7 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
         let (layer, guard) = builder.build();
         let mode = profile.mode;
         let layer = layer.with_filter(tracing_subscriber::filter::filter_fn(move |metadata| {
-            mode.includes_target(metadata.target())
+            mode.includes_target(metadata.target()) && should_record(metadata)
         }));
         (Some(layer), Some(guard))
     } else {
@@ -49,7 +54,7 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(std::io::stderr.and(file_writer))
-                .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
+                .with_filter(tracing_subscriber::filter::filter_fn(should_record)),
         )
         .with(chrome_layer)
         .init();
@@ -60,7 +65,7 @@ pub fn init_logger(profile: &ProfileConfig) -> anyhow::Result<LoggerGuards> {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(std::io::stderr.and(file_writer))
-                .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
+                .with_filter(tracing_subscriber::filter::filter_fn(should_record)),
         )
         .init();
 

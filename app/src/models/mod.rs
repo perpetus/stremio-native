@@ -5,6 +5,7 @@ pub mod calendar;
 pub mod details;
 pub mod discover;
 pub mod library;
+pub mod onboarding;
 pub mod search;
 pub mod settings;
 

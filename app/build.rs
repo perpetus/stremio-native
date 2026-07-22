@@ -30,18 +30,10 @@ fn normalize_placeholders(s: &str) -> String {
                     break;
                 }
             }
-        } else if c == '$' && chars.peek() == Some(&'{') {
+        } else if matches!(c, '$' | '#') && chars.peek() == Some(&'{') {
             chars.next();
             output.push_str("{}");
-            while let Some(next_c) = chars.next() {
-                if next_c == '}' {
-                    break;
-                }
-            }
-        } else if c == '#' && chars.peek() == Some(&'{') {
-            chars.next();
-            output.push_str("{}");
-            while let Some(next_c) = chars.next() {
+            for next_c in chars.by_ref() {
                 if next_c == '}' {
                     break;
                 }

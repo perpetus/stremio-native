@@ -1,6 +1,6 @@
 [package]
 name = "stremio-native"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 license = "GPL-3.0-only"
 
@@ -11,7 +11,14 @@ settings-gui.workspace = true
 core-env = { path = "../core-env" }
 playback-mpv = { path = "../playback-mpv" }
 server-connector = { path = "../server-connector" }
-slint = { workspace = true, features = ["compat-1-2", "unstable-winit-030"] }
+slint = { workspace = true, features = [
+    "accessibility",
+    "compat-1-2",
+    "renderer-skia-opengl",
+    "std",
+    "system-tray",
+    "unstable-winit-030",
+] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true, features = ["rt"] }
 serde = { workspace = true, features = ["derive"] }
@@ -37,9 +44,11 @@ hex = "0.4.3"
 open = "5.4.0"
 percent-encoding.workspace = true
 self_update.workspace = true
+zip.workspace = true
 sys-locale.workspace = true
 uuid = { version = "1.24.0", features = ["v4"] }
 discord-rich-presence = { workspace = true }
+rodio.workspace = true
 mlua = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
