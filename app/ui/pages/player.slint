@@ -410,6 +410,7 @@ export component PlayerPage inherits Rectangle {
     screen-touch := TouchArea {
         width: 100%;
         height: 100%;
+        mouse-cursor: controls-visible ? default : none;
         clicked => {
             if (show-context-menu) {
                 show-context-menu = false;

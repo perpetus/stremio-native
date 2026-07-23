@@ -39,7 +39,7 @@ enum DeepLink {
     Library(LibraryRequest),
     Calendar(YearMonthDate),
     AddonDetails(Url),
-    Player(PlayerDeepLink),
+    Player(Box<PlayerDeepLink>),
     Error(String),
 }
 
@@ -143,7 +143,7 @@ pub fn handle(
             show_window(ui);
         }
         DeepLink::Player(player) => {
-            open_player(ui, runtime, navigation, player);
+            open_player(ui, runtime, navigation, *player);
             show_window(ui);
         }
         DeepLink::Error(message) => {
@@ -166,11 +166,11 @@ fn parse_command(command: AppCommand) -> anyhow::Result<DeepLink> {
 }
 
 fn parse_stremio(url: Url) -> anyhow::Result<DeepLink> {
-    if let Some(host) = url.host_str() {
-        if !is_navigation_root(host) {
-            let transport_url = Url::parse(&url.as_str().replacen("stremio://", "https://", 1))?;
-            return Ok(DeepLink::AddonDetails(transport_url));
-        }
+    if let Some(host) = url.host_str()
+        && !is_navigation_root(host)
+    {
+        let transport_url = Url::parse(&url.as_str().replacen("stremio://", "https://", 1))?;
+        return Ok(DeepLink::AddonDetails(transport_url));
     }
 
     let mut segments = url
@@ -267,7 +267,7 @@ fn parse_player(segments: &[String]) -> anyhow::Result<DeepLink> {
             (None, None, None, None, None, None)
         };
 
-    Ok(DeepLink::Player(PlayerDeepLink {
+    Ok(DeepLink::Player(Box::new(PlayerDeepLink {
         selected: PlayerSelected {
             stream,
             stream_request,
@@ -277,14 +277,14 @@ fn parse_player(segments: &[String]) -> anyhow::Result<DeepLink> {
         media_type,
         media_id,
         video_id,
-    }))
+    })))
 }
 
 fn parse_magnet(url: Url) -> anyhow::Result<DeepLink> {
     let name = url
         .query_pairs()
         .find_map(|(name, value)| (name == "dn").then(|| value.into_owned()));
-    Ok(DeepLink::Player(PlayerDeepLink {
+    Ok(DeepLink::Player(Box::new(PlayerDeepLink {
         selected: PlayerSelected {
             stream: Stream {
                 source: StreamSource::Url { url },
@@ -301,7 +301,7 @@ fn parse_magnet(url: Url) -> anyhow::Result<DeepLink> {
         media_type: None,
         media_id: None,
         video_id: None,
-    }))
+    })))
 }
 
 fn parse_discover(url: &Url, segments: &[String]) -> anyhow::Result<DeepLink> {

@@ -1312,6 +1312,7 @@ impl NativePlaybackBridge {
                         return;
                     }
                     navigation.dispatch_and_project(&ui, NavigationIntent::Back);
+                    ui.invoke_close_player_menus();
                     ui.set_player_loading(false);
                     ui.set_player_buffering(false);
                     ui.set_player_has_video_frame(false);
@@ -1457,6 +1458,10 @@ impl NativePlaybackBridge {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal event dispatcher wiring independent subsystem handles; grouping them into a struct would add indirection without reuse"
+)]
 fn handle_event(
     event: PlaybackEvent,
     state_slot: &SharedPlaybackState,
@@ -2968,19 +2973,18 @@ fn reset_autohide_timer(
         *lock_autohide_task(autohide_task) = Some(runtime_handle.spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             let _ = slint::invoke_from_event_loop(move || {
-                if let Some(ui) = weak_ui.upgrade() {
-                    if !ui.get_player_paused()
-                        && !ui.get_player_show_subtitles_menu()
-                        && !ui.get_player_show_audio_menu()
-                        && !ui.get_player_show_speed_menu()
-                        && !ui.get_player_show_stats_menu()
-                        && !ui.get_player_show_options_menu()
-                        && !ui.get_player_show_playlist_drawer()
-                        && !ui.get_player_show_context_menu()
-                    {
-                        ui.set_player_controls_visible(false);
-                        ui.invoke_player_seek_leave();
-                    }
+                if let Some(ui) = weak_ui.upgrade()
+                    && !ui.get_player_paused()
+                    && !ui.get_player_show_subtitles_menu()
+                    && !ui.get_player_show_audio_menu()
+                    && !ui.get_player_show_speed_menu()
+                    && !ui.get_player_show_stats_menu()
+                    && !ui.get_player_show_options_menu()
+                    && !ui.get_player_show_playlist_drawer()
+                    && !ui.get_player_show_context_menu()
+                {
+                    ui.set_player_controls_visible(false);
+                    ui.invoke_player_seek_leave();
                 }
             });
         }));

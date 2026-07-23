@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn response_limit_is_not_unbounded() {
-        assert!(MAX_RESPONSE_BYTES <= 32 * 1024 * 1024);
+        const { assert!(MAX_RESPONSE_BYTES <= 32 * 1024 * 1024) }
     }
 
     #[test]

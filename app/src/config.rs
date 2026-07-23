@@ -150,51 +150,32 @@ pub async fn init_config() {
 
     // 1. Try to load from database settings table
     let mut loaded_from_db = false;
-    if let Ok(conn) = crate::db::get_conn() {
-        if let Ok(mut rows) = conn
+    if let Ok(conn) = crate::db::get_conn()
+        && let Ok(mut rows) = conn
             .query("SELECT value FROM settings WHERE key = 'app_config'", ())
             .await
-        {
-            if let Ok(Some(row)) = rows.next().await {
-                if let Ok(val_str) = row.get::<String>(0) {
-                    if let Ok(parsed) = serde_json::from_str::<AppConfig>(&val_str) {
-                        config = parsed;
-                        loaded_from_db = true;
-                    }
-                }
-            }
-        }
+        && let Ok(Some(row)) = rows.next().await
+        && let Ok(val_str) = row.get::<String>(0)
+        && let Ok(parsed) = serde_json::from_str::<AppConfig>(&val_str)
+    {
+        config = parsed;
+        loaded_from_db = true;
     }
 
     // 2. If not found in database, check for legacy config.json file
     if !loaded_from_db {
         let config_path = Path::new("config.json");
         if config_path.exists() {
-            if let Ok(content) = fs::read_to_string(config_path) {
-                if let Ok(mut legacy_config) = serde_json::from_str::<AppConfig>(&content) {
-                    legacy_config.migrate();
-                    config = legacy_config;
+            if let Ok(content) = fs::read_to_string(config_path)
+                && let Ok(mut legacy_config) = serde_json::from_str::<AppConfig>(&content)
+            {
+                legacy_config.migrate();
+                config = legacy_config;
 
-                    // Save legacy config to database
-                    if let Ok(conn) = crate::db::get_conn() {
-                        if let Ok(serialized) = serde_json::to_string(&config) {
-                            let _ = conn.execute(
-                                "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
-                                [serialized],
-                            )
-                            .await;
-                        }
-                    }
-
-                    // Rename legacy config.json to config.json.bak
-                    let backup_path = Path::new("config.json.bak");
-                    let _ = fs::rename(config_path, backup_path);
-                }
-            }
-        } else {
-            // First run, populate default config in database
-            if let Ok(conn) = crate::db::get_conn() {
-                if let Ok(serialized) = serde_json::to_string(&config) {
+                // Save legacy config to database
+                if let Ok(conn) = crate::db::get_conn()
+                    && let Ok(serialized) = serde_json::to_string(&config)
+                {
                     let _ = conn
                         .execute(
                             "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
@@ -202,6 +183,22 @@ pub async fn init_config() {
                         )
                         .await;
                 }
+
+                // Rename legacy config.json to config.json.bak
+                let backup_path = Path::new("config.json.bak");
+                let _ = fs::rename(config_path, backup_path);
+            }
+        } else {
+            // First run, populate default config in database
+            if let Ok(conn) = crate::db::get_conn()
+                && let Ok(serialized) = serde_json::to_string(&config)
+            {
+                let _ = conn
+                    .execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                        [serialized],
+                    )
+                    .await;
             }
         }
     }
@@ -224,10 +221,10 @@ pub async fn init_config() {
 }
 
 pub fn load_config() -> AppConfig {
-    if let Some(lock) = APP_CONFIG.get() {
-        if let Ok(guard) = lock.read() {
-            return guard.clone();
-        }
+    if let Some(lock) = APP_CONFIG.get()
+        && let Ok(guard) = lock.read()
+    {
+        return guard.clone();
     }
     AppConfig::default()
 }
@@ -242,23 +239,23 @@ pub fn with_config<R>(read: impl FnOnce(&AppConfig) -> R) -> R {
 }
 
 pub fn save_config(config: &AppConfig) {
-    if let Some(lock) = APP_CONFIG.get() {
-        if let Ok(mut guard) = lock.write() {
-            *guard = config.clone();
-        }
+    if let Some(lock) = APP_CONFIG.get()
+        && let Ok(mut guard) = lock.write()
+    {
+        *guard = config.clone();
     }
 
     let config_cloned = config.clone();
     tokio::spawn(async move {
-        if let Ok(conn) = crate::db::get_conn() {
-            if let Ok(serialized) = serde_json::to_string(&config_cloned) {
-                let _ = conn
-                    .execute(
-                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
-                        [serialized],
-                    )
-                    .await;
-            }
+        if let Ok(conn) = crate::db::get_conn()
+            && let Ok(serialized) = serde_json::to_string(&config_cloned)
+        {
+            let _ = conn
+                .execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)",
+                    [serialized],
+                )
+                .await;
         }
     });
 }
@@ -286,8 +283,10 @@ mod tests {
     use super::*;
 
     fn legacy_config() -> AppConfig {
-        let mut config = AppConfig::default();
-        config.config_version = 0;
+        let mut config = AppConfig {
+            config_version: 0,
+            ..Default::default()
+        };
         config.theme.background = "#08070d".to_string();
         config.theme.sidebar_background = "#13111f".to_string();
         config.theme.accent = "#7B5BF5".to_string();

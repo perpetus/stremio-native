@@ -101,11 +101,6 @@ pub fn open_details_route(
     ui.set_details_loading(!ready);
 }
 
-/// Core function to load meta details and streams for an item
-pub fn load_meta_details(rt: &Arc<Runtime<DesktopEnv, AppModel>>, id: String) {
-    load_meta_details_for_video(rt, id, None, None);
-}
-
 pub fn load_meta_details_for_video(
     rt: &Arc<Runtime<DesktopEnv, AppModel>>,
     id: String,
@@ -179,11 +174,11 @@ pub fn setup(
                     // Find preview
                     let mut meta_preview = None;
                     for resource in &model.meta_details.meta_items {
-                        if let Some(Loadable::Ready(meta_item)) = &resource.content {
-                            if meta_item.preview.id == id {
-                                meta_preview = Some(meta_item.preview.clone());
-                                break;
-                            }
+                        if let Some(Loadable::Ready(meta_item)) = &resource.content
+                            && meta_item.preview.id == id
+                        {
+                            meta_preview = Some(meta_item.preview.clone());
+                            break;
                         }
                     }
 
@@ -354,32 +349,31 @@ pub fn setup(
                 *query = q.to_string();
             }
             // Trigger sync to update the filtered list
-            if let Some(ui) = ui_weak.upgrade() {
-                if let Ok(model) = runtime.model() {
-                    let ui_sync = ui_weak.clone();
-                    let rt_sync = runtime.clone();
-                    let is_in_library =
+            if let Some(ui) = ui_weak.upgrade()
+                && let Ok(model) = runtime.model()
+            {
+                let ui_sync = ui_weak.clone();
+                let rt_sync = runtime.clone();
+                let is_in_library = model
+                    .meta_details
+                    .selected
+                    .as_ref()
+                    .is_some_and(|selected| {
                         model
-                            .meta_details
-                            .selected
-                            .as_ref()
-                            .is_some_and(|selected| {
-                                model
-                                    .ctx
-                                    .library
-                                    .items
-                                    .get(&selected.meta_path.id)
-                                    .is_some_and(|item| !item.removed)
-                            });
-                    sync(
-                        &ui,
-                        &model.meta_details,
-                        is_in_library,
-                        &ui_sync,
-                        &rt_sync,
-                        &navigation,
-                    );
-                }
+                            .ctx
+                            .library
+                            .items
+                            .get(&selected.meta_path.id)
+                            .is_some_and(|item| !item.removed)
+                    });
+                sync(
+                    &ui,
+                    &model.meta_details,
+                    is_in_library,
+                    &ui_sync,
+                    &rt_sync,
+                    &navigation,
+                );
             }
         }
     });
@@ -396,12 +390,11 @@ pub fn setup(
                 // Find the video details
                 let mut target_video = None;
                 for resource in &model.meta_details.meta_items {
-                    if let Some(Loadable::Ready(meta_item)) = &resource.content {
-                        if let Some(v) = meta_item.videos.iter().find(|video| video.id == video_id)
-                        {
-                            target_video = Some(v.clone());
-                            break;
-                        }
+                    if let Some(Loadable::Ready(meta_item)) = &resource.content
+                        && let Some(v) = meta_item.videos.iter().find(|video| video.id == video_id)
+                    {
+                        target_video = Some(v.clone());
+                        break;
                     }
                 }
 
@@ -559,96 +552,43 @@ pub(crate) fn series_videos(meta: &MetaItem, season: i32) -> Vec<&Video> {
 
 fn sync_series_details(ui: &MainWindow, meta_item: Option<&MetaItem>, episodes: &[&Video]) {
     let is_series = ui.get_detail_is_series();
-    if is_series {
-        if let Some(meta) = meta_item {
-            // Get available seasons
-            let seasons = ordered_series_seasons(meta);
+    if is_series && let Some(meta) = meta_item {
+        // Get available seasons
+        let seasons = ordered_series_seasons(meta);
 
-            let slint_seasons: Vec<i32> = seasons.clone();
-            let seasons_model = slint::VecModel::from(slint_seasons);
-            ui.set_detail_seasons(slint::ModelRc::new(seasons_model));
+        let slint_seasons: Vec<i32> = seasons.clone();
+        let seasons_model = slint::VecModel::from(slint_seasons);
+        ui.set_detail_seasons(slint::ModelRc::new(seasons_model));
 
-            // Default to season 1 if active season not found in list
-            let active_season = {
-                let mut s = get_active_season().lock().unwrap();
-                if !seasons.contains(&*s) && !seasons.is_empty() {
-                    *s = seasons[0];
-                }
-                *s
-            };
-            ui.set_detail_active_season(active_season);
+        // Default to season 1 if active season not found in list
+        let active_season = {
+            let mut s = get_active_season().lock().unwrap();
+            if !seasons.contains(&*s) && !seasons.is_empty() {
+                *s = seasons[0];
+            }
+            *s
+        };
+        ui.set_detail_active_season(active_season);
 
-            let episode_names: Vec<slint::SharedString> = episodes
-                .iter()
-                .map(|v| {
-                    let ep_num = v.series_info.as_ref().map(|info| info.episode).unwrap_or(0);
-                    slint::SharedString::from(format!("Episode {}: {}", ep_num, v.title))
-                })
-                .collect();
+        let episode_names: Vec<slint::SharedString> = episodes
+            .iter()
+            .map(|v| {
+                let ep_num = v.series_info.as_ref().map(|info| info.episode).unwrap_or(0);
+                slint::SharedString::from(format!("Episode {}: {}", ep_num, v.title))
+            })
+            .collect();
 
-            let ep_names_model = slint::VecModel::from(episode_names);
-            ui.set_detail_episode_names(slint::ModelRc::new(ep_names_model));
+        let ep_names_model = slint::VecModel::from(episode_names);
+        ui.set_detail_episode_names(slint::ModelRc::new(ep_names_model));
 
-            let active_episode_idx = {
-                let mut ep = get_active_episode_idx().lock().unwrap();
-                if *ep >= episodes.len() {
-                    *ep = 0;
-                }
-                *ep
-            };
-            ui.set_detail_active_episode_idx(active_episode_idx as i32);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn meta_path() -> ResourcePath {
-        ResourcePath {
-            resource: "meta".to_owned(),
-            r#type: "series".to_owned(),
-            id: "series-id".to_owned(),
-            extra: vec![],
-        }
-    }
-
-    #[test]
-    fn metadata_route_leaves_stream_selection_to_core() {
-        let selected = details_selection(meta_path(), None);
-
-        assert!(selected.stream_path.is_none());
-        assert!(selected.guess_stream);
-    }
-
-    #[test]
-    fn explicit_video_route_preserves_episode_identity() {
-        let selected = details_selection(meta_path(), Some("series-id:2:4".to_owned()));
-        let stream_path = selected.stream_path.expect("explicit stream path");
-
-        assert_eq!(stream_path.r#type, "series");
-        assert_eq!(stream_path.id, "series-id:2:4");
-        assert!(selected.guess_stream);
-    }
-
-    #[test]
-    fn preferred_season_uses_resume_then_first_non_special() {
-        let seasons = [1, 2, 3, 0];
-
-        assert_eq!(preferred_series_season(&seasons, Some(3)), Some(3));
-        assert_eq!(preferred_series_season(&seasons, Some(9)), Some(1));
-        assert_eq!(preferred_series_season(&[0], Some(0)), Some(0));
-    }
-
-    #[test]
-    fn season_steps_follow_core_order_including_specials() {
-        let seasons = [1, 3, 0];
-
-        assert_eq!(adjacent_series_season(&seasons, 1, 1), 3);
-        assert_eq!(adjacent_series_season(&seasons, 3, 1), 0);
-        assert_eq!(adjacent_series_season(&seasons, 0, 1), 0);
-        assert_eq!(adjacent_series_season(&seasons, 1, -1), 1);
+        let active_episode_idx = {
+            let mut ep = get_active_episode_idx().lock().unwrap();
+            if *ep >= episodes.len() {
+                *ep = 0;
+            }
+            *ep
+        };
+        ui.set_detail_active_episode_idx(active_episode_idx as i32);
     }
 }
 
@@ -1142,5 +1082,56 @@ pub fn sync(
         }
 
         sync_series_details(ui, Some(meta_item), &videos_for_active_season);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta_path() -> ResourcePath {
+        ResourcePath {
+            resource: "meta".to_owned(),
+            r#type: "series".to_owned(),
+            id: "series-id".to_owned(),
+            extra: vec![],
+        }
+    }
+
+    #[test]
+    fn metadata_route_leaves_stream_selection_to_core() {
+        let selected = details_selection(meta_path(), None);
+
+        assert!(selected.stream_path.is_none());
+        assert!(selected.guess_stream);
+    }
+
+    #[test]
+    fn explicit_video_route_preserves_episode_identity() {
+        let selected = details_selection(meta_path(), Some("series-id:2:4".to_owned()));
+        let stream_path = selected.stream_path.expect("explicit stream path");
+
+        assert_eq!(stream_path.r#type, "series");
+        assert_eq!(stream_path.id, "series-id:2:4");
+        assert!(selected.guess_stream);
+    }
+
+    #[test]
+    fn preferred_season_uses_resume_then_first_non_special() {
+        let seasons = [1, 2, 3, 0];
+
+        assert_eq!(preferred_series_season(&seasons, Some(3)), Some(3));
+        assert_eq!(preferred_series_season(&seasons, Some(9)), Some(1));
+        assert_eq!(preferred_series_season(&[0], Some(0)), Some(0));
+    }
+
+    #[test]
+    fn season_steps_follow_core_order_including_specials() {
+        let seasons = [1, 3, 0];
+
+        assert_eq!(adjacent_series_season(&seasons, 1, 1), 3);
+        assert_eq!(adjacent_series_season(&seasons, 3, 1), 0);
+        assert_eq!(adjacent_series_season(&seasons, 0, 1), 0);
+        assert_eq!(adjacent_series_season(&seasons, 1, -1), 1);
     }
 }

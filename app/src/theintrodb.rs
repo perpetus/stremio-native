@@ -37,6 +37,10 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the TheIntroDB query parameters one-to-one; a request struct would be built and destructured at a single call site"
+)]
 pub fn fetch_segments(
     runtime_handle: &tokio::runtime::Handle,
     api_key: String,

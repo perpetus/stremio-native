@@ -700,7 +700,7 @@ export component MainWindow inherits Window {
     callback player-close();
     callback player-activity();
 
-    function close-player-menus() {
+    public function close-player-menus() {
         root.player-show-subtitles-menu = false;
         root.player-show-audio-menu = false;
         root.player-show-speed-menu = false;
@@ -709,6 +709,10 @@ export component MainWindow inherits Window {
         root.player-show-options-menu = false;
         root.player-show-playlist-drawer = false;
         root.player-show-context-menu = false;
+    }
+
+    public function focus-app-shortcuts() {
+        app-shortcuts.focus();
     }
 
     function toggle-player-menu(menu: string) {
@@ -743,7 +747,10 @@ export component MainWindow inherits Window {
 
     changed effective-show-player => {
         if (root.effective-show-player) {
+            root.close-player-menus();
             app-shortcuts.focus();
+        } else {
+            root.close-player-menus();
         }
     }
 

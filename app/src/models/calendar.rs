@@ -107,12 +107,11 @@ pub fn setup(
                 .model()
                 .ok()
                 .map(|model| model.calendar.selectable.prev.clone());
-            if let Some(selected) = selected {
-                if dispatch_calendar(&runtime, Some(selected))
-                    && let Some(ui) = ui_weak.upgrade()
-                {
-                    ui.set_calendar_loading(true);
-                }
+            if let Some(selected) = selected
+                && dispatch_calendar(&runtime, Some(selected))
+                && let Some(ui) = ui_weak.upgrade()
+            {
+                ui.set_calendar_loading(true);
             }
         }
     });
@@ -125,12 +124,11 @@ pub fn setup(
                 .model()
                 .ok()
                 .map(|model| model.calendar.selectable.next.clone());
-            if let Some(selected) = selected {
-                if dispatch_calendar(&runtime, Some(selected))
-                    && let Some(ui) = ui_weak.upgrade()
-                {
-                    ui.set_calendar_loading(true);
-                }
+            if let Some(selected) = selected
+                && dispatch_calendar(&runtime, Some(selected))
+                && let Some(ui) = ui_weak.upgrade()
+            {
+                ui.set_calendar_loading(true);
             }
         }
     });

@@ -199,21 +199,20 @@ pub fn setup(
             let transport_url = transport_url.to_string();
             tokio::spawn(async move {
                 let model = rt.model().expect("model read failed");
-                if let Some(url) = Url::parse(&transport_url).ok() {
-                    if let Some(descriptor) = model
+                if let Ok(url) = Url::parse(&transport_url)
+                    && let Some(descriptor) = model
                         .ctx
                         .profile
                         .addons
                         .iter()
                         .find(|a| a.transport_url == url)
-                    {
-                        let descriptor = descriptor.clone();
-                        drop(model);
-                        rt.dispatch(RuntimeAction {
-                            field: None,
-                            action: Action::Ctx(ActionCtx::UninstallAddon(descriptor)),
-                        });
-                    }
+                {
+                    let descriptor = descriptor.clone();
+                    drop(model);
+                    rt.dispatch(RuntimeAction {
+                        field: None,
+                        action: Action::Ctx(ActionCtx::UninstallAddon(descriptor)),
+                    });
                 }
             });
         }

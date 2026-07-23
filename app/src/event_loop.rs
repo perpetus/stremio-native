@@ -289,12 +289,14 @@ pub fn start_event_loop(
                             _ => None,
                         });
 
-                    let stream_selection_views = details_stream_sync_needed
-                        .then(|| {
+                    let stream_selection_views = if details_stream_sync_needed {
+                        {
                             playback_selections
                                 .rebuild(&model.meta_details, &model.ctx.profile.addons)
-                        })
-                        .unwrap_or_default();
+                        }
+                    } else {
+                        Default::default()
+                    };
                     let stream_selection_fingerprint = details_stream_sync_needed.then(|| {
                         let mut fingerprint = models::Fingerprint::new();
                         for stream in &stream_selection_views {
@@ -438,14 +440,14 @@ pub fn start_event_loop(
                                 ui.set_detail_trailer_selection_id(
                                     trailer_selection_id.as_deref().unwrap_or_default().into(),
                                 );
-                                if let Ok(mut last_id_guard) = last_details_id_clone.lock() {
-                                    if *last_id_guard != details_route_id {
-                                        *last_id_guard = details_route_id.clone();
-                                        if let Ok(mut fingerprint) =
-                                            last_stream_fingerprint_clone.lock()
-                                        {
-                                            *fingerprint = None;
-                                        }
+                                if let Ok(mut last_id_guard) = last_details_id_clone.lock()
+                                    && *last_id_guard != details_route_id
+                                {
+                                    *last_id_guard = details_route_id.clone();
+                                    if let Ok(mut fingerprint) =
+                                        last_stream_fingerprint_clone.lock()
+                                    {
+                                        *fingerprint = None;
                                     }
                                 }
 
@@ -489,24 +491,21 @@ pub fn start_event_loop(
                             // Sync submodels (only when needed AND viewing the corresponding active tab)
                             let active_tab = navigation_for_sync.active_tab_index();
 
-                            if local_search_sync_needed {
-                                if let Some(local_search) = &local_search_cloned {
-                                    models::search::sync_local_search(
-                                        &ui,
-                                        local_search,
-                                        &ui_weak_for_sync,
-                                    );
-                                }
+                            if local_search_sync_needed
+                                && let Some(local_search) = &local_search_cloned
+                            {
+                                models::search::sync_local_search(
+                                    &ui,
+                                    local_search,
+                                    &ui_weak_for_sync,
+                                );
                             }
 
-                            if addon_details_sync_needed && ui.get_addon_details_open() {
-                                if let Some(addon_details) = &addon_details_cloned {
-                                    models::addons::sync_details(
-                                        &ui,
-                                        addon_details,
-                                        &ui_weak_for_sync,
-                                    );
-                                }
+                            if addon_details_sync_needed
+                                && ui.get_addon_details_open()
+                                && let Some(addon_details) = &addon_details_cloned
+                            {
+                                models::addons::sync_details(&ui, addon_details, &ui_weak_for_sync);
                             }
                             if board_sync_needed && active_tab != 0 {
                                 tracing::warn!(
@@ -592,17 +591,17 @@ pub fn start_event_loop(
                                 if let Some(calendar) = &calendar_cloned {
                                     models::calendar::sync(&ui, calendar, &ui_weak_for_sync);
                                 }
-                            } else if active_tab == 6 && search_sync_needed {
-                                if let (Some(search), Some(addons)) =
+                            } else if active_tab == 6
+                                && search_sync_needed
+                                && let (Some(search), Some(addons)) =
                                     (&search_cloned, &search_addons_cloned)
-                                {
-                                    models::search::sync_results(
-                                        &ui,
-                                        search,
-                                        addons,
-                                        &ui_weak_for_sync,
-                                    );
-                                }
+                            {
+                                models::search::sync_results(
+                                    &ui,
+                                    search,
+                                    addons,
+                                    &ui_weak_for_sync,
+                                );
                             }
 
                             if calendar_refresh_started
@@ -611,32 +610,31 @@ pub fn start_event_loop(
                                 ui.set_calendar_loading(true);
                             }
 
-                            if details_sync_needed && details_patch_allowed {
-                                if let Some(det) = &meta_details_cloned {
-                                    models::details::sync(
-                                        &ui,
-                                        det,
-                                        details_is_in_library,
-                                        &ui_weak_for_sync,
-                                        &runtime_for_sync,
-                                        &navigation_for_sync,
-                                    );
-                                }
+                            if details_sync_needed
+                                && details_patch_allowed
+                                && let Some(det) = &meta_details_cloned
+                            {
+                                models::details::sync(
+                                    &ui,
+                                    det,
+                                    details_is_in_library,
+                                    &ui_weak_for_sync,
+                                    &runtime_for_sync,
+                                    &navigation_for_sync,
+                                );
                             }
 
-                            if settings_sync_needed {
-                                if let Some(set) = &settings_cloned {
-                                    models::settings::sync(&ui, set);
-                                }
+                            if settings_sync_needed && let Some(set) = &settings_cloned {
+                                models::settings::sync(&ui, set);
                             }
-                            if data_export_sync_needed {
-                                if let Some(data_export) = &data_export_cloned {
-                                    models::settings::sync_data_export(
-                                        &ui,
-                                        data_export,
-                                        &runtime_for_sync,
-                                    );
-                                }
+                            if data_export_sync_needed
+                                && let Some(data_export) = &data_export_cloned
+                            {
+                                models::settings::sync_data_export(
+                                    &ui,
+                                    data_export,
+                                    &runtime_for_sync,
+                                );
                             }
                         }
                         crate::performance::counters().record_ui_patch(patch_started.elapsed());

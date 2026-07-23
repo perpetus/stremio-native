@@ -26,7 +26,7 @@ pub fn play_music() {
             }
         };
 
-        let player = Player::connect_new(&stream.mixer());
+        let player = Player::connect_new(stream.mixer());
 
         let source = match Decoder::try_from(cursor) {
             Ok(s) => s,
@@ -79,20 +79,18 @@ pub fn fetch_github_changelog(ui: &MainWindow) {
             .header("Accept", "application/vnd.github.v3+json")
             .send()
             .await
+            && res.status().is_success()
+            && let Ok(releases) = res.json::<Vec<serde_json::Value>>().await
         {
-            if res.status().is_success() {
-                if let Ok(releases) = res.json::<Vec<serde_json::Value>>().await {
-                    for rel in releases.iter().take(5) {
-                        let tag = rel["tag_name"].as_str().unwrap_or("");
-                        let name = rel["name"].as_str().unwrap_or(tag);
-                        let body = rel["body"].as_str().unwrap_or("");
-                        if !name.is_empty() {
-                            raw_changelog.push_str(&format!("# {}\n\n", name));
-                        }
-                        raw_changelog.push_str(body);
-                        raw_changelog.push_str("\n\n");
-                    }
+            for rel in releases.iter().take(5) {
+                let tag = rel["tag_name"].as_str().unwrap_or("");
+                let name = rel["name"].as_str().unwrap_or(tag);
+                let body = rel["body"].as_str().unwrap_or("");
+                if !name.is_empty() {
+                    raw_changelog.push_str(&format!("# {}\n\n", name));
                 }
+                raw_changelog.push_str(body);
+                raw_changelog.push_str("\n\n");
             }
         }
 
@@ -105,21 +103,19 @@ pub fn fetch_github_changelog(ui: &MainWindow) {
                 .header("Accept", "application/vnd.github.v3+json")
                 .send()
                 .await
+                && res.status().is_success()
+                && let Ok(commits) = res.json::<Vec<serde_json::Value>>().await
             {
-                if res.status().is_success() {
-                    if let Ok(commits) = res.json::<Vec<serde_json::Value>>().await {
-                        raw_changelog.push_str(&format!(
-                            "### v{} - Recent GitHub Change History\n\n",
-                            env!("CARGO_PKG_VERSION")
-                        ));
-                        for item in commits {
-                            let sha = item["sha"].as_str().unwrap_or("").get(..7).unwrap_or("");
-                            let msg = item["commit"]["message"].as_str().unwrap_or("");
-                            let first_line = msg.lines().next().unwrap_or("").trim();
-                            if !first_line.is_empty() {
-                                raw_changelog.push_str(&format!("* [`{}`] {}\n", sha, first_line));
-                            }
-                        }
+                raw_changelog.push_str(&format!(
+                    "### v{} - Recent GitHub Change History\n\n",
+                    env!("CARGO_PKG_VERSION")
+                ));
+                for item in commits {
+                    let sha = item["sha"].as_str().unwrap_or("").get(..7).unwrap_or("");
+                    let msg = item["commit"]["message"].as_str().unwrap_or("");
+                    let first_line = msg.lines().next().unwrap_or("").trim();
+                    if !first_line.is_empty() {
+                        raw_changelog.push_str(&format!("* [`{}`] {}\n", sha, first_line));
                     }
                 }
             }

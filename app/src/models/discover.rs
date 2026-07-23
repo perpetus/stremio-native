@@ -55,7 +55,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |r_type| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_discover_scroll_y(0.0.into());
+                ui.set_discover_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -88,7 +88,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |cat_name| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_discover_scroll_y(0.0.into());
+                ui.set_discover_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -121,7 +121,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |genre_val| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_discover_scroll_y(0.0.into());
+                ui.set_discover_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -161,7 +161,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |query| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_discover_scroll_y(0.0.into());
+                ui.set_discover_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -301,11 +301,11 @@ pub fn setup(
                     let id = selected.meta_path.id.clone();
                     let mut meta_preview = None;
                     for resource in &model.meta_details.meta_items {
-                        if let Some(Loadable::Ready(meta_item)) = &resource.content {
-                            if meta_item.preview.id == id {
-                                meta_preview = Some(meta_item.preview.clone());
-                                break;
-                            }
+                        if let Some(Loadable::Ready(meta_item)) = &resource.content
+                            && meta_item.preview.id == id
+                        {
+                            meta_preview = Some(meta_item.preview.clone());
+                            break;
                         }
                     }
 
@@ -397,10 +397,10 @@ pub fn sync(
     let mut active_genre = String::new();
     if let Some(genre_extra) = discover.selectable.extra.iter().find(|e| e.name == "genre") {
         for opt in &genre_extra.options {
-            if opt.selected {
-                if let Some(val) = &opt.value {
-                    active_genre = val.clone();
-                }
+            if opt.selected
+                && let Some(val) = &opt.value
+            {
+                active_genre = val.clone();
             }
         }
     }

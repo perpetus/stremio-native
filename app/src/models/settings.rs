@@ -584,7 +584,7 @@ pub fn setup(
                         (val_gb as f64) * 1024.0 * 1024.0 * 1024.0
                     };
                     settings.cache_size = bytes;
-                    if let Ok(_) = conn.apply_settings(settings).await {
+                    if (conn.apply_settings(settings).await).is_ok() {
                         let cache_size_str = format_cache_size(bytes);
                         let _ = crate::db::insert_log(
                             "INFO",
@@ -986,9 +986,9 @@ pub fn setup(
                     logs_combined.push_str("--- Local Application Logs (Turso DB) ---\n");
                     for line in db_logs.iter().rev() {
                         logs_combined.push_str(line);
-                        logs_combined.push_str("\n");
+                        logs_combined.push('\n');
                     }
-                    logs_combined.push_str("\n");
+                    logs_combined.push('\n');
                 }
 
                 // 2. Fetch Streaming Server Engine Logs

@@ -43,7 +43,7 @@ pub(crate) enum CatalogScope {
 }
 
 impl CatalogScope {
-    fn catalogs<'a>(self, model: &'a AppModel) -> &'a CatalogsWithExtra {
+    fn catalogs(self, model: &AppModel) -> &CatalogsWithExtra {
         match self {
             Self::Board => &model.board,
             Self::Search => &model.search,
@@ -166,9 +166,7 @@ pub(crate) fn profile_catalogs_fingerprint(addons: &[Descriptor]) -> SyncFingerp
     fingerprint.finish()
 }
 
-pub(crate) fn catalog_name_index<'a>(
-    addons: &'a [Descriptor],
-) -> HashMap<(&'a str, &'a str, &'a str), &'a str> {
+pub(crate) fn catalog_name_index(addons: &[Descriptor]) -> HashMap<(&str, &str, &str), &str> {
     let entry_count = addons
         .iter()
         .map(|addon| addon.manifest.catalogs.len())
@@ -242,9 +240,7 @@ fn visible_catalog_load_range(
     first_visible: usize,
     last_visible: usize,
 ) -> Option<Range<usize>> {
-    if catalogs.selected.is_none() {
-        return None;
-    }
+    catalogs.selected.as_ref()?;
     bounded_catalog_load_range(
         catalogs.catalogs.len(),
         first_visible,
@@ -456,7 +452,7 @@ pub fn chunk_vector_owned<T>(items: Vec<T>, chunk_size: usize) -> Vec<Vec<T>> {
     if items.is_empty() {
         return Vec::new();
     }
-    let mut rows = Vec::with_capacity((items.len() + chunk_size - 1) / chunk_size);
+    let mut rows = Vec::with_capacity(items.len().div_ceil(chunk_size));
     let mut iter = items.into_iter();
     loop {
         let chunk: Vec<T> = iter.by_ref().take(chunk_size).collect();

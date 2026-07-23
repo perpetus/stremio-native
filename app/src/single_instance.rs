@@ -178,10 +178,10 @@ fn decode_command(value: &str) -> anyhow::Result<AppCommand> {
     if value == "activate" {
         return Ok(AppCommand::Activate);
     }
-    if let Some(value) = value.strip_prefix("open:") {
-        if is_open_command(value) {
-            return Ok(AppCommand::Open(value.to_owned()));
-        }
+    if let Some(value) = value.strip_prefix("open:")
+        && is_open_command(value)
+    {
+        return Ok(AppCommand::Open(value.to_owned()));
     }
     Err(anyhow::anyhow!("unsupported instance command"))
 }

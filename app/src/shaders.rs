@@ -305,6 +305,7 @@ impl ShaderCoordinator {
         self.desired
     }
 
+    #[cfg(test)]
     pub fn initial_update(&mut self) -> ShaderUpdate {
         self.reconcile()
     }
@@ -492,7 +493,7 @@ CTRL+0 no-osd change-list glsl-shaders clr ""; show-text "GLSL shaders cleared"
 
 /// Returns `true` if the directory contains at least one `.glsl` shader file.
 pub fn has_glsl_files(shaders_dir: &Path) -> bool {
-    std::fs::read_dir(shaders_dir).map_or(false, |entries| {
+    std::fs::read_dir(shaders_dir).is_ok_and(|entries| {
         entries
             .filter_map(|e| e.ok())
             .any(|entry| entry.path().extension().is_some_and(|ext| ext == "glsl"))
@@ -502,7 +503,7 @@ pub fn has_glsl_files(shaders_dir: &Path) -> bool {
 /// Returns `true` if the directory contains Anime4K `.glsl` shader files
 /// (as opposed to only containing `FSR.glsl` or other non-Anime4K shaders).
 pub fn has_anime4k_shaders(shaders_dir: &Path) -> bool {
-    std::fs::read_dir(shaders_dir).map_or(false, |entries| {
+    std::fs::read_dir(shaders_dir).is_ok_and(|entries| {
         entries.filter_map(|e| e.ok()).any(|entry| {
             entry
                 .path()
@@ -518,10 +519,10 @@ pub fn ensure_anime4k_shaders(config_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(config_dir)?;
 
     let mpv_conf = config_dir.join("mpv.conf");
-    if !mpv_conf.exists() {
-        if let Err(err) = std::fs::write(&mpv_conf, DEFAULT_MPV_CONF) {
-            warn!(error = %err, "Failed to write default mpv.conf");
-        }
+    if !mpv_conf.exists()
+        && let Err(err) = std::fs::write(&mpv_conf, DEFAULT_MPV_CONF)
+    {
+        warn!(error = %err, "Failed to write default mpv.conf");
     }
 
     let input_conf = config_dir.join("input.conf");
@@ -529,10 +530,8 @@ pub fn ensure_anime4k_shaders(config_dir: &Path) -> Result<()> {
         Ok(content) => content.contains("change-list glsl-shaders set"),
         Err(_) => true,
     };
-    if needs_input_conf_update {
-        if let Err(err) = std::fs::write(&input_conf, DEFAULT_INPUT_CONF) {
-            warn!(error = %err, "Failed to write default input.conf");
-        }
+    if needs_input_conf_update && let Err(err) = std::fs::write(&input_conf, DEFAULT_INPUT_CONF) {
+        warn!(error = %err, "Failed to write default input.conf");
     }
 
     let shaders_dir = config_dir.join("shaders");
@@ -559,12 +558,12 @@ fn flatten_nested_shaders(shaders_dir: &Path) {
         if let Ok(entries) = std::fs::read_dir(&nested) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let src = entry.path();
-                if src.is_file() {
-                    if let Some(name) = src.file_name() {
-                        let dest = shaders_dir.join(name);
-                        if let Err(err) = std::fs::rename(&src, &dest) {
-                            warn!(error = %err, src = %src.display(), "Failed to move shader file");
-                        }
+                if src.is_file()
+                    && let Some(name) = src.file_name()
+                {
+                    let dest = shaders_dir.join(name);
+                    if let Err(err) = std::fs::rename(&src, &dest) {
+                        warn!(error = %err, src = %src.display(), "Failed to move shader file");
                     }
                 }
             }
@@ -694,9 +693,9 @@ pub async fn download_shaders_if_needed(config_dir: &Path) -> Result<()> {
             }
 
             let path = std::path::Path::new(&name);
-            if let Some(ext) = path.extension() {
-                if ext == "glsl" {
-                    if let Some(file_name) = path.file_name() {
+            if let Some(ext) = path.extension()
+                && ext == "glsl"
+                    && let Some(file_name) = path.file_name() {
                         let dest_path = shaders_dir.join(file_name);
                         let mut out_file = match std::fs::File::create(&dest_path) {
                             Ok(f) => f,
@@ -711,8 +710,6 @@ pub async fn download_shaders_if_needed(config_dir: &Path) -> Result<()> {
                             extracted_count += 1;
                         }
                     }
-                }
-            }
         }
 
         ensure_fsr_shader(&shaders_dir);

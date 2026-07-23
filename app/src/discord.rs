@@ -179,6 +179,12 @@ pub struct DiscordRpc {
     commands: Sender<DiscordCommand>,
 }
 
+impl Default for DiscordRpc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiscordRpc {
     pub fn new() -> Self {
         let (commands, receiver) = mpsc::channel();

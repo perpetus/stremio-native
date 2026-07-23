@@ -66,10 +66,10 @@ impl ProfileConfig {
                 } else {
                     tracing::warn!(%value, "ignoring unknown profiling mode");
                 }
-            } else if let Some(value) = argument.strip_prefix("--profile-output=") {
-                if !value.is_empty() {
-                    config.output = Some(PathBuf::from(value));
-                }
+            } else if let Some(value) = argument.strip_prefix("--profile-output=")
+                && !value.is_empty()
+            {
+                config.output = Some(PathBuf::from(value));
             }
         }
         config

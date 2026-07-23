@@ -100,7 +100,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |t| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_library_scroll_y(0.0.into());
+                ui.set_library_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -133,7 +133,7 @@ pub fn setup(
                 .upgrade()
                 .and_then(|ui| type_from_label(ui.get_library_active_type().as_str()));
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_library_scroll_y(0.0.into());
+                ui.set_library_scroll_y(0.0);
             }
             clear_sync_state();
             let rt = runtime.clone();
@@ -159,7 +159,7 @@ pub fn setup(
         let ui_weak = ui_weak.clone();
         move |query| {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_library_scroll_y(0.0.into());
+                ui.set_library_scroll_y(0.0);
             }
             clear_sync_state();
             if let Ok(mut q) = get_search_query().lock() {
@@ -167,12 +167,12 @@ pub fn setup(
             }
 
             // Trigger refresh immediately
-            if let Some(ui) = ui_weak.upgrade() {
-                if let Ok(model) = runtime.model() {
-                    let ui_sync = ui_weak.clone();
-                    let rt_sync = runtime.clone();
-                    sync(&ui, &model.library, &ui_sync, &rt_sync);
-                }
+            if let Some(ui) = ui_weak.upgrade()
+                && let Ok(model) = runtime.model()
+            {
+                let ui_sync = ui_weak.clone();
+                let rt_sync = runtime.clone();
+                sync(&ui, &model.library, &ui_sync, &rt_sync);
             }
         }
     });

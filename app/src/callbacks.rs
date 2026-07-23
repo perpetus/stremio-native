@@ -103,6 +103,8 @@ pub fn setup_ui_callbacks(
                 }
                 ui.set_player_has_next_episode(false);
 
+                ui.invoke_close_player_menus();
+                ui.invoke_focus_app_shortcuts();
                 navigation.dispatch_and_project(&ui, NavigationIntent::OpenPlayer);
             }
             runtime.dispatch(RuntimeAction {
@@ -126,8 +128,7 @@ pub fn setup_ui_callbacks(
             tokio::spawn(async move {
                 let model = rt.model().expect("model read failed");
                 let settings = model.ctx.profile.settings.clone();
-                let streaming_server_url =
-                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                let streaming_server_url = model.streaming_server.base_url.clone();
                 drop(model);
 
                 if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
@@ -151,12 +152,11 @@ pub fn setup_ui_callbacks(
                             _ => String::new(),
                         }
                     });
-                    if !link.is_empty() {
-                        if let Ok(mut cb) = clipboard.lock() {
-                            if let Some(cb) = cb.as_mut() {
-                                let _ = cb.set_text(link);
-                            }
-                        }
+                    if !link.is_empty()
+                        && let Ok(mut cb) = clipboard.lock()
+                        && let Some(cb) = cb.as_mut()
+                    {
+                        let _ = cb.set_text(link);
                     }
                 }
             });
@@ -177,8 +177,7 @@ pub fn setup_ui_callbacks(
             tokio::spawn(async move {
                 let model = rt.model().expect("model read failed");
                 let settings = model.ctx.profile.settings.clone();
-                let streaming_server_url =
-                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                let streaming_server_url = model.streaming_server.base_url.clone();
                 drop(model);
 
                 if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
@@ -198,10 +197,10 @@ pub fn setup_ui_callbacks(
                             }
                         });
                     if !link.is_empty() {
-                        if let Ok(mut cb) = clipboard.lock() {
-                            if let Some(cb) = cb.as_mut() {
-                                let _ = cb.set_text(link);
-                            }
+                        if let Ok(mut cb) = clipboard.lock()
+                            && let Some(cb) = cb.as_mut()
+                        {
+                            let _ = cb.set_text(link);
                         }
                     } else {
                         let _ = slint::invoke_from_event_loop(move || {
@@ -231,8 +230,7 @@ pub fn setup_ui_callbacks(
             tokio::spawn(async move {
                 let model = rt.model().expect("model read failed");
                 let settings = model.ctx.profile.settings.clone();
-                let streaming_server_url =
-                    model.streaming_server.base_url.as_ref().map(|u| u.clone());
+                let streaming_server_url = model.streaming_server.base_url.clone();
                 drop(model);
 
                 if let Some((selected, _)) = playback_selections.resolve(&selection_id) {
@@ -242,10 +240,10 @@ pub fn setup_ui_callbacks(
                         &settings,
                     ));
                     if let Some(link) = sdl.external_player.download {
-                        if let Ok(mut cb) = clipboard.lock() {
-                            if let Some(cb) = cb.as_mut() {
-                                let _ = cb.set_text(link);
-                            }
+                        if let Ok(mut cb) = clipboard.lock()
+                            && let Some(cb) = cb.as_mut()
+                        {
+                            let _ = cb.set_text(link);
                         }
                     } else {
                         let _ = slint::invoke_from_event_loop(move || {
