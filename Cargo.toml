@@ -44,7 +44,7 @@ url = "2.5.8"
 discord-rich-presence = "1.1.0"
 rodio = "0.22.2"
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
-turso = { version = "0.6.1", default-features = false }
+turso = { version = "0.7.1", default-features = false }
 
 [patch.crates-io]
 # Slint 1.17 asks glutin for OpenGL without a version, which glutin maps to
