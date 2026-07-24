@@ -16,7 +16,7 @@ use playback_mpv::{
 };
 use slint::{
     BorrowedOpenGLTextureBuilder, BorrowedOpenGLTextureOrigin, ComponentHandle, ModelRc,
-    SharedString, VecModel,
+    SharedString, VecModel, winit_030::WinitWindowAccessor,
 };
 use stremio_core::{
     models::{
@@ -96,9 +96,10 @@ struct PlaybackEventInbox {
 #[cfg(test)]
 mod tests {
     use super::{PlaybackEvent, PlaybackEventInbox, PlaybackState};
+    use std::sync::Arc;
 
     fn state_at(time: f64) -> PlaybackEvent {
-        PlaybackEvent::State(Box::new(PlaybackState {
+        PlaybackEvent::State(Arc::new(PlaybackState {
             time,
             ..PlaybackState::default()
         }))
@@ -486,6 +487,36 @@ pub struct NativePlayback {
     event_task: tokio::task::JoinHandle<()>,
 }
 
+pub(crate) struct PreparedPlaybackFiles {
+    config_dir: PathBuf,
+    shader_readiness: [bool; crate::shaders::SHADER_PRESET_COUNT],
+}
+
+pub(crate) async fn prepare_playback_files() -> anyhow::Result<PreparedPlaybackFiles> {
+    tokio::task::spawn_blocking(|| {
+        let config_dir = resolve_config_dir();
+        std::fs::create_dir_all(&config_dir).with_context(|| {
+            format!(
+                "could not create MPV config directory {}",
+                config_dir.display()
+            )
+        })?;
+        if let Err(error) = crate::shaders::ensure_anime4k_shaders(&config_dir) {
+            tracing::warn!(%error, "could not prepare the bundled video shaders");
+        }
+        if let Err(error) = crate::thumbnail_preview::disable_legacy_script(&config_dir) {
+            tracing::warn!(%error, "could not disable the obsolete generated ThumbFast script");
+        }
+        let shader_readiness = crate::shaders::preset_readiness(&config_dir.join("shaders"));
+        Ok(PreparedPlaybackFiles {
+            config_dir,
+            shader_readiness,
+        })
+    })
+    .await
+    .context("MPV file preparation task stopped")?
+}
+
 impl NativePlayback {
     pub fn start(
         ui: &MainWindow,
@@ -494,6 +525,7 @@ impl NativePlayback {
         navigation: NavigationController,
         discord_rpc: Arc<crate::discord::DiscordRpc>,
         runtime_handle: tokio::runtime::Handle,
+        prepared_files: PreparedPlaybackFiles,
     ) -> anyhow::Result<Self> {
         let state = Arc::new(RwLock::new(Arc::new(PlaybackState::default())));
         let session = Arc::new(Mutex::new(SessionState::default()));
@@ -502,23 +534,15 @@ impl NativePlayback {
         let ui_state_scheduler = Arc::new(UiStateScheduler::default());
         let autohide_task = Arc::new(Mutex::new(None));
 
-        let config_dir = resolve_config_dir();
+        let PreparedPlaybackFiles {
+            config_dir,
+            shader_readiness,
+        } = prepared_files;
         tracing::info!(
             hardware_decoding,
             config_dir = %config_dir.display(),
             "initializing native MPV playback"
         );
-        std::fs::create_dir_all(&config_dir).with_context(|| {
-            format!(
-                "could not create MPV config directory {}",
-                config_dir.display()
-            )
-        })?;
-        let _ = crate::shaders::ensure_anime4k_shaders(&config_dir);
-        if let Err(error) = crate::thumbnail_preview::disable_legacy_script(&config_dir) {
-            tracing::warn!(%error, "could not disable the obsolete generated ThumbFast script");
-        }
-        let shaders_dir = config_dir.join("shaders");
         let app_config = crate::config::load_config();
         let thumbnails = crate::thumbnail_preview::ThumbnailPreview::new(
             app_config.thumbnail_previews_enabled,
@@ -541,10 +565,12 @@ impl NativePlayback {
             };
         let desired_shader_preset =
             crate::shaders::preset_from_config(app_config.active_shader_preset);
-        let shader_coordinator = Arc::new(Mutex::new(crate::shaders::ShaderCoordinator::new(
-            desired_shader_preset,
-            &shaders_dir,
-        )));
+        let shader_coordinator = Arc::new(Mutex::new(
+            crate::shaders::ShaderCoordinator::with_readiness(
+                desired_shader_preset,
+                shader_readiness,
+            ),
+        ));
         tracing::info!(
             desired_preset = ?desired_shader_preset,
             shaders_enabled = app_config.shaders_enabled,
@@ -587,11 +613,11 @@ impl NativePlayback {
         let shader_ui = ui.as_weak();
         let initial_shader_update = {
             let mut coordinator = lock_shader_coordinator(&shader_coordinator);
-            coordinator.refresh_files(&shaders_dir)
+            coordinator.initial_update()
         };
         dispatch_shader_update(&controller, &shader_ui, initial_shader_update);
 
-        if !crate::shaders::all_anime4k_presets_ready(&shaders_dir) {
+        if !crate::shaders::anime4k_presets_ready(&shader_readiness) {
             let download_started = {
                 let mut coordinator = lock_shader_coordinator(&shader_coordinator);
                 coordinator.set_download_state(true, None)
@@ -1313,6 +1339,8 @@ impl NativePlaybackBridge {
                     }
                     navigation.dispatch_and_project(&ui, NavigationIntent::Back);
                     ui.invoke_close_player_menus();
+                    // Never leave the player with the pointer hidden after exit.
+                    set_player_cursor_hidden(&ui, false);
                     ui.set_player_loading(false);
                     ui.set_player_buffering(false);
                     ui.set_player_has_video_frame(false);
@@ -1478,7 +1506,6 @@ fn handle_event(
 ) {
     match event {
         PlaybackEvent::State(state) => {
-            let state = Arc::<PlaybackState>::from(state);
             let previous = read_state(state_slot).clone();
             if previous.loading != state.loading
                 || previous.loaded != state.loaded
@@ -1528,6 +1555,17 @@ fn handle_event(
                 thumbnails.prewarm(source);
             }
             restore_stream_state(core, controller, ui);
+            // Binge/autoplay advances episodes with no user interaction, so the
+            // UI-side activity hooks never fire to reclaim keyboard focus. Anchor
+            // it here: every started file routes through FileLoaded.
+            {
+                let ui = ui.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui.upgrade() {
+                        ui.invoke_focus_app_shortcuts();
+                    }
+                });
+            }
         }
         PlaybackEvent::Ended { reason, error } => {
             tracing::info!(?reason, error = error.as_deref(), "MPV playback ended");
@@ -2388,8 +2426,9 @@ fn install_renderer(
             // Fast startup deliberately installs MPV after the first window is
             // visible. In that case Slint's one-shot RenderingSetup notification
             // has already occurred, but its OpenGL context is equally current in
-            // AfterRendering. Initialize once after Skia has flushed the frame so
-            // MPV cannot disturb state that Skia is still using.
+            // AfterRendering. Initialize there once, then request a new frame so
+            // MPV draws in BeforeRendering and Slint composites the texture in
+            // that same frame.
             if context.is_none()
                 && !context_initialization_attempted
                 && (is_rendering_setup || is_after_rendering)
@@ -2448,6 +2487,9 @@ fn install_renderer(
                             context = Some(render_context);
                             missing_context_logged = false;
                             tracing::info!("MPV OpenGL render context created");
+                            if !is_rendering_setup {
+                                ui.window().request_redraw();
+                            }
                         }
                         Err(error) => {
                             tracing::error!(%error, "could not create MPV render context")
@@ -2460,15 +2502,14 @@ fn install_renderer(
 
             match state {
                 slint::RenderingState::RenderingSetup => {}
-                slint::RenderingState::BeforeRendering => {}
-                slint::RenderingState::AfterRendering => {
+                slint::RenderingState::BeforeRendering => {
                     let Some(ui) = window_weak.upgrade() else {
                         return;
                     };
                     let player_visible = ui.get_show_player();
                     if last_player_visible != Some(player_visible) {
                         last_player_visible = Some(player_visible);
-                        tracing::info!(player_visible, "AfterRendering: player visibility changed");
+                        tracing::info!(player_visible, "player render visibility changed");
                     }
                     if context.is_none() && player_visible && !missing_context_logged {
                         missing_context_logged = true;
@@ -2576,7 +2617,7 @@ fn install_renderer(
                                 }
                             }
                             Ok(RenderOutcome::NoFrame) => {
-                                tracing::trace!("AfterRendering: MPV has no new frame to render");
+                                tracing::trace!("MPV has no new frame to render");
                             }
                             Err(error) => {
                                 tracing::error!(
@@ -2589,6 +2630,7 @@ fn install_renderer(
                         }
                     }
                 }
+                slint::RenderingState::AfterRendering => {}
                 slint::RenderingState::RenderingTeardown => {
                     tracing::info!("Slint rendering teardown started");
                     let teardown_window = window_weak.clone();
@@ -2952,6 +2994,39 @@ fn lock_autohide_task(
     task.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Whether we have hidden the OS pointer for the player's idle state.
+///
+/// The cursor is global window state — one main window, one pointer — so a
+/// single flag lets both the activity and the autohide-timer paths flip it
+/// without threading extra state through the event plumbing. It also coalesces
+/// calls: `set_player_cursor_hidden` only touches winit on an actual
+/// transition, never on every mouse-move activity tick.
+static PLAYER_CURSOR_HIDDEN: AtomicBool = AtomicBool::new(false);
+
+/// Show or hide the OS pointer over the video surface.
+///
+/// Slint's declarative `mouse-cursor` (see `player.slint`) is only pushed to
+/// the OS while a pointer event is being dispatched — the core recomputes the
+/// cursor exclusively inside `process_mouse_input`. The inactivity timer fires
+/// with no pointer event, so the `mouse-cursor: none` binding never reaches the
+/// window on its own; we have to drive it here instead.
+///
+/// winit's `set_cursor_visible` is not free — on Windows it hops to the window
+/// thread and blocks on the reply — so skip it whenever the state already
+/// matches, and only remember the new state once the window actually applied it.
+fn set_player_cursor_hidden(ui: &MainWindow, hidden: bool) {
+    if PLAYER_CURSOR_HIDDEN.load(Ordering::Relaxed) == hidden {
+        return;
+    }
+    let applied = ui
+        .window()
+        .with_winit_window(|window| window.set_cursor_visible(!hidden))
+        .is_some();
+    if applied {
+        PLAYER_CURSOR_HIDDEN.store(hidden, Ordering::Relaxed);
+    }
+}
+
 fn reset_autohide_timer(
     ui: &MainWindow,
     autohide_task: &Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
@@ -2959,8 +3034,9 @@ fn reset_autohide_timer(
 ) {
     let is_paused = ui.get_player_paused();
 
-    // 1. Ensure controls are visible when activity is triggered
+    // 1. Ensure controls and the pointer are visible when activity is triggered
     ui.set_player_controls_visible(true);
+    set_player_cursor_hidden(ui, false);
 
     // 2. Abort the previous timer task if any
     if let Some(handle) = lock_autohide_task(autohide_task).take() {
@@ -2985,6 +3061,7 @@ fn reset_autohide_timer(
                 {
                     ui.set_player_controls_visible(false);
                     ui.invoke_player_seek_leave();
+                    set_player_cursor_hidden(&ui, true);
                 }
             });
         }));

@@ -139,7 +139,7 @@ export component EpisodeRow inherits Rectangle {
         long-pressed => { root.context-requested(); }
 
         animate background { duration: Theme.motion-fast; }
-        animate border-color { duration: 3s; easing: ease-in-out; }
+        animate border-color { duration: Theme.motion-fast; easing: ease-in-out; }
 
         thumbnail-frame := Rectangle {
             visible: root.has-thumbnail;

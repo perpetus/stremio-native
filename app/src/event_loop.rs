@@ -7,13 +7,29 @@ use crate::{
 };
 use core_env::DesktopEnv;
 use futures::StreamExt;
+use slint::Model;
 use std::sync::Arc;
 use stremio_core::{
     models::common::Loadable,
     runtime::{Runtime, RuntimeEvent, msg::Event},
 };
 
-const STATE_COALESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(4);
+fn update_vec_model<T: Clone + 'static>(
+    model: &slint::ModelRc<T>,
+    values: Vec<T>,
+) -> Result<(), Vec<T>> {
+    let Some(model) = model.as_any().downcast_ref::<slint::VecModel<T>>() else {
+        return Err(values);
+    };
+    if model.row_count() == values.len() {
+        for (index, value) in values.into_iter().enumerate() {
+            model.set_row_data(index, value);
+        }
+    } else {
+        model.set_vec(values);
+    }
+    Ok(())
+}
 
 pub fn start_event_loop(
     mut rx: futures::channel::mpsc::Receiver<RuntimeEvent<DesktopEnv, AppModel>>,
@@ -37,22 +53,21 @@ pub fn start_event_loop(
         while let Some(event) = rx.next().await {
             match event {
                 RuntimeEvent::NewState(mut fields, ..) => {
-                    // Core effects frequently resolve in short bursts. Merge those fields before
-                    // projecting anything into Slint so one logical update produces one UI patch.
-                    let deadline = tokio::time::Instant::now() + STATE_COALESCE_WINDOW;
+                    // Drain only updates that are already queued. Waiting a fixed window here
+                    // added latency to every state projection, including isolated input updates.
                     loop {
-                        match tokio::time::timeout_at(deadline, rx.next()).await {
-                            Ok(Some(RuntimeEvent::NewState(next_fields, ..))) => {
+                        match rx.try_recv() {
+                            Ok(RuntimeEvent::NewState(next_fields, ..)) => {
                                 for field in next_fields {
                                     if !fields.contains(&field) {
                                         fields.push(field);
                                     }
                                 }
                             }
-                            Ok(Some(RuntimeEvent::CoreEvent(event))) => {
+                            Ok(RuntimeEvent::CoreEvent(event)) => {
                                 handle_core_event(event, &ui_weak);
                             }
-                            Ok(None) | Err(_) => break,
+                            Err(_) => break,
                         }
                     }
                     let _state_span = tracing::info_span!("NewState", ?fields).entered();
@@ -477,11 +492,22 @@ pub fn start_event_loop(
                                             providers.push(stream.provider.clone());
                                         }
                                     }
-                                    let stream_model = slint::VecModel::from(stream_links);
-                                    ui.set_stream_links(slint::ModelRc::new(stream_model));
-                                    ui.set_detail_stream_providers(slint::ModelRc::new(
-                                        slint::VecModel::from(providers),
-                                    ));
+                                    let current_streams = ui.get_stream_links();
+                                    if let Err(stream_links) =
+                                        update_vec_model(&current_streams, stream_links)
+                                    {
+                                        ui.set_stream_links(slint::ModelRc::new(
+                                            slint::VecModel::from(stream_links),
+                                        ));
+                                    }
+                                    let current_providers = ui.get_detail_stream_providers();
+                                    if let Err(providers) =
+                                        update_vec_model(&current_providers, providers)
+                                    {
+                                        ui.set_detail_stream_providers(slint::ModelRc::new(
+                                            slint::VecModel::from(providers),
+                                        ));
+                                    }
                                 }
                                 if let Some(loading_count) = detail_stream_loading_count {
                                     ui.set_detail_stream_loading_count(loading_count);

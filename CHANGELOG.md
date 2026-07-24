@@ -2,6 +2,24 @@
 
 This file records notable changes to Stremio Native relative to the initial source snapshot.
 
+## 1.0.3 - 2026-07-24
+
+### Browser-style smooth scrolling
+- Retuned Slint's scroll physics to browser values across every scroll surface: a 100px wheel notch (was 60px), a 250ms cubic ease-out per notch (was a 180ms quadratic step), and a 1200px/s² fling deceleration (was 2000px/s²).
+- Added a cubic ease-out simulation matching the Chromium impulse response, integrated incrementally so it composes with `ListView`'s mid-animation viewport corrections instead of fighting them.
+- Kept touchpad gestures tracking the fingers 1:1 by applying the notch scale only to phaseless wheel steps.
+- These live in `vendor/i-slint-core`; see `vendor/i-slint-core/PATCHES.md`.
+
+### Runtime performance and responsiveness
+- Reused Turso connections and in-process Axum routers, applied connection PRAGMAs once, and moved log retention work off the write path.
+- Removed the fixed 4ms state-projection delay, reused Slint stream models, and reduced image decode allocations and disk-cache syscalls.
+- Shared MPV track state across high-frequency updates, parsed track metadata in one pass, rendered video before Slint composition, and moved shader filesystem preparation off the UI thread.
+- Shortened the stream-row highlight transition and stopped the player buffering timer when playback is idle.
+
+### Maintenance and playback polish
+- Updated the Rust dependency set, including Turso, Tokio, mlua, zip, and arboard.
+- Restored player shortcut focus after automatic file transitions and improved native pointer visibility recovery.
+
 ## 1.0.2 - 2026-07-22
 
 ### Downloads

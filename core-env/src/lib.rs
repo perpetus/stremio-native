@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::OnceLock;
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
+use tokio::sync::{OnceCell, mpsc};
 
 use stremio_core::{
     models::{ctx::Ctx, streaming_server::StreamingServer},
@@ -16,6 +16,8 @@ use stremio_core::{
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static TOKIO_HANDLE: OnceLock<Handle> = OnceLock::new();
+#[cfg(feature = "in-process")]
+static IN_PROCESS_ROUTER: OnceLock<axum::Router> = OnceLock::new();
 type SequentialFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 static SEQUENTIAL_EXECUTOR: OnceLock<mpsc::UnboundedSender<SequentialFuture>> = OnceLock::new();
 
@@ -101,23 +103,15 @@ impl DesktopEnv {
         {
             use tower::ServiceExt;
 
-            // Acquire AppState from the server's GLOBAL_STATE
-            let app_state = {
-                let guard = stream_server::GLOBAL_STATE.read().map_err(|e| {
-                    EnvError::Other(format!("Failed to read GLOBAL_STATE lock: {e}"))
-                })?;
-                guard.clone().ok_or_else(|| {
-                    EnvError::Other("stream-server AppState is not initialized".to_string())
-                })?
-            };
-
-            // Build the Axum router using the server's AppState
-            let router = stream_server::build_router(app_state);
+            let router = in_process_router()?;
 
             // Construct the Tower request
             let (parts, body) = request.into_parts();
-            let body_bytes =
-                serde_json::to_vec(&body).map_err(|e| EnvError::Serde(e.to_string()))?;
+            let body_bytes = if matches!(parts.method, http::Method::GET | http::Method::HEAD) {
+                Vec::new()
+            } else {
+                serde_json::to_vec(&body).map_err(|e| EnvError::Serde(e.to_string()))?
+            };
             let axum_req = Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
             // Call the router in-memory
@@ -208,6 +202,29 @@ impl DesktopEnv {
 }
 
 static DB: OnceLock<turso::Database> = OnceLock::new();
+static DB_CONNECTION: OnceCell<turso::Connection> = OnceCell::const_new();
+
+#[cfg(feature = "in-process")]
+fn in_process_router() -> Result<axum::Router, EnvError> {
+    if let Some(router) = IN_PROCESS_ROUTER.get() {
+        return Ok(router.clone());
+    }
+
+    let app_state = {
+        let guard = stream_server::GLOBAL_STATE
+            .read()
+            .map_err(|e| EnvError::Other(format!("Failed to read GLOBAL_STATE lock: {e}")))?;
+        guard.clone().ok_or_else(|| {
+            EnvError::Other("stream-server AppState is not initialized".to_owned())
+        })?
+    };
+    let router = stream_server::build_router(app_state);
+    let _ = IN_PROCESS_ROUTER.set(router);
+    Ok(IN_PROCESS_ROUTER
+        .get()
+        .expect("in-process router was just initialized")
+        .clone())
+}
 
 /// Returned when a database is installed after core storage has already
 /// initialized its database handle.
@@ -229,33 +246,41 @@ pub fn install_database(database: turso::Database) -> Result<(), DatabaseAlready
 }
 
 async fn get_db_conn() -> Result<turso::Connection, EnvError> {
-    let db = match DB.get() {
-        Some(db) => db,
-        None => {
-            let db_path = std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("storage")
-                .join("stremio.db");
-            let db_path_str = db_path.to_string_lossy().into_owned();
-            let db = turso::Builder::new_local(&db_path_str)
-                .build()
-                .await
-                .map_err(|e| EnvError::Other(e.to_string()))?;
+    let conn = DB_CONNECTION
+        .get_or_try_init(|| async {
+            let db = match DB.get() {
+                Some(db) => db,
+                None => {
+                    let db_path = std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join("storage")
+                        .join("stremio.db");
+                    let db_path_str = db_path.to_string_lossy().into_owned();
+                    let db = turso::Builder::new_local(&db_path_str)
+                        .build()
+                        .await
+                        .map_err(|e| EnvError::Other(e.to_string()))?;
 
-            let _ = DB.set(db);
-            DB.get().ok_or_else(|| {
-                EnvError::Other("core database initialization raced and failed".to_owned())
-            })?
-        }
-    };
-    let conn = db.connect().map_err(|e| EnvError::Other(e.to_string()))?;
+                    let _ = DB.set(db);
+                    DB.get().ok_or_else(|| {
+                        EnvError::Other("core database initialization raced and failed".to_owned())
+                    })?
+                }
+            };
+            let conn = db.connect().map_err(|e| EnvError::Other(e.to_string()))?;
+            conn.execute_batch(
+                "PRAGMA synchronous = NORMAL;
+                 PRAGMA temp_store = MEMORY;
+                 PRAGMA cache_size = -10000;
+                 PRAGMA busy_timeout = 5000;",
+            )
+            .await
+            .map_err(|e| EnvError::Other(e.to_string()))?;
+            Ok::<turso::Connection, EnvError>(conn)
+        })
+        .await?;
 
-    // Apply optimizations on every connection
-    let _ = conn.execute("PRAGMA synchronous = NORMAL;", ()).await;
-    let _ = conn.execute("PRAGMA temp_store = MEMORY;", ()).await;
-    let _ = conn.execute("PRAGMA cache_size = -10000;", ()).await;
-
-    Ok(conn)
+    Ok(conn.clone())
 }
 
 impl Env for DesktopEnv {

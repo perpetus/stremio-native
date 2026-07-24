@@ -6,7 +6,7 @@ members = [
     "playback-mpv",
     "server-connector",
 ]
-exclude = ["vendor/i-slint-renderer-skia"]
+exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-core"]
 
 [workspace.dependencies]
 anyhow = "1.0.104"
@@ -25,7 +25,7 @@ reqwest = { version = "0.13.4", default-features = false }
 serde = "1.0.229"
 serde_json = "1.0.151"
 self_update = { version = "0.44.0", default-features = false, features = ["reqwest", "rustls", "archive-zip", "compression-zip-deflate"] }
-zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 slint = { version = "1.17.1", default-features = false }
 slint-build = "1.17.1"
 stremio-core = { git = "https://github.com/perpetus/stremio-core.git", rev = "4562b37be8ea788801e12c608a6aa3e43c646123", features = ["derive", "analytics", "env-future-send"] }
@@ -33,8 +33,8 @@ stream-server = { git = "https://github.com/perpetus/stream-server.git", rev = "
 settings-gui = { git = "https://github.com/perpetus/stream-server.git", rev = "73a23325a49e76f7dee0afe08bf3e1a9b3ef3eec" }
 sys-locale = "0.3.2"
 thiserror = "2.0.19"
-tokio = "1.53.0"
-tokio-util = "0.7.18"
+tokio = "1.53.1"
+tokio-util = "0.7.19"
 tower = "0.5.3"
 tracing = { version = "0.1.44", features = ["release_max_level_off"] }
 tracing-appender = "0.2.5"
@@ -43,14 +43,20 @@ tracing-subscriber = "0.3.23"
 url = "2.5.8"
 discord-rich-presence = "1.1.0"
 rodio = "0.22.2"
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
-turso = { version = "0.6.1", default-features = false }
+mlua = { version = "0.12.0", features = ["lua54", "vendored", "serialize"] }
+turso = { version = "0.7.1", default-features = false }
 
 [patch.crates-io]
 # Slint 1.17 asks glutin for OpenGL without a version, which glutin maps to
 # exactly 3.3. Keep Slint's public unversioned policy while negotiating the
 # newest desktop context that each driver actually supports.
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+# Slint's Flickable ships desktop-unfriendly scroll physics (180ms quadratic
+# wheel steps, 2000px/s^2 fling). Retune them to browser values. This has to
+# live in the engine because ListView rewrites viewport-y mid-animation, so
+# only Slint's incremental physics animations survive virtualized scrolling.
+# See vendor/i-slint-core/PATCHES.md.
+i-slint-core = { path = "vendor/i-slint-core" }
 
 [profile.release]
 opt-level = 3

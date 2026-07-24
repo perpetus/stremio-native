@@ -365,6 +365,7 @@ async fn finish_startup(
     tracing::info!("launching stream-server engine");
     let server_task = tokio::task::spawn_blocking(move || stream_server::start(server_cfg));
     let storage_task = tokio::spawn(load_startup_storage());
+    let playback_files_task = tokio::spawn(mpv_integration::prepare_playback_files());
 
     // Await these independent tasks from Slint's local executor so the event
     // loop keeps painting and processing input while the loading UI is visible.
@@ -488,20 +489,34 @@ async fn finish_startup(
         .ok()
         .map(|model| model.ctx.profile.settings.hardware_decoding)
         .unwrap_or(config.hardware_acceleration);
-    let native_playback = match mpv_integration::NativePlayback::start(
-        &ui,
-        &runtime,
-        hardware_decoding,
-        navigation.clone(),
-        discord_rpc.clone(),
-        tokio::runtime::Handle::current(),
-    ) {
-        Ok(playback) => Some(playback),
+    let prepared_playback_files = match playback_files_task.await {
+        Ok(Ok(files)) => Some(files),
+        Ok(Err(error)) => {
+            tracing::error!(%error, "native MPV file preparation failed");
+            None
+        }
         Err(error) => {
-            tracing::error!(%error, "native MPV playback is unavailable");
+            tracing::error!(%error, "native MPV file preparation task stopped");
             None
         }
     };
+    let native_playback = prepared_playback_files.and_then(|prepared_files| {
+        match mpv_integration::NativePlayback::start(
+            &ui,
+            &runtime,
+            hardware_decoding,
+            navigation.clone(),
+            discord_rpc.clone(),
+            tokio::runtime::Handle::current(),
+            prepared_files,
+        ) {
+            Ok(playback) => Some(playback),
+            Err(error) => {
+                tracing::error!(%error, "native MPV playback is unavailable");
+                None
+            }
+        }
+    });
     let native_playback_bridge = native_playback
         .as_ref()
         .map(mpv_integration::NativePlayback::bridge);

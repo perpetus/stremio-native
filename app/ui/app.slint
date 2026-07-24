@@ -754,6 +754,16 @@ export component MainWindow inherits Window {
         }
     }
 
+    // Closing an overlay menu destroys the focus scope that was holding the
+    // keyboard, leaving nothing focused. Hand focus straight back to the global
+    // shortcut scope so a key pressed right after a menu closes still registers,
+    // even without an intervening mouse move.
+    changed player-menu-open => {
+        if (!root.player-menu-open && root.effective-show-player) {
+            app-shortcuts.focus();
+        }
+    }
+
     app-shortcuts := FocusScope {
         property <bool> space-held: false;
         property <bool> space-long-press: false;
@@ -1955,7 +1965,18 @@ export component MainWindow inherits Window {
             toggle-episode-watched(video-id) => { player-toggle-episode-watched(video-id); }
             toggle-fullscreen => { player-toggle-fullscreen(); }
             close => { player-close(); }
-            activity => { player-activity(); }
+            activity => {
+                player-activity();
+                // The overlay's sliders and menus pull keyboard focus when used,
+                // and they live outside `app-shortcuts`, so once focus lands
+                // there the global player shortcuts go dead. Reclaim it on any
+                // interaction when no menu needs the keyboard. The `has-focus`
+                // guard keeps this to one call per theft, not one per mouse-move.
+                if (root.effective-show-player && !root.player-menu-open
+                    && !app-shortcuts.has-focus) {
+                    app-shortcuts.focus();
+                }
+            }
         }
 
         update-dialog := ModalDialog {

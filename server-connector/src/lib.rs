@@ -3,6 +3,31 @@ use settings_gui::{
     ChangelogPayload, CurrentLogTail, LogsSnapshot, ServerConnector, SettingsPayload,
 };
 
+#[cfg(feature = "in-process")]
+static IN_PROCESS_ROUTER: std::sync::OnceLock<axum::Router> = std::sync::OnceLock::new();
+
+#[cfg(feature = "in-process")]
+fn in_process_router() -> Result<axum::Router> {
+    if let Some(router) = IN_PROCESS_ROUTER.get() {
+        return Ok(router.clone());
+    }
+
+    let app_state = {
+        let guard = stream_server::GLOBAL_STATE
+            .read()
+            .map_err(|e| anyhow::anyhow!("Failed to read GLOBAL_STATE lock: {e}"))?;
+        guard
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("stream-server AppState is not initialized"))?
+    };
+    let router = stream_server::build_router(app_state);
+    let _ = IN_PROCESS_ROUTER.set(router);
+    Ok(IN_PROCESS_ROUTER
+        .get()
+        .expect("in-process router was just initialized")
+        .clone())
+}
+
 pub struct AppServerConnector {
     server_url: String,
     #[allow(unused)]
@@ -52,16 +77,7 @@ impl AppServerConnector {
             use http::Request;
             use tower::ServiceExt;
 
-            let app_state = {
-                let guard = stream_server::GLOBAL_STATE
-                    .read()
-                    .map_err(|e| anyhow::anyhow!("Failed to read GLOBAL_STATE lock: {e}"))?;
-                guard
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("stream-server AppState is not initialized"))?
-            };
-
-            let router = stream_server::build_router(app_state);
+            let router = in_process_router()?;
 
             let body_bytes = if let Some(b) = body {
                 serde_json::to_vec(&b)?
@@ -190,16 +206,7 @@ impl ServerConnector for AppServerConnector {
                 use http::Request;
                 use tower::ServiceExt;
 
-                let app_state = {
-                    let guard = stream_server::GLOBAL_STATE
-                        .read()
-                        .map_err(|e| anyhow::anyhow!("Failed to read GLOBAL_STATE lock: {e}"))?;
-                    guard.clone().ok_or_else(|| {
-                        anyhow::anyhow!("stream-server AppState is not initialized")
-                    })?
-                };
-
-                let router = stream_server::build_router(app_state);
+                let router = in_process_router()?;
 
                 let req = Request::builder()
                     .method(http::Method::GET)

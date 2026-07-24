@@ -230,9 +230,13 @@ pub fn preset_readiness(shaders_dir: &Path) -> [bool; SHADER_PRESET_COUNT] {
 }
 
 pub fn all_anime4k_presets_ready(shaders_dir: &Path) -> bool {
-    ShaderPreset::ALL[ShaderPreset::ModeA.index()..ShaderPreset::Fsr.index()]
+    anime4k_presets_ready(&preset_readiness(shaders_dir))
+}
+
+pub fn anime4k_presets_ready(readiness: &[bool; SHADER_PRESET_COUNT]) -> bool {
+    readiness[ShaderPreset::ModeA.index()..ShaderPreset::Fsr.index()]
         .iter()
-        .all(|preset| preset.is_ready(shaders_dir))
+        .all(|ready| *ready)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -282,11 +286,10 @@ pub struct ShaderCoordinator {
 }
 
 impl ShaderCoordinator {
-    pub fn new(desired: ShaderPreset, shaders_dir: &Path) -> Self {
-        Self::with_readiness(desired, preset_readiness(shaders_dir))
-    }
-
-    fn with_readiness(desired: ShaderPreset, readiness: [bool; SHADER_PRESET_COUNT]) -> Self {
+    pub(crate) fn with_readiness(
+        desired: ShaderPreset,
+        readiness: [bool; SHADER_PRESET_COUNT],
+    ) -> Self {
         Self {
             desired,
             actual: None,
@@ -305,7 +308,6 @@ impl ShaderCoordinator {
         self.desired
     }
 
-    #[cfg(test)]
     pub fn initial_update(&mut self) -> ShaderUpdate {
         self.reconcile()
     }
@@ -321,16 +323,6 @@ impl ShaderCoordinator {
 
     pub fn context_torn_down(&mut self) -> ShaderUpdate {
         self.set_context_capability(ShaderContextCapability::Pending)
-    }
-
-    pub fn refresh_files(&mut self, shaders_dir: &Path) -> ShaderUpdate {
-        let readiness = preset_readiness(shaders_dir);
-        if self.readiness != readiness {
-            self.readiness = readiness;
-            self.rejected.fill(false);
-            self.rejection_message = None;
-        }
-        self.reconcile()
     }
 
     pub fn set_download_state(&mut self, downloading: bool, error: Option<String>) -> ShaderUpdate {

@@ -3,6 +3,7 @@ use moka::sync::Cache;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 use std::{
     collections::{HashSet, VecDeque},
+    io::{Cursor, Read},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
@@ -32,6 +33,7 @@ static DISK_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static DECODE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static REFRESH_CALLBACK: OnceLock<RefreshFn> = OnceLock::new();
 static REFRESH_URLS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static READY_CACHE_DIRS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 static REFRESH_PENDING: AtomicBool = AtomicBool::new(false);
 static MAINTENANCE_STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -300,13 +302,18 @@ async fn load_from_disk(url: &str) -> Option<ImageEntry> {
     let _permit = disk_semaphore().clone().acquire_owned().await.ok()?;
     let path = cache_path(url);
     let bytes = tokio::task::spawn_blocking(move || {
-        let metadata = std::fs::metadata(&path).ok()?;
+        let mut file = std::fs::File::open(&path).ok()?;
+        let metadata = file.metadata().ok()?;
         let age = metadata.modified().ok()?.elapsed().ok()?;
         if age > DISK_TTL || metadata.len() > MAX_RESPONSE_BYTES as u64 {
-            let _ = std::fs::remove_file(path);
+            drop(file);
+            let _ = std::fs::remove_file(&path);
             return None;
         }
-        std::fs::read(path).ok()
+        let length = usize::try_from(metadata.len()).ok()?;
+        let mut bytes = Vec::with_capacity(length);
+        file.read_to_end(&mut bytes).ok()?;
+        Some(bytes)
     })
     .await
     .ok()
@@ -414,26 +421,52 @@ async fn decode(bytes: Vec<u8>) -> Result<(ImageEntry, Vec<u8>), String> {
         .await
         .map_err(|_| "image decode queue closed".to_owned())?;
     tokio::task::spawn_blocking(move || {
-        let image = image::load_from_memory(&bytes).map_err(|error| error.to_string())?;
-        let image = if image.width() > MAX_DECODE_WIDTH || image.height() > MAX_DECODE_HEIGHT {
-            image.resize(
-                MAX_DECODE_WIDTH,
-                MAX_DECODE_HEIGHT,
-                image::imageops::FilterType::Triangle,
-            )
-        } else {
-            image
-        };
-        let rgba = image.into_rgba8();
-        let decoded = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
-            rgba.as_raw(),
-            rgba.width(),
-            rgba.height(),
-        );
+        let decoded = decode_image(&bytes)?;
         Ok((decoded, bytes))
     })
     .await
     .map_err(|error| format!("image decoder stopped: {error}"))?
+}
+
+fn decode_image(bytes: &[u8]) -> Result<ImageEntry, String> {
+    use image::ImageDecoder as _;
+
+    let reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| error.to_string())?;
+    let decoder = reader.into_decoder().map_err(|error| error.to_string())?;
+    let (width, height) = decoder.dimensions();
+
+    // Most posters arrive as RGBA PNG/WebP data. Decode those directly into
+    // Slint's backing allocation instead of creating an intermediate image and
+    // then copying it into SharedPixelBuffer.
+    if width <= MAX_DECODE_WIDTH
+        && height <= MAX_DECODE_HEIGHT
+        && decoder.color_type() == image::ColorType::Rgba8
+    {
+        let mut decoded = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
+        decoder
+            .read_image(decoded.make_mut_bytes())
+            .map_err(|error| error.to_string())?;
+        return Ok(decoded);
+    }
+
+    let image = image::load_from_memory(bytes).map_err(|error| error.to_string())?;
+    let image = if image.width() > MAX_DECODE_WIDTH || image.height() > MAX_DECODE_HEIGHT {
+        image.resize(
+            MAX_DECODE_WIDTH,
+            MAX_DECODE_HEIGHT,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        image
+    };
+    let rgba = image.into_rgba8();
+    Ok(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+        rgba.as_raw(),
+        rgba.width(),
+        rgba.height(),
+    ))
 }
 
 fn cache_root() -> PathBuf {
@@ -441,7 +474,7 @@ fn cache_root() -> PathBuf {
 }
 
 fn cache_path(url: &str) -> PathBuf {
-    let hash = blake3::hash(url.as_bytes()).to_hex().to_string();
+    let hash = blake3::hash(url.as_bytes()).to_hex();
     cache_root().join(&hash[..2]).join(format!("{hash}.img"))
 }
 
@@ -449,7 +482,7 @@ fn write_cache_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let Some(parent) = path.parent() else {
         return Ok(());
     };
-    std::fs::create_dir_all(parent)?;
+    ensure_cache_dir(parent)?;
     let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
     std::fs::write(&temporary, bytes)?;
     match std::fs::rename(&temporary, path) {
@@ -463,6 +496,24 @@ fn write_cache_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
             Err(error)
         }
     }
+}
+
+fn ensure_cache_dir(path: &Path) -> std::io::Result<()> {
+    let ready_dirs = READY_CACHE_DIRS.get_or_init(|| Mutex::new(HashSet::new()));
+    if ready_dirs
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(path)
+    {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(path)?;
+    ready_dirs
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(path.to_owned());
+    Ok(())
 }
 
 fn start_disk_maintenance_once() {
@@ -589,8 +640,9 @@ fn finish_ui_refresh() {
 mod tests {
     use super::{
         MAX_RESPONSE_BYTES, MEMORY_CAPACITY_BYTES, REQUIRED_IMAGE_IDLE_TTL, cache_path,
-        sanitized_url_for_log,
+        decode_image, sanitized_url_for_log,
     };
+    use image::ImageEncoder as _;
 
     #[test]
     fn cache_path_is_stable_and_sharded() {
@@ -609,6 +661,19 @@ mod tests {
     fn decoded_cache_has_a_small_base_and_temporary_growth_window() {
         assert_eq!(MEMORY_CAPACITY_BYTES, 32 * 1024 * 1024);
         assert!(!REQUIRED_IMAGE_IDLE_TTL.is_zero());
+    }
+
+    #[test]
+    fn rgba_images_decode_directly_into_the_slint_buffer() {
+        let source = [255, 0, 0, 255, 0, 128, 255, 64];
+        let mut encoded = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut encoded)
+            .write_image(&source, 2, 1, image::ExtendedColorType::Rgba8)
+            .expect("encode fixture");
+
+        let decoded = decode_image(&encoded).expect("decode fixture");
+        assert_eq!((decoded.width(), decoded.height()), (2, 1));
+        assert_eq!(decoded.as_bytes(), source);
     }
 
     #[test]

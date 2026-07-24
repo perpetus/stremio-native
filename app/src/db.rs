@@ -6,6 +6,7 @@ use std::{collections::HashMap, path::PathBuf};
 use turso::{Builder, Connection, Database};
 
 static DB: OnceLock<Database> = OnceLock::new();
+static DB_CONNECTION: OnceLock<Connection> = OnceLock::new();
 static LOG_INSERTS_SINCE_CLEANUP: AtomicUsize = AtomicUsize::new(0);
 
 const MAX_LOG_ROWS: i64 = 10_000;
@@ -49,6 +50,7 @@ pub async fn init_db(app_data_dir: PathBuf) -> anyhow::Result<()> {
         PRAGMA synchronous = NORMAL;
         PRAGMA temp_store = MEMORY;
         PRAGMA cache_size = -10000;
+        PRAGMA busy_timeout = 5000;
 
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -76,6 +78,9 @@ pub async fn init_db(app_data_dir: PathBuf) -> anyhow::Result<()> {
     let core_database = db.clone();
     DB.set(db)
         .map_err(|_| anyhow::anyhow!("DB already initialized"))?;
+    DB_CONNECTION
+        .set(conn)
+        .map_err(|_| anyhow::anyhow!("DB connection already initialized"))?;
     if let Err(error) = core_env::install_database(core_database) {
         tracing::debug!(%error, "core storage database was initialized before app storage");
     }
@@ -186,10 +191,10 @@ async fn run_startup_maintenance() -> anyhow::Result<()> {
 }
 
 pub fn get_conn() -> anyhow::Result<Connection> {
-    DB.get()
-        .ok_or_else(|| anyhow::anyhow!("DB not initialized"))?
-        .connect()
-        .map_err(Into::into)
+    DB_CONNECTION
+        .get()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("DB not initialized"))
 }
 
 // === Settings Helpers ===
@@ -286,7 +291,13 @@ pub async fn insert_log(level: &str, message: &str) -> anyhow::Result<()> {
     .await?;
     let previous_insert_count = LOG_INSERTS_SINCE_CLEANUP.fetch_add(1, Ordering::Relaxed);
     if previous_insert_count % LOG_CLEANUP_INTERVAL == LOG_CLEANUP_INTERVAL - 1 {
-        prune_logs(&conn).await?;
+        // Retention maintenance is best-effort and must not add a large DELETE
+        // to the latency of the log write that happened to cross the threshold.
+        tokio::spawn(async move {
+            if let Err(error) = prune_logs(&conn).await {
+                tracing::warn!(%error, "background log retention maintenance failed");
+            }
+        });
     }
     Ok(())
 }

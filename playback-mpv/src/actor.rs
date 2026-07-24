@@ -56,8 +56,8 @@ pub struct PlaybackState {
     pub volume: f64,
     pub muted: bool,
     pub speed: f64,
-    pub audio_tracks: Vec<AudioTrack>,
-    pub subtitle_tracks: Vec<SubtitleTrack>,
+    pub audio_tracks: Arc<[AudioTrack]>,
+    pub subtitle_tracks: Arc<[SubtitleTrack]>,
     pub active_audio_track: Option<String>,
     pub active_subtitle_track: Option<String>,
     pub filename: Option<String>,
@@ -83,8 +83,8 @@ impl Default for PlaybackState {
             volume: 1.0,
             muted: false,
             speed: 1.0,
-            audio_tracks: Vec::new(),
-            subtitle_tracks: Vec::new(),
+            audio_tracks: Arc::from([]),
+            subtitle_tracks: Arc::from([]),
             active_audio_track: None,
             active_subtitle_track: None,
             filename: None,
@@ -109,7 +109,7 @@ pub enum EndReason {
 
 #[derive(Clone, Debug)]
 pub enum PlaybackEvent {
-    State(Box<PlaybackState>),
+    State(Arc<PlaybackState>),
     FileLoaded,
     Ended {
         reason: EndReason,
@@ -417,7 +417,7 @@ fn handle_command(
                 paused: false,
                 ..PlaybackState::default()
             };
-            sink(PlaybackEvent::State(Box::new(state.clone())));
+            sink(PlaybackEvent::State(Arc::new(state.clone())));
             match start_at.filter(|time| time.is_finite() && *time > 0.0) {
                 Some(start_at) => {
                     let options = format!("start={start_at:.3}");
@@ -539,21 +539,21 @@ fn drain_events(
                 state.loading = true;
                 state.loaded = false;
                 state.cache_buffering_percent = 0.0;
-                sink(PlaybackEvent::State(Box::new(state.clone())));
+                sink(PlaybackEvent::State(Arc::new(state.clone())));
             }
             EVENT_FILE_LOADED => {
                 state.loading = false;
                 state.loaded = true;
                 sink(PlaybackEvent::FileLoaded);
-                sink(PlaybackEvent::State(Box::new(state.clone())));
+                sink(PlaybackEvent::State(Arc::new(state.clone())));
             }
             EVENT_PLAYBACK_RESTART => {
                 state.buffering = false;
-                sink(PlaybackEvent::State(Box::new(state.clone())));
+                sink(PlaybackEvent::State(Arc::new(state.clone())));
             }
             EVENT_PROPERTY_CHANGE => {
                 update_property(event, state);
-                sink(PlaybackEvent::State(Box::new(state.clone())));
+                sink(PlaybackEvent::State(Arc::new(state.clone())));
             }
             EVENT_CLIENT_MESSAGE if !event.data.is_null() => {
                 // SAFETY: mpv guarantees the data pointer is a valid
@@ -608,7 +608,7 @@ fn handle_end_file(
         (data.reason == END_FILE_ERROR).then(|| client.api.operation_error(data.error).to_string());
     state.loading = false;
     state.loaded = false;
-    sink(PlaybackEvent::State(Box::new(state.clone())));
+    sink(PlaybackEvent::State(Arc::new(state.clone())));
     sink(PlaybackEvent::Ended { reason, error });
 }
 
@@ -659,8 +659,8 @@ fn update_property(event: &MpvEvent, state: &mut PlaybackState) {
         "track-list" => {
             if let Some(node) = property_node(property) {
                 let (audio, subtitles) = parse_tracks(node);
-                state.audio_tracks = audio;
-                state.subtitle_tracks = subtitles;
+                state.audio_tracks = audio.into();
+                state.subtitle_tracks = subtitles.into();
             }
         }
         _ => {}
@@ -754,29 +754,77 @@ fn parse_tracks(node: &MpvNode) -> (Vec<AudioTrack>, Vec<SubtitleTrack>) {
         let Some(map) = node_map(entry) else {
             continue;
         };
-        let kind = map_string(map, "type");
-        let id = map_int(map, "id").map(|id| id.to_string());
+        let Some(values) = (!map.values.is_null()).then_some(map.values) else {
+            continue;
+        };
+        let Some(keys) = (!map.keys.is_null()).then_some(map.keys) else {
+            continue;
+        };
+        let Some(len) = usize::try_from(map.num).ok() else {
+            continue;
+        };
+
+        let mut kind = None;
+        let mut id = None;
+        let mut title = None;
+        let mut language = None;
+        let mut codec = None;
+        let mut selected = false;
+        let mut external = false;
+        for index in 0..len {
+            // SAFETY: MPV guarantees both map arrays contain `num` entries.
+            let key = unsafe { *keys.add(index) };
+            if key.is_null() {
+                continue;
+            }
+            // SAFETY: MPV map keys are null-terminated and values has the same length.
+            let key = unsafe { CStr::from_ptr(key) }.to_bytes();
+            let value = unsafe { &*values.add(index) };
+            match key {
+                b"type" => {
+                    kind = node_string_bytes(value).and_then(|value| match value {
+                        b"audio" => Some(TrackKind::Audio),
+                        b"sub" => Some(TrackKind::Subtitle),
+                        _ => None,
+                    });
+                }
+                b"id" => id = node_int(value).map(|id| id.to_string()),
+                b"title" => title = node_string(value),
+                b"lang" => language = node_string(value),
+                b"codec" => codec = node_string(value),
+                b"selected" => selected = node_flag(value).unwrap_or(false),
+                b"external" => external = node_flag(value).unwrap_or(false),
+                _ => {}
+            }
+        }
+
         let Some(id) = id else { continue };
-        match kind.as_deref() {
-            Some("audio") => audio.push(AudioTrack {
+        match kind {
+            Some(TrackKind::Audio) => audio.push(AudioTrack {
                 id,
-                title: map_string(map, "title"),
-                language: map_string(map, "lang"),
-                codec: map_string(map, "codec"),
-                selected: map_flag(map, "selected").unwrap_or(false),
+                title,
+                language,
+                codec,
+                selected,
             }),
-            Some("sub") => subtitles.push(SubtitleTrack {
+            Some(TrackKind::Subtitle) => subtitles.push(SubtitleTrack {
                 id,
-                title: map_string(map, "title"),
-                language: map_string(map, "lang"),
-                codec: map_string(map, "codec"),
-                selected: map_flag(map, "selected").unwrap_or(false),
-                external: map_flag(map, "external").unwrap_or(false),
+                title,
+                language,
+                codec,
+                selected,
+                external,
             }),
             _ => {}
         }
     }
     (audio, subtitles)
+}
+
+#[derive(Clone, Copy)]
+enum TrackKind {
+    Audio,
+    Subtitle,
 }
 
 fn node_list(node: &MpvNode, expected_format: c_int) -> Option<&[MpvNode]> {
@@ -810,46 +858,23 @@ fn node_map(node: &MpvNode) -> Option<&MpvNodeList> {
     (!list.is_null()).then(|| unsafe { &*list })
 }
 
-fn map_value<'a>(map: &'a MpvNodeList, wanted: &str) -> Option<&'a MpvNode> {
-    let len = usize::try_from(map.num).ok()?;
-    if len == 0 || map.keys.is_null() || map.values.is_null() {
-        return None;
-    }
-    for index in 0..len {
-        // SAFETY: MPV guarantees key/value arrays contain num entries.
-        let key = unsafe { *map.keys.add(index) };
-        if key.is_null() {
-            continue;
-        }
-        // SAFETY: Map keys are null-terminated strings.
-        if unsafe { CStr::from_ptr(key) }.to_bytes() == wanted.as_bytes() {
-            // SAFETY: Values has the same validated length as keys.
-            return Some(unsafe { &*map.values.add(index) });
-        }
-    }
-    None
-}
-
-fn map_string(map: &MpvNodeList, key: &str) -> Option<String> {
-    let node = map_value(map, key)?;
+fn node_string_bytes(node: &MpvNode) -> Option<&[u8]> {
     if node.format != FORMAT_STRING {
         return None;
     }
     // SAFETY: Active union member for FORMAT_STRING is string.
     let value = unsafe { node.value.string };
-    (!value.is_null()).then(|| {
-        unsafe { CStr::from_ptr(value) }
-            .to_string_lossy()
-            .into_owned()
-    })
+    (!value.is_null()).then(|| unsafe { CStr::from_ptr(value) }.to_bytes())
 }
 
-fn map_int(map: &MpvNodeList, key: &str) -> Option<i64> {
-    let node = map_value(map, key)?;
+fn node_string(node: &MpvNode) -> Option<String> {
+    node_string_bytes(node).map(|value| String::from_utf8_lossy(value).into_owned())
+}
+
+fn node_int(node: &MpvNode) -> Option<i64> {
     (node.format == FORMAT_INT64).then_some(unsafe { node.value.int64 })
 }
 
-fn map_flag(map: &MpvNodeList, key: &str) -> Option<bool> {
-    let node = map_value(map, key)?;
+fn node_flag(node: &MpvNode) -> Option<bool> {
     (node.format == FORMAT_FLAG).then_some(unsafe { node.value.flag != 0 })
 }

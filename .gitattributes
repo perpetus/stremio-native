@@ -1,1 +1,5 @@
 * text=auto
+
+# Keep third-party patched crates available for reproducible builds without
+# counting their source toward this repository's GitHub language statistics.
+vendor/** linguist-vendored

@@ -1,5 +1,8 @@
 # Rust and generated build output
 /target/
+# Vendored crates are excluded from the workspace, so building one directly
+# drops its own target dir next to the sources.
+/vendor/*/target/
 /dist/mpv/
 
 # Runtime-generated application state and downloaded artwork
